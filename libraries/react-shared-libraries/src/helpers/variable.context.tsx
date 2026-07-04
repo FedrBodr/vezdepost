@@ -21,6 +21,7 @@ interface VariableContextInterface {
   uploadDirectory: string;
   facebookPixel: string;
   telegramBotName: string;
+  maxBotName: string;
   neynarClientId: string;
   isSecured: boolean;
   disableImageCompression: boolean;
@@ -54,6 +55,7 @@ const VariableContext = createContext({
   uploadDirectory: '',
   isSecured: false,
   telegramBotName: '',
+  maxBotName: '',
   facebookPixel: '',
   neynarClientId: '',
   disableImageCompression: false,

@@ -49,6 +49,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           dub={false}
           facebookPixel={process.env.NEXT_PUBLIC_FACEBOOK_PIXEL!}
           telegramBotName={process.env.TELEGRAM_BOT_NAME!}
+          maxBotName={process.env.MAX_BOT_NAME!}
           neynarClientId={process.env.NEYNAR_CLIENT_ID!}
           isSecured={!process.env.NOT_SECURED}
           isChatBase={false}

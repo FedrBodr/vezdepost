@@ -2,6 +2,7 @@ import { FC } from 'react';
 import { Web3ProviderInterface } from '@gitroom/frontend/components/launches/web3/web3.provider.interface';
 import { WrapcasterProvider } from '@gitroom/frontend/components/launches/web3/providers/wrapcaster.provider';
 import { TelegramProvider } from '@gitroom/frontend/components/launches/web3/providers/telegram.provider';
+import { MaxProvider } from '@gitroom/frontend/components/launches/web3/providers/max.provider';
 import { MoltbookProvider } from '@gitroom/frontend/components/launches/web3/providers/moltbook.provider';
 export const web3List: {
   identifier: string;
@@ -10,6 +11,10 @@ export const web3List: {
   {
     identifier: 'telegram',
     component: TelegramProvider,
+  },
+  {
+    identifier: 'max',
+    component: MaxProvider,
   },
   {
     identifier: 'wrapcast',
