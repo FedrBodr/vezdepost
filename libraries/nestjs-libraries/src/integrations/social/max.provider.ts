@@ -110,13 +110,39 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
         const res = await fetch(url);
         const buffer = Buffer.from(await res.arrayBuffer());
         const attachment = await bot.api.uploadVideo({ source: buffer });
-        attachments.push(attachment);
+        // uploadVideo/uploadImage return class instances (VideoAttachment /
+        // ImageAttachment) whose wire shape is produced by `.toJson()` —
+        // NOT the JS-standard `.toJSON()`. The SDK's client does a plain
+        // `JSON.stringify(body)` with no special-casing, so pushing the raw
+        // instance would serialize its own properties (e.g. {token}) instead
+        // of the required `{ type, payload }` wrapper. Serialize explicitly.
+        attachments.push(attachment.toJson());
       } else {
         const attachment = await bot.api.uploadImage({ url });
-        attachments.push(attachment);
+        attachments.push(attachment.toJson());
       }
     }
     return attachments;
+  }
+
+  private async sendMessage(
+    accessToken: string,
+    post: PostDetails,
+    replyMid?: string
+  ) {
+    const attachments = await this.buildAttachments(post.media);
+
+    const message: any = await bot.api.sendMessageToChat(
+      Number(accessToken),
+      this.normalizeText(post.message),
+      {
+        format: 'html',
+        ...(replyMid ? { link: { type: 'reply', mid: replyMid } } : {}),
+        ...(attachments.length ? { attachments } : {}),
+      }
+    );
+
+    return message?.body?.mid ?? message?.mid;
   }
 
   async post(
@@ -125,18 +151,7 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     postDetails: PostDetails[]
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
-    const attachments = await this.buildAttachments(firstPost.media);
-
-    const message: any = await bot.api.sendMessageToChat(
-      Number(accessToken),
-      this.normalizeText(firstPost.message),
-      {
-        format: 'html',
-        ...(attachments.length ? { attachments } : {}),
-      }
-    );
-
-    const messageId = message?.body?.mid ?? message?.mid;
+    const messageId = await this.sendMessage(accessToken, firstPost);
 
     return [
       {
@@ -157,20 +172,11 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     integration: Integration
   ): Promise<PostResponse[]> {
     const [commentPost] = postDetails;
-    const replyMid = lastCommentId || postId;
-    const attachments = await this.buildAttachments(commentPost.media);
-
-    const message: any = await bot.api.sendMessageToChat(
-      Number(accessToken),
-      this.normalizeText(commentPost.message),
-      {
-        format: 'html',
-        link: { type: 'reply', mid: replyMid },
-        ...(attachments.length ? { attachments } : {}),
-      }
+    const messageId = await this.sendMessage(
+      accessToken,
+      commentPost,
+      lastCommentId || postId
     );
-
-    const messageId = message?.body?.mid ?? message?.mid;
 
     return [
       {
