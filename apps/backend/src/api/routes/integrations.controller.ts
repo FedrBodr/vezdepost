@@ -25,6 +25,7 @@ import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abst
 
 import { timer } from '@gitroom/helpers/utils/timer';
 import { TelegramProvider } from '@gitroom/nestjs-libraries/integrations/social/telegram.provider';
+import { MaxProvider } from '@gitroom/nestjs-libraries/integrations/social/max.provider';
 import { MoltbookProvider } from '@gitroom/nestjs-libraries/integrations/social/moltbook.provider';
 import {
   AuthorizationActions,
@@ -451,6 +452,11 @@ export class IntegrationsController {
   @Get('/telegram/updates')
   async getUpdates(@Query() query: { word: string; id?: number }) {
     return new TelegramProvider().getBotId(query);
+  }
+
+  @Get('/max/updates')
+  async getMaxUpdates(@Query() query: { word: string; id?: number }) {
+    return new MaxProvider().getBotId(query);
   }
 
   @Post('/moltbook/register')

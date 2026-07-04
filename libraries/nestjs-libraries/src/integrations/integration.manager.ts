@@ -24,6 +24,7 @@ import { LemmyProvider } from '@gitroom/nestjs-libraries/integrations/social/lem
 import { InstagramStandaloneProvider } from '@gitroom/nestjs-libraries/integrations/social/instagram.standalone.provider';
 import { FarcasterProvider } from '@gitroom/nestjs-libraries/integrations/social/farcaster.provider';
 import { TelegramProvider } from '@gitroom/nestjs-libraries/integrations/social/telegram.provider';
+import { MaxProvider } from '@gitroom/nestjs-libraries/integrations/social/max.provider';
 import { NostrProvider } from '@gitroom/nestjs-libraries/integrations/social/nostr.provider';
 import { VkProvider } from '@gitroom/nestjs-libraries/integrations/social/vk.provider';
 import { WordpressProvider } from '@gitroom/nestjs-libraries/integrations/social/wordpress.provider';
@@ -60,6 +61,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new LemmyProvider(),
   new FarcasterProvider(),
   new TelegramProvider(),
+  new MaxProvider(),
   new NostrProvider(),
   new VkProvider(),
   new MediumProvider(),
