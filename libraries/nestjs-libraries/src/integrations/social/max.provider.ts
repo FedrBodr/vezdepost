@@ -151,12 +151,13 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     postDetails: PostDetails[]
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
-    const messageId = await this.sendMessage(accessToken, firstPost);
+    const mid = await this.sendMessage(accessToken, firstPost);
+    if (!mid) return [];
 
     return [
       {
         id: firstPost.id,
-        postId: String(messageId),
+        postId: String(mid),
         releaseURL: `https://max.ru/${id}`,
         status: 'completed',
       },
@@ -172,16 +173,17 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     integration: Integration
   ): Promise<PostResponse[]> {
     const [commentPost] = postDetails;
-    const messageId = await this.sendMessage(
+    const mid = await this.sendMessage(
       accessToken,
       commentPost,
       lastCommentId || postId
     );
+    if (!mid) return [];
 
     return [
       {
         id: commentPost.id,
-        postId: String(messageId),
+        postId: String(mid),
         releaseURL: `https://max.ru/${id}`,
         status: 'completed',
       },
