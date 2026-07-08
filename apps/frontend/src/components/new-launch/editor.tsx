@@ -791,7 +791,8 @@ export const Editor: FC<{
                         </>
                       )}
                       {(editorType === 'markdown' || editorType === 'html') &&
-                        identifier !== 'telegram' && (
+                        identifier !== 'telegram' &&
+                        identifier !== 'max' && (
                           <>
                             <AComponent
                               editor={editorRef?.current?.editor}
