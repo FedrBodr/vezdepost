@@ -104,23 +104,24 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     for (const m of files) {
       // Local-storage paths are relative; make them absolute for the SDK upload.
       const url = m.path.startsWith('http') ? m.path : `${frontendURL}${m.path}`;
-      if (m.type === 'video') {
-        // uploadVideo only accepts a { source } buffer/stream, not a { url };
-        // fetch the media into a Buffer before uploading.
-        const res = await fetch(url);
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const attachment = await bot.api.uploadVideo({ source: buffer });
-        // uploadVideo/uploadImage return class instances (VideoAttachment /
-        // ImageAttachment) whose wire shape is produced by `.toJson()` —
-        // NOT the JS-standard `.toJSON()`. The SDK's client does a plain
-        // `JSON.stringify(body)` with no special-casing, so pushing the raw
-        // instance would serialize its own properties (e.g. {token}) instead
-        // of the required `{ type, payload }` wrapper. Serialize explicitly.
-        attachments.push(attachment.toJson());
-      } else {
-        const attachment = await bot.api.uploadImage({ url });
-        attachments.push(attachment.toJson());
-      }
+      // Upload media as bytes rather than by URL: uploadImage({ url }) is a
+      // passthrough — MAX only fetches the URL at send time and rejects
+      // plain-http / non-standard-port sources with "Failed to upload
+      // image.", while uploadVideo has no { url } variant at all. Fetching
+      // into a Buffer ourselves works with any storage the server can read.
+      const res = await fetch(url);
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const attachment =
+        m.type === 'video'
+          ? await bot.api.uploadVideo({ source: buffer })
+          : await bot.api.uploadImage({ source: buffer });
+      // uploadVideo/uploadImage return class instances (VideoAttachment /
+      // ImageAttachment) whose wire shape is produced by `.toJson()` —
+      // NOT the JS-standard `.toJSON()`. The SDK's client does a plain
+      // `JSON.stringify(body)` with no special-casing, so pushing the raw
+      // instance would serialize its own properties (e.g. {token}) instead
+      // of the required `{ type, payload }` wrapper. Serialize explicitly.
+      attachments.push(attachment.toJson());
     }
     return attachments;
   }
