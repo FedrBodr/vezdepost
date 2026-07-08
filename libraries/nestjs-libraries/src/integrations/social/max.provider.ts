@@ -6,7 +6,10 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import dayjs from 'dayjs';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  SocialAbstract,
+  ValidityMedia,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { Integration } from '@prisma/client';
 import striptags from 'striptags';
 import { Bot } from '@maxhub/max-bot-api';
@@ -27,6 +30,23 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
 
   maxLength() {
     return 4000;
+  }
+
+  // Video publishing is not enabled yet: MAX processes uploaded video
+  // asynchronously and sending right after upload can fail with
+  // "attachment.not.ready" — needs a readiness retry that is not
+  // implemented/tested yet. Reject early with a clear message.
+  override async checkValidity(
+    posts: Array<ValidityMedia[]>
+  ): Promise<string | true> {
+    if (
+      posts?.some((p) =>
+        p?.some((a) => /\.(mp4|mov|mkv|webm|m4v)(\?|$)/i.test(a?.path || ''))
+      )
+    ) {
+      return 'Video posting to MAX is not supported yet.';
+    }
+    return true;
   }
 
   // Token is permanent — no refresh, mirrors TelegramProvider.
