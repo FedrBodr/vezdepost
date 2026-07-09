@@ -1,0 +1,14 @@
+{
+	email fedrbodr@gmail.com
+}
+
+vezdepost.ru, www.vezdepost.ru {
+	root * /srv/landing
+	file_server
+	encode gzip
+}
+
+app.vezdepost.ru {
+	reverse_proxy postiz:5000
+	encode gzip
+}

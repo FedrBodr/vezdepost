@@ -23,11 +23,13 @@ services:
     # the app starts only once temporal actually accepts connections —
     # otherwise the backend loses the startup race and dies (2026-07-09 incident)
     command: ["sh", "-c", "nginx && node /wait-temporal.js && pnpm run pm2"]
+    # host port only for on-server debugging; the internet comes in via caddy
+    ports: !override
+      - '127.0.0.1:4007:5000'
     environment:
-      MAIN_URL: 'http://201.51.7.50:4007'
-      FRONTEND_URL: 'http://201.51.7.50:4007'
-      NEXT_PUBLIC_BACKEND_URL: 'http://201.51.7.50:4007/api'
-      NOT_SECURED: 'true'
+      MAIN_URL: 'https://app.vezdepost.ru'
+      FRONTEND_URL: 'https://app.vezdepost.ru'
+      NEXT_PUBLIC_BACKEND_URL: 'https://app.vezdepost.ru/api'
       JWT_SECRET: '${JWT_SECRET:?set in .env}'
       # MAX API serves certs from the new Let's Encrypt hierarchy and the
       # Russian Trusted CA depending on SNI — Node needs both added
@@ -36,6 +38,25 @@ services:
       TELEGRAM_BOT_NAME: 'fedrbodr_postiz_bot'
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
+
+  # TLS terminator and host router:
+  #   vezdepost.ru, www -> static landing (deploy/landing)
+  #   app.vezdepost.ru  -> postiz
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/landing:/srv/landing:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - postiz-network
 
   # upstream compose has no restart policy on the temporal stack —
   # after a VM reboot it stayed down while postiz came up (2026-07-09)
@@ -64,3 +85,7 @@ services:
   spotlight:
     profiles:
       - disabled
+
+volumes:
+  caddy-data:
+  caddy-config:
