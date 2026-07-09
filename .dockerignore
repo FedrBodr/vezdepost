@@ -21,3 +21,5 @@ dist
 .git
 .github
 reports
+# server secrets must never enter the image (deploy/prod)
+.env
