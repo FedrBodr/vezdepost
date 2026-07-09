@@ -40,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+      # gh would otherwise resolve the `upstream` git remote as the target repo
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
         with:
