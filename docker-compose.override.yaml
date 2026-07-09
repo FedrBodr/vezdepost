@@ -1,0 +1,66 @@
+# Server (prod) config for 201.51.7.50 — auto-loaded by `docker compose`.
+# Secrets are interpolated from an untracked `.env` file next to this file:
+#   JWT_SECRET=...
+#   TELEGRAM_TOKEN=...
+#   MAX_TOKEN=...
+services:
+  postiz:
+    image: postiz-max:local
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    depends_on:
+      postiz-postgres:
+        condition: service_healthy
+      postiz-redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    volumes:
+      - ./max-extra-ca.pem:/certs/max-extra-ca.pem:ro
+      - ./wait-temporal.js:/wait-temporal.js:ro
+    # nginx starts right away (clean 502 instead of hanging connects);
+    # the app starts only once temporal actually accepts connections —
+    # otherwise the backend loses the startup race and dies (2026-07-09 incident)
+    command: ["sh", "-c", "nginx && node /wait-temporal.js && pnpm run pm2"]
+    environment:
+      MAIN_URL: 'http://201.51.7.50:4007'
+      FRONTEND_URL: 'http://201.51.7.50:4007'
+      NEXT_PUBLIC_BACKEND_URL: 'http://201.51.7.50:4007/api'
+      NOT_SECURED: 'true'
+      JWT_SECRET: '${JWT_SECRET:?set in .env}'
+      # MAX API serves certs from the new Let's Encrypt hierarchy and the
+      # Russian Trusted CA depending on SNI — Node needs both added
+      NODE_EXTRA_CA_CERTS: /certs/max-extra-ca.pem
+      TELEGRAM_TOKEN: '${TELEGRAM_TOKEN:?set in .env}'
+      TELEGRAM_BOT_NAME: 'fedrbodr_postiz_bot'
+      MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
+      MAX_BOT_NAME: 'se13478462_bot'
+
+  # upstream compose has no restart policy on the temporal stack —
+  # after a VM reboot it stayed down while postiz came up (2026-07-09)
+  temporal:
+    restart: always
+    # not exposed to the internet: unauthenticated gRPC
+    ports: !override
+      - '127.0.0.1:7233:7233'
+
+  temporal-postgresql:
+    restart: always
+
+  temporal-elasticsearch:
+    restart: always
+
+  temporal-ui:
+    restart: always
+    # not exposed to the internet: unauthenticated UI; use an ssh tunnel
+    ports: !override
+      - '127.0.0.1:8080:8080'
+
+  temporal-admin-tools:
+    restart: always
+
+  # optional Sentry dev tool — not needed
+  spotlight:
+    profiles:
+      - disabled

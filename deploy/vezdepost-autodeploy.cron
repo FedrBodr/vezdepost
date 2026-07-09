@@ -1,0 +1,3 @@
+# Polls origin/prod every 3 minutes and redeploys on new commits.
+# Install: cp deploy/vezdepost-autodeploy.cron /etc/cron.d/vezdepost-autodeploy
+*/3 * * * * root /root/postiz-app/deploy/autodeploy.sh
