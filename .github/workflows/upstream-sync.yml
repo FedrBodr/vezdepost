@@ -1,0 +1,159 @@
+---
+name: Upstream Sync
+
+# Weekly merge of gitroomhq/postiz-app (upstream) into main via a PR.
+# - Clean merge  -> PR labelled `upstream-sync`, ready to merge.
+# - Conflicts    -> PR branch is set to upstream/main as-is, labelled
+#                   `conflicts`, with the conflicting-file list in the body.
+# - An open PR with manual (non-bot) commits is never overwritten.
+#
+# Requires the SYNC_TOKEN secret (PAT with repo+workflow scopes): the sync
+# branch usually carries upstream changes to .github/workflows/*, which the
+# default GITHUB_TOKEN is not allowed to push, and PRs created by
+# GITHUB_TOKEN do not trigger CI.
+#
+# IMPORTANT: merge sync PRs with a MERGE COMMIT (not squash/rebase),
+# otherwise upstream history never joins ours and every following sync
+# conflicts again.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC / 09:00 MSK
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+
+env:
+  UPSTREAM_REPO: https://github.com/gitroomhq/postiz-app.git
+  SYNC_BRANCH: upstream-sync
+  BASE_BRANCH: main
+  BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+
+jobs:
+  sync:
+    if: github.repository == 'FedrBodr/vezdepost'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "$BOT_EMAIL"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "$UPSTREAM_REPO"
+          # upstream references a private submodule (public-api); never recurse
+          git fetch --no-recurse-submodules upstream main
+
+      - name: Decide what to do
+        id: state
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "action=none" >> "$GITHUB_OUTPUT"
+            echo "main is already up to date with upstream/main." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          pr=$(gh pr list --head "$SYNC_BRANCH" --base "$BASE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$pr" ] && git fetch origin "$SYNC_BRANCH" 2>/dev/null; then
+            tip_email=$(git log -1 --format='%ce' FETCH_HEAD)
+            if [ "$tip_email" != "$BOT_EMAIL" ]; then
+              echo "action=comment" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "action=sync" >> "$GITHUB_OUTPUT"
+
+      - name: Notify existing manually-edited PR
+        if: steps.state.outputs.action == 'comment'
+        run: |
+          gh pr comment "${{ steps.state.outputs.pr }}" --body \
+            "Upstream has new commits, but this branch contains manual commits, so the sync workflow did not overwrite it. Merge or close this PR and re-run the workflow to pick them up."
+          echo "Open PR #${{ steps.state.outputs.pr }} has manual commits; left a comment instead of force-pushing." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Merge upstream/main
+        if: steps.state.outputs.action == 'sync'
+        id: merge
+        run: |
+          git checkout -B "$SYNC_BRANCH" "$BASE_BRANCH"
+          echo "count=$(git rev-list --count HEAD..upstream/main)" >> "$GITHUB_OUTPUT"
+          if git merge --no-edit upstream/main; then
+            echo "conflicts=false" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only --diff-filter=U | sort > /tmp/conflicting-files.txt
+            git merge --abort
+            # Publish upstream as-is; GitHub will show the conflicts on the PR.
+            git reset --hard upstream/main
+            echo "conflicts=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push sync branch
+        if: steps.state.outputs.action == 'sync'
+        run: git push --force origin "$SYNC_BRANCH"
+
+      - name: Create or update PR
+        if: steps.state.outputs.action == 'sync'
+        run: |
+          gh label create upstream-sync --color 0e8a16 --description "Automated upstream merge" --force
+          gh label create conflicts --color d93f0b --description "Upstream sync needs manual conflict resolution" --force
+
+          count="${{ steps.merge.outputs.count }}"
+          if [ "${{ steps.merge.outputs.conflicts }}" = "true" ]; then
+            title="Upstream sync: $count new commits (conflicts)"
+            labels="upstream-sync,conflicts"
+            {
+              echo "Merging [gitroomhq/postiz-app](https://github.com/gitroomhq/postiz-app) \`main\` hit conflicts; this branch points at plain \`upstream/main\` ($count new commits)."
+              echo
+              echo "**Conflicting files:**"
+              echo '```'
+              cat /tmp/conflicting-files.txt
+              echo '```'
+              echo
+              echo "**Resolve locally:**"
+              echo '```bash'
+              echo "git fetch origin"
+              echo "git checkout -B upstream-sync origin/upstream-sync"
+              echo "git merge origin/main   # resolve conflicts, commit"
+              echo "git push origin upstream-sync"
+              echo '```'
+              echo
+              echo "Then merge this PR with a **merge commit** (not squash/rebase), or future syncs will conflict again."
+            } > /tmp/pr-body.md
+          else
+            title="Upstream sync: $count new commits"
+            labels="upstream-sync"
+            {
+              echo "Clean automated merge of [gitroomhq/postiz-app](https://github.com/gitroomhq/postiz-app) \`main\` into \`$BASE_BRANCH\` — $count new commits."
+              echo
+              echo "Merge with a **merge commit** (not squash/rebase), or future syncs will conflict again."
+            } > /tmp/pr-body.md
+          fi
+
+          pr="${{ steps.state.outputs.pr }}"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body-file /tmp/pr-body.md --add-label "$labels"
+            if [ "${{ steps.merge.outputs.conflicts }}" = "false" ]; then
+              gh pr edit "$pr" --remove-label conflicts || true
+            fi
+            echo "Updated PR #$pr: $title" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --base "$BASE_BRANCH" --head "$SYNC_BRANCH" \
+              --title "$title" --body-file /tmp/pr-body.md --label "$labels"
+            echo "Created PR: $title" >> "$GITHUB_STEP_SUMMARY"
+          fi
