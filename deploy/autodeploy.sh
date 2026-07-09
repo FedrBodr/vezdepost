@@ -14,15 +14,19 @@ flock -n 9 || exit 0
 cd "$REPO_DIR"
 git fetch --no-recurse-submodules origin prod
 
-LOCAL=$(git rev-parse HEAD)
+# compare against the last SUCCESSFUL deploy, not HEAD: a failed deploy
+# (e.g. image pull error) already moved HEAD and would never be retried
+STATE=/var/lib/vezdepost-deployed-rev
 REMOTE=$(git rev-parse origin/prod)
-[ "$LOCAL" = "$REMOTE" ] && exit 0
+DEPLOYED=$(cat "$STATE" 2>/dev/null || echo none)
+[ "$DEPLOYED" = "$REMOTE" ] && exit 0
 
 {
-  echo "$(date -Is) deploying $LOCAL -> $REMOTE"
+  echo "$(date -Is) deploying $DEPLOYED -> $REMOTE"
   # hard reset instead of pull: prod may be force-updated; untracked
   # server files (.env, max-extra-ca.pem) are not touched
   git reset --hard "$REMOTE"
   docker compose up -d --build
+  echo "$REMOTE" > "$STATE"
   echo "$(date -Is) deploy finished"
 } >> "$LOG" 2>&1
