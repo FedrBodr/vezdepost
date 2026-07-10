@@ -363,5 +363,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <br><span style="font-size:11px">* через VK-провайдер апстрима, где доступен</span>
 </footer>
 
+<script>
+// конверсионные события в Метрику (цели создаются в интерфейсе Метрики)
+document.addEventListener('click', function (e) {
+  var a = e.target.closest ? e.target.closest('a') : null;
+  if (!a || typeof ym === 'undefined') return;
+  if (a.href.indexOf('app.vezdepost.ru') !== -1) ym(110559699, 'reachGoal', 'cta_app_click');
+  else if (a.href.indexOf('github.com/FedrBodr') !== -1) ym(110559699, 'reachGoal', 'github_click');
+});
+</script>
 </body>
 </html>
