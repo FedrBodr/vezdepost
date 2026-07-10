@@ -9,6 +9,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
+      args:
+        # baked at build time: fetch-gtm.mjs self-hosts the GTM script into public/g.js
+        NEXT_PUBLIC_GTM_ID: '${NEXT_PUBLIC_GTM_ID:-}'
     depends_on:
       postiz-postgres:
         condition: service_healthy
