@@ -24,3 +24,6 @@ reports
 # server secrets must never enter the image (deploy/prod)
 .env
 deploy
+# ops docs & server-scripts — not part of the app; keep them out of the build
+# context so docs-only commits don't invalidate COPY . and force a full rebuild
+docs
