@@ -49,6 +49,10 @@ services:
     image: caddy:2
     container_name: caddy
     restart: always
+    # --watch: auto-reload the bind-mounted Caddyfile on change (no manual
+    # `caddy reload` needed). Same args as the caddy:2 default CMD + --watch.
+    # On an invalid config Caddy logs the error and keeps the old config running.
+    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch
     ports:
       - '80:80'
       - '443:443'

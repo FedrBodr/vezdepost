@@ -27,3 +27,6 @@ deploy
 # ops docs & server-scripts — not part of the app; keep them out of the build
 # context so docs-only commits don't invalidate COPY . and force a full rebuild
 docs
+# compose files are host-side orchestration, never used inside the image —
+# exclude so compose-only edits (e.g. a caddy command tweak) don't rebuild
+docker-compose*.yaml
