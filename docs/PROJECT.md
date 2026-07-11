@@ -58,7 +58,7 @@ Document: project-overview
 - GTM: `GTM-5JNQTLP2` (head + noscript)
 - Яндекс Метрика счётчик `110559699`, цели шлются кликовым слушателем внизу
   файла: `cta_app_click` (app.vezdepost.ru), `github_click`
-  (github.com/FedrBodr), `services_click` (fedrbodr.com).
+  (github.com/FedrBodr), `services_click` (t.me/FedrBodr).
   Новая конверсия = новая ветка в этом слушателе + цель в интерфейсе Метрики.
 
 ### Тон и принятые копирайт-решения (не откатывать молча)
@@ -78,7 +78,7 @@ Document: project-overview
 Личное предложение мейнтейнера: «MVP и кастомные решения — до 7 дней»,
 таймлайн дни 1–2 разработка → 3–4 правки → 5 прод → **7 смотрим метрики**.
 Ключевой месседж: клиент через неделю смотрит на метрики реальных
-пользователей, а не на демо. CTA → https://fedrbodr.com/ (цель
+пользователей, а не на демо. CTA → https://t.me/FedrBodr (цель
 `services_click`).
 
 ## Текущие хвосты (на 2026-07-11)
