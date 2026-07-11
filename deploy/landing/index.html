@@ -128,6 +128,13 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   .step p { color: var(--muted); font-size: 15px; }
   @media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
 
+  /* ---------- services (4 колонки) ---------- */
+  .steps.steps-4 { grid-template-columns: repeat(4, 1fr); }
+  .step-num.done { background: linear-gradient(120deg, var(--accent2), var(--accent3)); }
+  .services-cta { text-align: center; margin-top: 36px; }
+  @media (max-width: 960px) { .steps.steps-4 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .steps.steps-4 { grid-template-columns: 1fr; } }
+
   /* ---------- platforms ---------- */
   .chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 760px; margin: 0 auto; }
   .chip {
@@ -186,6 +193,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <a href="#platforms">Платформы</a>
       <a href="#pricing">Цены</a>
       <a href="#faq">FAQ</a>
+      <a href="#services">Услуги</a>
     </nav>
     <a class="btn btn-primary" href="https://app.vezdepost.ru">Открыть приложение</a>
   </div>
@@ -346,7 +354,39 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   </div>
 </section>
 
-<section class="final-cta alt">
+<section id="services" class="alt">
+  <div class="wrap">
+    <h2>MVP и кастомные решения — до 7 дней</h2>
+    <p class="sub">Соберу MVP для вашего IT-проекта или кастомное решение под ваш бизнес-процесс — тем же подходом, которым сделан Vezdepost. Через неделю вы смотрите не на демо, а на метрики реальных пользователей.</p>
+    <div class="steps steps-4">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Дни 1–2 — разработка</h3>
+        <p>Собираю решение и поднимаю инфраструктуру: деплой, домен, база — рабочая версия уже по ссылке.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Дни 3–4 — правки</h3>
+        <p>Показываю результат, собираю обратную связь и докручиваю под вашу задачу.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>День 5 — прод</h3>
+        <p>Релиз в продакшн: HTTPS, бэкапы, аналитика с целями — продукт встречает первых пользователей.</p>
+      </div>
+      <div class="step">
+        <div class="step-num done">✓</div>
+        <h3>День 7 — метрики</h3>
+        <p>Садимся вместе над реальными цифрами: кто пришёл, что нажимают, где отваливаются. Что растить дальше — решаем на данных, а не на ощущениях.</p>
+      </div>
+    </div>
+    <div class="services-cta">
+      <a class="btn btn-primary" href="https://fedrbodr.com/">Обсудить задачу</a>
+    </div>
+  </div>
+</section>
+
+<section class="final-cta">
   <div class="wrap">
     <h2>Попробуй прямо сейчас</h2>
     <p class="sub">Регистрация за минуту, карта не нужна.</p>
@@ -370,6 +410,7 @@ document.addEventListener('click', function (e) {
   if (!a || typeof ym === 'undefined') return;
   if (a.href.indexOf('app.vezdepost.ru') !== -1) ym(110559699, 'reachGoal', 'cta_app_click');
   else if (a.href.indexOf('github.com/FedrBodr') !== -1) ym(110559699, 'reachGoal', 'github_click');
+  else if (a.href.indexOf('fedrbodr.com') !== -1) ym(110559699, 'reachGoal', 'services_click');
 });
 </script>
 </body>
