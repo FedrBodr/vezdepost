@@ -410,7 +410,7 @@ document.addEventListener('click', function (e) {
   if (!a || typeof ym === 'undefined') return;
   if (a.href.indexOf('app.vezdepost.ru') !== -1) ym(110559699, 'reachGoal', 'cta_app_click');
   else if (a.href.indexOf('github.com/FedrBodr') !== -1) ym(110559699, 'reachGoal', 'github_click');
-  else if (a.href.indexOf('t.me/FedrBodr') !== -1) ym(110559699, 'reachGoal', 'services_click');
+  else if (a.href.indexOf('t.me/FedrBodr') !== -1) ym(110559699, 'reachGoal', a.closest('#services') ? 'services_click' : 'tg_footer_click');
 });
 </script>
 </body>

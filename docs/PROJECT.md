@@ -58,7 +58,8 @@ Document: project-overview
 - GTM: `GTM-5JNQTLP2` (head + noscript)
 - Яндекс Метрика счётчик `110559699`, цели шлются кликовым слушателем внизу
   файла: `cta_app_click` (app.vezdepost.ru), `github_click`
-  (github.com/FedrBodr), `services_click` (t.me/FedrBodr).
+  (github.com/FedrBodr), `services_click` (t.me/FedrBodr внутри #services),
+  `tg_footer_click` (t.me/FedrBodr вне #services, т.е. футер).
   Новая конверсия = новая ветка в этом слушателе + цель в интерфейсе Метрики.
 
 ### Тон и принятые копирайт-решения (не откатывать молча)
