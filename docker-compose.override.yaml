@@ -8,7 +8,9 @@ services:
     image: postiz-max:local
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      # our Dockerfile (pnpm-fetch dep layer, digest-pinned base) — upstream
+      # Dockerfile.dev rebuilds deps on every code commit (~20 min)
+      dockerfile: deploy/Dockerfile
       args:
         # baked at build time: fetch-gtm.mjs self-hosts the GTM script into public/g.js
         NEXT_PUBLIC_GTM_ID: '${NEXT_PUBLIC_GTM_ID:-}'
