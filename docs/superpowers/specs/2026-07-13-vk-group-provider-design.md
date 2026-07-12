@@ -23,7 +23,7 @@ Document: design-spec
 
 1. User clicks "Add channel → VK Group" → VK ID OAuth (scopes = base VK scopes + `groups`).
 2. Backend `no.auth.integrations.controller` sees `isBetweenSteps = true` → calls the provider's `pages(accessToken)` → returns the user's groups.
-3. Frontend shows the group picker (`withContinueProvider` HOC) → user picks one → `POST /public/provider/:id/connect` → provider `reConnect()` fixes the channel identity to the group.
+3. Frontend shows the group picker (`withContinueProvider` HOC) → user picks one → `POST /integrations/provider/:id/connect` → `integration.service.saveProviderPage()` → provider `fetchPageInformation()` fixes the channel identity to the group. (Note: the optional `reConnect()` interface method is legacy — nothing calls it; the live path is `fetchPageInformation`.)
 4. Scheduled posts go through the inherited orchestrator flow; `post()`/`comment()` target the group wall.
 
 **Key identity convention:** the integration's `internalId` is stored as the *negative* group id (`-{groupId}`), matching VK API `owner_id` semantics. This makes attachment strings (`photo-123_456`) and `owner_id` params compose naturally.
@@ -45,9 +45,10 @@ class VkGroupProvider extends VkProvider:
     → VK API groups.get?filter=admin,editor&extended=1&fields=photo_200,screen_name
     → [{ id, name, username: screen_name, picture: photo_200 }]
 
-  reConnect(id, requiredId, accessToken)
-    → groups.getById(group_id=requiredId)
-    → { id: `-${requiredId}`, name, picture, username }
+  fetchPageInformation(accessToken, { page })
+    → groups.getById(group_id=abs(page))
+    → { id: `-${groupId}`, name, picture, username, access_token: accessToken }
+    (the same user token is kept — VK has no per-group token in this flow)
 
   post()/comment() overrides:
     wall.post / wall.createComment with owner_id=-{groupId} & from_group=1
