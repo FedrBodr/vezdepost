@@ -23,7 +23,7 @@ Document: design-spec
 
 1. User clicks "Add channel → VK Group" → VK ID OAuth (scopes = base VK scopes + `groups`).
 2. Backend `no.auth.integrations.controller` sees `isBetweenSteps = true` → calls the provider's `pages(accessToken)` → returns the user's groups.
-3. Frontend shows the group picker (`withContinueProvider` HOC) → user picks one → `POST /integrations/provider/:id/connect` → `integration.service.saveProviderPage()` → provider `fetchPageInformation()` fixes the channel identity to the group. (Note: the optional `reConnect()` interface method is legacy — nothing calls it; the live path is `fetchPageInformation`.)
+3. Frontend shows the group picker (`withContinueProvider` HOC) → user picks one → `POST /integrations/provider/:id/connect` → `integration.service.saveProviderPage()` → provider `fetchPageInformation()` fixes the channel identity to the group. (Correction from final review: `reConnect()` is NOT legacy — the manual-reconnect flow in `no.auth.integrations.controller.ts` and the background refresh in `refresh.integration.service.ts` both call it, so the provider implements it too.)
 4. Scheduled posts go through the inherited orchestrator flow; `post()`/`comment()` target the group wall.
 
 **Key identity convention:** the integration's `internalId` is stored as the *negative* group id (`-{groupId}`), matching VK API `owner_id` semantics. This makes attachment strings (`photo-123_456`) and `owner_id` params compose naturally.
