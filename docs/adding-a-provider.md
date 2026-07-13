@@ -52,8 +52,12 @@ All provider logic lives in `libraries/nestjs-libraries/src/integrations/social/
 - **Between-steps flow plumbing** (`no.auth.integrations.controller.ts`): after `authenticate()`,
   if `isBetweenSteps && !refresh` the controller duck-types the provider for a `pages` or
   `companies` method, calls it with the access token, and returns the list to the frontend. The
-  user's pick comes back via `POST /public/provider/:id/connect` → `saveProviderPage()` →
-  provider `reConnect(id, requiredId, accessToken)` whose return value becomes the channel identity.
+  user's pick comes back via `POST /integrations/provider/:id/connect` → `saveProviderPage()` →
+  provider `fetchPageInformation(token, data)` whose return value becomes the channel identity.
+  `reConnect(id, requiredId, accessToken)` is separate and also REQUIRED for between-steps
+  providers: the manual-reconnect flow (`no.auth.integrations.controller.ts`) and background
+  refresh (`refresh.integration.service.ts`) call it to re-resolve the page/group identity —
+  without it, a channel with an expired token can only be deleted and re-added.
 - **TS visibility:** if a subclass must override a helper (e.g. media upload), the base method must
   be `protected`, not `private`.
 - **Import-time safety:** module-level SDK/client construction must not throw when its env var is
