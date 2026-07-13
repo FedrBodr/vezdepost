@@ -152,6 +152,10 @@ export const Providers = [
     component: VkProvider,
   },
   {
+    identifier: 'vk-group',
+    component: VkProvider,
+  },
+  {
     identifier: 'wordpress',
     component: WordpressProvider,
   },
