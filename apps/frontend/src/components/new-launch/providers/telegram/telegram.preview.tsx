@@ -1,8 +1,10 @@
-import { FC } from 'react';
+import React, { FC } from 'react';
 import { GeneralPreviewComponent } from '../../../launches/general.preview.component';
 import { useIntegration } from '../../../launches/helpers/use.integration';
-import { shouldSendTelegramTextSeparately } from '../../../../../../../libraries/helpers/src/utils/telegram.constraints';
-import { stripHtmlValidation } from '../../../../../../../libraries/helpers/src/utils/strip.html.validation';
+import {
+  getTelegramVisibleTextLength,
+  shouldSendTelegramTextSeparately,
+} from '../../../../../../../libraries/helpers/src/utils/telegram.constraints';
 
 type TelegramPreviewPost = {
   content: string;
@@ -14,7 +16,7 @@ export const shouldShowTelegramSplitWarning = (
 ): boolean =>
   posts.some((post) =>
     shouldSendTelegramTextSeparately(
-      stripHtmlValidation('normal', post.content, true).length,
+      getTelegramVisibleTextLength(post.content),
       post.image?.length ?? 0
     )
   );

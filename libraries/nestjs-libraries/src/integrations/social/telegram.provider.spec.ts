@@ -144,6 +144,42 @@ describe('TelegramProvider media captions', () => {
     expect(calls).toEqual(['photo:undefined', `text:${entityText}`]);
   });
 
+  it('uses UTF-16 length for numeric entity caption boundaries', async () => {
+    const attached = makeBot();
+    const split = makeBot();
+    const boundaryText = '&#128512;'.repeat(512);
+    const overBoundaryText = '&#x1F600;'.repeat(513);
+
+    await new TelegramProvider(attached.bot as any).post(
+      'channel',
+      '-1001',
+      details(boundaryText)
+    );
+    await new TelegramProvider(split.bot as any).post(
+      'channel',
+      '-1001',
+      details(overBoundaryText)
+    );
+
+    expect(attached.calls).toEqual([`photo:${boundaryText}`]);
+    expect(split.calls).toEqual([
+      'photo:undefined',
+      `text:${overBoundaryText}`,
+    ]);
+  });
+
+  it('counts anchor labels rather than URLs', async () => {
+    const { calls, bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+    const link = `<a href="https://example.com/${'x'.repeat(
+      1100
+    )}">short label</a>`;
+
+    await provider.post('channel', '-1001', details(link));
+
+    expect(calls).toEqual(['photo:short label']);
+  });
+
   it('keeps short text attached to the first album item', async () => {
     const { calls, bot } = makeBot();
     const provider = new TelegramProvider(bot as any);

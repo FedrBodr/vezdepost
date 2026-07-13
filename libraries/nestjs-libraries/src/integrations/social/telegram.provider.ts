@@ -11,43 +11,16 @@ import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.ab
 import mime from 'mime';
 import TelegramBot from 'node-telegram-bot-api';
 import { Integration } from '@prisma/client';
-import striptags from 'striptags';
-import { shouldSendTelegramTextSeparately } from '@gitroom/helpers/utils/telegram.constraints';
+import {
+  getTelegramVisibleTextLength,
+  normalizeTelegramHtml,
+  shouldSendTelegramTextSeparately,
+} from '@gitroom/helpers/utils/telegram.constraints';
 
 const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
 // Added to support local storage posting
 const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5000';
 const mediaStorage = process.env.STORAGE_PROVIDER || 'local';
-
-const decodeTelegramHtmlEntities = (value: string) =>
-  value.replace(
-    /&(?:#(\d+)|#x([\da-f]+)|(lt|gt|amp|quot));/gi,
-    (entity, decimal: string, hexadecimal: string, named: string) => {
-      if (named) {
-        return {
-          lt: '<',
-          gt: '>',
-          amp: '&',
-          quot: '"',
-        }[named.toLowerCase()]!;
-      }
-
-      const codePoint = Number.parseInt(
-        decimal || hexadecimal,
-        decimal ? 10 : 16
-      );
-      if (
-        !Number.isInteger(codePoint) ||
-        codePoint < 0 ||
-        codePoint > 0x10ffff ||
-        (codePoint >= 0xd800 && codePoint <= 0xdfff)
-      ) {
-        return entity;
-      }
-
-      return String.fromCodePoint(codePoint);
-    }
-  );
 
 type TelegramBotClient = Pick<
   TelegramBot,
@@ -225,15 +198,12 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
   ): Promise<number | null> {
     let messageId: number | null = null;
     const mediaFiles = message.media || [];
-    const text = striptags(message.message || '', ['u', 'strong', 'p'])
-      .replace(/<strong>/g, '<b>')
-      .replace(/<\/strong>/g, '</b>')
-      .replace(/<p>(.*?)<\/p>/g, '$1\n');
+    const text = normalizeTelegramHtml(message.message || '');
 
     console.log(text);
     const processedMedia = this.processMedia(mediaFiles);
     const sendTextSeparately = shouldSendTelegramTextSeparately(
-      decodeTelegramHtmlEntities(striptags(text)).length,
+      getTelegramVisibleTextLength(message.message || ''),
       processedMedia.length
     );
     const caption = sendTextSeparately ? undefined : text;
