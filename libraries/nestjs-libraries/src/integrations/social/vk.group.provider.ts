@@ -1,8 +1,10 @@
 import {
+  AuthTokenDetails,
   PostDetails,
   PostResponse,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { VkProvider } from '@gitroom/nestjs-libraries/integrations/social/vk.provider';
+import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { Integration } from '@prisma/client';
 import axios from 'axios';
 import FormDataNew from 'form-data';
@@ -23,6 +25,18 @@ export class VkGroupProvider extends VkProvider {
     'video',
     'groups',
   ];
+
+  override async authenticate(params: {
+    code: string;
+    codeVerifier: string;
+    refresh?: string;
+  }) {
+    const result = await super.authenticate(params);
+    // Transient id: replaced by -{groupId} in saveProviderPage. Prefixed so the
+    // organizationId_internalId upsert can never collide with a plain 'vk'
+    // channel of the same account.
+    return { ...result, id: `g_${result.id}` };
+  }
 
   // Groups the user can post to (admin/editor). Ids are returned negated to
   // match the internalId convention (VK owner_id semantics) — this also lets
@@ -52,6 +66,10 @@ export class VkGroupProvider extends VkProvider {
 
     const group = response?.groups?.[0] ?? response?.[0];
 
+    if (!group) {
+      throw new Error(`VK group ${groupId} could not be resolved`);
+    }
+
     return {
       id: String(-groupId),
       name: group?.name ?? '',
@@ -59,6 +77,24 @@ export class VkGroupProvider extends VkProvider {
       access_token: accessToken,
       picture: group?.photo_200 ?? '',
       username: group?.screen_name ?? '',
+    };
+  }
+
+  async reConnect(
+    id: string,
+    requiredId: string,
+    accessToken: string
+  ): Promise<Omit<AuthTokenDetails, 'refreshToken' | 'expiresIn'>> {
+    const information = await this.fetchPageInformation(accessToken, {
+      page: requiredId,
+    });
+
+    return {
+      id: information.id,
+      name: information.name,
+      accessToken: information.access_token,
+      picture: information.picture,
+      username: information.username,
     };
   }
 
@@ -79,6 +115,15 @@ export class VkGroupProvider extends VkProvider {
               : `https://api.vk.com/method/photos.getWallUploadServer?group_id=${groupId}&access_token=${accessToken}&v=5.251`
           )
         ).json();
+
+        if (all?.error || !all?.response) {
+          throw new BadBody(
+            this.identifier,
+            JSON.stringify(all),
+            '{}',
+            all?.error?.error_msg || 'VK media upload failed'
+          );
+        }
 
         const { data } = await axios.get(media.path!, {
           responseType: 'stream',
@@ -112,17 +157,26 @@ export class VkGroupProvider extends VkProvider {
         formSend.append('hash', value.hash);
         formSend.append('group_id', String(groupId));
 
-        const { id } = (
-          await (
-            await fetch(
-              `https://api.vk.com/method/photos.saveWallPhoto?access_token=${accessToken}&v=5.251`,
-              {
-                method: 'POST',
-                body: formSend,
-              }
-            )
-          ).json()
-        ).response[0];
+        const saveWallPhoto = await (
+          await fetch(
+            `https://api.vk.com/method/photos.saveWallPhoto?access_token=${accessToken}&v=5.251`,
+            {
+              method: 'POST',
+              body: formSend,
+            }
+          )
+        ).json();
+
+        if (saveWallPhoto?.error || !saveWallPhoto?.response?.[0]) {
+          throw new BadBody(
+            this.identifier,
+            JSON.stringify(saveWallPhoto),
+            '{}',
+            saveWallPhoto?.error?.error_msg || 'VK photo save failed'
+          );
+        }
+
+        const { id } = saveWallPhoto.response[0];
 
         return {
           id,
@@ -153,7 +207,7 @@ export class VkGroupProvider extends VkProvider {
       );
     }
 
-    const { response } = await (
+    const wallPostResult = await (
       await this.fetch(
         `https://api.vk.com/method/wall.post?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
         {
@@ -162,6 +216,17 @@ export class VkGroupProvider extends VkProvider {
         }
       )
     ).json();
+
+    if (wallPostResult?.error || !wallPostResult?.response) {
+      throw new BadBody(
+        this.identifier,
+        JSON.stringify(wallPostResult),
+        '{}',
+        wallPostResult?.error?.error_msg || 'VK post failed'
+      );
+    }
+
+    const { response } = wallPostResult;
 
     return [
       {
@@ -200,7 +265,7 @@ export class VkGroupProvider extends VkProvider {
       );
     }
 
-    const { response } = await (
+    const wallCommentResult = await (
       await this.fetch(
         `https://api.vk.com/method/wall.createComment?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
         {
@@ -209,6 +274,17 @@ export class VkGroupProvider extends VkProvider {
         }
       )
     ).json();
+
+    if (wallCommentResult?.error || !wallCommentResult?.response) {
+      throw new BadBody(
+        this.identifier,
+        JSON.stringify(wallCommentResult),
+        '{}',
+        wallCommentResult?.error?.error_msg || 'VK comment failed'
+      );
+    }
+
+    const { response } = wallCommentResult;
 
     return [
       {
