@@ -31,7 +31,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
 
   editor = 'normal' as const;
   maxLength() {
-    return 2048;
+    return 16384;
   }
 
   async refreshToken(refresh: string): Promise<AuthTokenDetails> {
@@ -98,7 +98,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
             process?.env.FRONTEND_URL?.indexOf('https') == -1
               ? `https://redirectmeto.com/${process?.env.FRONTEND_URL}`
               : `${process?.env.FRONTEND_URL}`
-          }/integrations/social/vk`
+          }/integrations/social/${this.identifier}`
         )}` +
         `&state=${state}` +
         `&scope=${encodeURIComponent(this.scopes.join(' '))}`,
@@ -126,7 +126,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
         process?.env.FRONTEND_URL?.indexOf('https') == -1
           ? `https://redirectmeto.com/${process?.env.FRONTEND_URL}`
           : `${process?.env.FRONTEND_URL}`
-      }/integrations/social/vk`
+      }/integrations/social/${this.identifier}`
     );
 
     const { access_token, scope, refresh_token, expires_in } = await (
@@ -160,7 +160,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  private async uploadMedia(
+  protected async uploadMedia(
     userId: string,
     accessToken: string,
     post: PostDetails
