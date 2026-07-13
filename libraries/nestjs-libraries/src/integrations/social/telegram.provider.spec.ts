@@ -38,29 +38,49 @@ const albumMedia = [
   ...media,
   { id: 'media-2', path: 'https://cdn.test/photo-2.jpg' },
 ];
+const mediaItems = (count: number) =>
+  Array.from({ length: count }, (_, index) => ({
+    id: `media-${index}`,
+    path: `https://cdn.test/photo-${index}.jpg`,
+  }));
 const details = (message: string, files = media) => [
   { id: 'post-1', message, media: files, settings: {} } as any,
 ];
 
 const makeBot = () => {
   const calls: string[] = [];
+  let albumNumber = 0;
   const bot = {
     sendPhoto: vi.fn(
-      async (_chat: string, _media: string, options: { caption?: string }) => {
+      async (
+        _chat: string,
+        _media: string,
+        options: { caption?: string; reply_to_message_id?: number }
+      ) => {
         calls.push(`photo:${String(options.caption)}`);
         return { message_id: 41 };
       }
     ),
     sendMediaGroup: vi.fn(
-      async (_chat: string, group: Array<{ caption?: string }>) => {
+      async (
+        _chat: string,
+        group: Array<{ caption?: string }>,
+        _options?: { reply_to_message_id?: number }
+      ) => {
         calls.push(`album:${String(group[0].caption)}`);
-        return [{ message_id: 51 }];
+        return [{ message_id: 51 + albumNumber++ * 10 }];
       }
     ),
-    sendMessage: vi.fn(async (_chat: string, text: string) => {
-      calls.push(`text:${text}`);
-      return { message_id: 42 };
-    }),
+    sendMessage: vi.fn(
+      async (
+        _chat: string,
+        text: string,
+        _options?: { parse_mode?: string; reply_to_message_id?: number }
+      ) => {
+        calls.push(`text:${text}`);
+        return { message_id: 42 };
+      }
+    ),
   };
 
   return { calls, bot };
@@ -104,6 +124,26 @@ describe('TelegramProvider media captions', () => {
     expect(calls).toEqual([`photo:${normalizedText}`]);
   });
 
+  it('keeps 1024 entity-encoded visible characters attached', async () => {
+    const { calls, bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+    const entityText = '&amp;'.repeat(1024);
+
+    await provider.post('channel', '-1001', details(entityText));
+
+    expect(calls).toEqual([`photo:${entityText}`]);
+  });
+
+  it('splits 1025 entity-encoded visible characters', async () => {
+    const { calls, bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+    const entityText = '&amp;'.repeat(1025);
+
+    await provider.post('channel', '-1001', details(entityText));
+
+    expect(calls).toEqual(['photo:undefined', `text:${entityText}`]);
+  });
+
   it('keeps short text attached to the first album item', async () => {
     const { calls, bot } = makeBot();
     const provider = new TelegramProvider(bot as any);
@@ -119,9 +159,84 @@ describe('TelegramProvider media captions', () => {
     const provider = new TelegramProvider(bot as any);
     const longText = 'x'.repeat(1025);
 
-    await provider.post('channel', '-1001', details(longText, albumMedia));
+    const result = await provider.post(
+      'channel',
+      '-1001',
+      details(longText, albumMedia)
+    );
 
     expect(calls).toEqual(['album:undefined', `text:${longText}`]);
+    expect(result[0].postId).toBe('51');
+    expect(result[0].releaseURL).toContain('/51');
+  });
+
+  it('finishes every media group before text and retains the first group ID', async () => {
+    const { calls, bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+    const longText = 'x'.repeat(1025);
+
+    const result = await provider.post(
+      'channel',
+      '-1001',
+      details(longText, mediaItems(11))
+    );
+
+    expect(calls).toEqual([
+      'album:undefined',
+      'album:undefined',
+      `text:${longText}`,
+    ]);
+    expect(result[0].postId).toBe('51');
+    expect(result[0].releaseURL).toContain('/51');
+  });
+
+  it('does not send text when a later media group fails', async () => {
+    const { calls, bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+    const mediaError = new Error('second media group failed');
+    bot.sendMediaGroup
+      .mockImplementationOnce(async (_chat, group) => {
+        calls.push(`album:${String(group[0].caption)}`);
+        return [{ message_id: 51 }];
+      })
+      .mockImplementationOnce(async (_chat, group) => {
+        calls.push(`album:${String(group[0].caption)}`);
+        throw mediaError;
+      });
+
+    await expect(
+      provider.post(
+        'channel',
+        '-1001',
+        details('x'.repeat(1025), mediaItems(11))
+      )
+    ).rejects.toBe(mediaError);
+    expect(calls).toEqual(['album:undefined', 'album:undefined']);
+    expect(bot.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('replies with the first media group but not later groups or split text', async () => {
+    const { bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+    const longText = 'x'.repeat(1025);
+
+    await provider.comment(
+      'channel',
+      '99',
+      undefined,
+      '-1001',
+      details(longText, mediaItems(11)),
+      {} as any
+    );
+
+    expect(bot.sendMediaGroup).toHaveBeenCalledTimes(2);
+    expect(bot.sendMediaGroup.mock.calls[0][2]).toEqual({
+      reply_to_message_id: 99,
+    });
+    expect(bot.sendMediaGroup.mock.calls[1][2]).toEqual({});
+    expect(bot.sendMessage.mock.calls[0][2]).toEqual({
+      parse_mode: 'HTML',
+    });
   });
 
   it('does not send the separate text when media delivery fails', async () => {

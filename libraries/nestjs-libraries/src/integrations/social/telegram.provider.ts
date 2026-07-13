@@ -19,6 +19,36 @@ const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
 const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5000';
 const mediaStorage = process.env.STORAGE_PROVIDER || 'local';
 
+const decodeTelegramHtmlEntities = (value: string) =>
+  value.replace(
+    /&(?:#(\d+)|#x([\da-f]+)|(lt|gt|amp|quot));/gi,
+    (entity, decimal: string, hexadecimal: string, named: string) => {
+      if (named) {
+        return {
+          lt: '<',
+          gt: '>',
+          amp: '&',
+          quot: '"',
+        }[named.toLowerCase()]!;
+      }
+
+      const codePoint = Number.parseInt(
+        decimal || hexadecimal,
+        decimal ? 10 : 16
+      );
+      if (
+        !Number.isInteger(codePoint) ||
+        codePoint < 0 ||
+        codePoint > 0x10ffff ||
+        (codePoint >= 0xd800 && codePoint <= 0xdfff)
+      ) {
+        return entity;
+      }
+
+      return String.fromCodePoint(codePoint);
+    }
+  );
+
 type TelegramBotClient = Pick<
   TelegramBot,
   | 'getChat'
@@ -203,7 +233,7 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     console.log(text);
     const processedMedia = this.processMedia(mediaFiles);
     const sendTextSeparately = shouldSendTelegramTextSeparately(
-      striptags(text).length,
+      decodeTelegramHtmlEntities(striptags(text)).length,
       processedMedia.length
     );
     const caption = sendTextSeparately ? undefined : text;
