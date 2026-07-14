@@ -7,6 +7,7 @@ import {
 import {
   BadBody,
   SocialAbstract,
+  ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { Integration } from '@prisma/client';
@@ -82,6 +83,15 @@ export class VkGroupProvider
 
   maxLength() {
     return 16384;
+  }
+
+  override async checkValidity(
+    posts: Array<ValidityMedia[]>
+  ): Promise<string | true> {
+    if (posts?.some((post) => post?.length > 0)) {
+      return 'VK Group temporarily supports text-only posts. Remove all media and try again.';
+    }
+    return true;
   }
 
   async customFields() {
@@ -223,17 +233,11 @@ export class VkGroupProvider
     postDetails: PostDetails[]
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
-    const body = new FormData();
-    body.append('owner_id', userId);
-    body.append('from_group', '1');
-    body.append('message', firstPost.message);
-
-    const wallPostResult = await (
-      await this.fetch(
-        `https://api.vk.com/method/wall.post?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
-        { method: 'POST', body }
-      )
-    ).json();
+    const wallPostResult = await this.callVk('wall.post', accessToken, {
+      owner_id: userId,
+      from_group: '1',
+      message: firstPost.message,
+    });
 
     if (wallPostResult?.error || !wallPostResult?.response) {
       throw new BadBody(
@@ -263,18 +267,16 @@ export class VkGroupProvider
     integration: Integration
   ): Promise<PostResponse[]> {
     const [commentPost] = postDetails;
-    const body = new FormData();
-    body.append('owner_id', userId);
-    body.append('from_group', String(Math.abs(Number(userId))));
-    body.append('message', commentPost.message);
-    body.append('post_id', postId);
-
-    const wallCommentResult = await (
-      await this.fetch(
-        `https://api.vk.com/method/wall.createComment?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
-        { method: 'POST', body }
-      )
-    ).json();
+    const wallCommentResult = await this.callVk(
+      'wall.createComment',
+      accessToken,
+      {
+        owner_id: userId,
+        from_group: String(Math.abs(Number(userId))),
+        message: commentPost.message,
+        post_id: postId,
+      }
+    );
 
     if (wallCommentResult?.error || !wallCommentResult?.response) {
       throw new BadBody(

@@ -201,3 +201,116 @@ describe('VkGroupProvider community credentials', () => {
     expect(String(result)).not.toContain(token);
   });
 });
+
+describe('VkGroupProvider text-only publishing', () => {
+  let provider: VkGroupProvider;
+
+  beforeEach(() => {
+    provider = new VkGroupProvider();
+  });
+
+  it('accepts text and rejects every kind of attached media', async () => {
+    const mediaError =
+      'VK Group temporarily supports text-only posts. Remove all media and try again.';
+
+    await expect(provider.checkValidity([[]], {}, [])).resolves.toBe(true);
+    await expect(
+      provider.checkValidity([[{ path: 'photo.jpg' }]], {}, [])
+    ).resolves.toBe(mediaError);
+    await expect(
+      provider.checkValidity([[{ path: 'video.mp4' }]], {}, [])
+    ).resolves.toBe(mediaError);
+    await expect(
+      provider.checkValidity([[], [{ path: 'comment.jpg' }]], {}, [])
+    ).resolves.toBe(mediaError);
+  });
+
+  it('posts text as the community without credentials in the URL', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() => response({ response: { post_id: 789 } }));
+
+    const result = await provider.post('-123', token, [
+      { id: 'postiz-post', message: 'Hello VK', settings: {} },
+    ]);
+
+    expect(result).toEqual([
+      {
+        id: 'postiz-post',
+        postId: '789',
+        releaseURL: 'https://vk.com/wall-123_789',
+        status: 'completed',
+      },
+    ]);
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.vk.com/method/wall.post');
+    expect(url).not.toContain(token);
+    expect(url).not.toContain('client_id');
+
+    const body = options?.body as FormData;
+    expect(body.get('access_token')).toBe(token);
+    expect(body.get('v')).toBe('5.251');
+    expect(body.get('owner_id')).toBe('-123');
+    expect(body.get('from_group')).toBe('1');
+    expect(body.get('message')).toBe('Hello VK');
+    expect(body.has('attachments')).toBe(false);
+  });
+
+  it('turns VK HTTP-200 errors into a failed post without leaking the token', async () => {
+    vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+      response({ error: { error_code: 15, error_msg: 'Access denied' } })
+    );
+
+    let thrown: unknown;
+    try {
+      await provider.post('-123', token, [
+        { id: 'postiz-post', message: 'Hello VK', settings: {} },
+      ]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(String(thrown)).toContain('Access denied');
+    expect(JSON.stringify(thrown)).not.toContain(token);
+  });
+
+  it('creates text comments as the community without attachments', async () => {
+    const fetchMock = vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+      response({ response: { comment_id: 456 } })
+    );
+
+    const result = await provider.comment(
+      '-123',
+      '789',
+      undefined,
+      token,
+      [{ id: 'postiz-comment', message: 'A reply', settings: {} }],
+      {} as any
+    );
+
+    expect(result).toEqual([
+      {
+        id: 'postiz-comment',
+        postId: '456',
+        releaseURL: 'https://vk.com/wall-123_789',
+        status: 'completed',
+      },
+    ]);
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.vk.com/method/wall.createComment');
+    expect(url).not.toContain(token);
+    expect(url).not.toContain('client_id');
+
+    const body = options?.body as FormData;
+    expect(body.get('access_token')).toBe(token);
+    expect(body.get('v')).toBe('5.251');
+    expect(body.get('owner_id')).toBe('-123');
+    expect(body.get('from_group')).toBe('123');
+    expect(body.get('post_id')).toBe('789');
+    expect(body.get('message')).toBe('A reply');
+    expect(body.has('attachments')).toBe(false);
+  });
+});
