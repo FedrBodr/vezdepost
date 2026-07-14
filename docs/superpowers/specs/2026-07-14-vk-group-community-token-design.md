@@ -5,7 +5,8 @@ Document: design-spec
 
 **Goal:** Replace the non-working VK ID OAuth flow for `vk-group` with a
 two-field connection flow that uses a VK community access token and supports
-publishing text and photos as the community.
+text-only publishing as the community while VK reviews the application's
+request for extended user-token permissions.
 
 **Date:** 2026-07-14
 **Status:** approved by user
@@ -39,10 +40,9 @@ The modal also shows this provider-specific instruction:
 
 > When creating the VK key, select only:
 > - Allow the application to manage the community
-> - Allow the application to access community photos
 > - Allow the application to access the community wall
 >
-> Messages, documents, stories, and products/orders are not required.
+> Messages, photos, documents, stories, and products/orders are not required.
 
 The instruction should be rendered as text in the VK Group custom-fields UI;
 it is not another form field.
@@ -70,27 +70,32 @@ Authentication fails before saving a channel when:
 - the group value is empty or cannot be normalized;
 - VK cannot resolve the community;
 - the token is invalid or belongs to a different community;
-- the token lacks community management, photo, or wall access.
+- the token lacks community management or wall access.
 
 The user receives a concrete, non-secret error message. VK response bodies and
 access tokens are never logged or returned to the browser.
 
 ## Publishing
 
-Reuse the existing negative group-id convention and community posting calls:
+Reuse the existing negative group-id convention and community posting call:
 
 - text posts use `wall.post` with the community token and negative
-  `owner_id`;
-- photo posts obtain a community wall upload server, upload the image, save it
-  for the group, and attach it to `wall.post`;
+  `owner_id` plus `from_group=1`;
 - comments continue to use the community identity and token;
 - the obsolete `client_id` query parameter is omitted from community-token API
   calls.
 
-Version one supports text and photos only. `checkValidity()` rejects any video
-before scheduling with the message `Video posting to VK Group is not supported
-yet.` The provider must not call `video.save` in this version. Documents,
-stories, messages, products, and orders are out of scope.
+This temporary version is strictly text-only. `checkValidity()` rejects every
+post containing any media before scheduling with the message `VK Group
+temporarily supports text-only posts. Remove all media and try again.` The
+provider must not call photo upload, `photos.saveWallPhoto`, or `video.save` in
+this version. Link previews created by VK from URLs in the post text are
+allowed, but Postiz does not treat them as uploaded media. Photos, videos,
+documents, stories, messages, products, and orders are out of scope.
+
+When VK grants extended user-token permissions to application `54677685`,
+native media support will be designed as a separate follow-up. It is not part
+of this implementation.
 
 ## Frontend Changes
 
@@ -118,8 +123,9 @@ Automated coverage must include:
 - successful community-token authentication and negative identity;
 - invalid token, wrong community, and missing-permission errors without token
   leakage;
-- text and photo publishing request shapes;
-- video rejection before scheduling;
+- text publishing request shape with `owner_id=-groupId` and `from_group=1`;
+- photo, video, and mixed-media rejection before scheduling with the same
+  text-only error;
 - the personal `vk` provider remaining on VK ID OAuth;
 - removal of the between-steps picker for `vk-group`.
 
@@ -127,6 +133,7 @@ Production acceptance:
 
 1. Open Add Channel -> VK Group and see the two fields and permission guide.
 2. Connect `https://vk.com/fedrbodr_pro` with its community access token.
-3. Publish a text post and a photo post as the community.
-4. Verify a video is rejected before scheduling with the supported error.
+3. Publish a text post as the community.
+4. Verify photo and video posts are rejected before scheduling with the
+   text-only error.
 5. Verify the token is absent from UI, logs, URLs, and error messages.
