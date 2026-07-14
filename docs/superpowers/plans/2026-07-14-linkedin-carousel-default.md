@@ -25,7 +25,7 @@
 - `libraries/nestjs-libraries/src/integrations/social/linkedin.provider.spec.ts`: focused provider tests for validation, carousel eligibility, conversion, and payload mode.
 - `libraries/nestjs-libraries/src/integrations/social/linkedin.provider.ts`: derive and consistently use the actual carousel mode; remove only the obsolete carousel-specific validation error.
 - `apps/frontend/src/components/new-launch/providers/linkedin/linkedin.provider.spec.tsx`: verify that the shared LinkedIn settings form registers carousel mode with a true default.
-- `apps/frontend/src/components/new-launch/providers/linkedin/linkedin.provider.tsx`: export the settings component for focused testing and set its existing registration default to true.
+- `apps/frontend/src/components/new-launch/providers/linkedin/linkedin.provider.tsx`: set the existing shared settings registration default to true.
 
 ### Task 1: Backend carousel eligibility and fallback
 
@@ -187,9 +187,13 @@ describe('LinkedinProvider carousel fallback', () => {
     );
   });
 
-  it.each([[image('one')], [video], []])(
-    'accepts carousel-ineligible media and relies on regular-post fallback',
-    async (media) => {
+  it.each([
+    { name: 'one image', media: [image('one')] },
+    { name: 'one video', media: [video] },
+    { name: 'no media', media: [] },
+  ])(
+    'accepts $name and relies on regular-post fallback',
+    async ({ media }) => {
       const provider = new LinkedinProvider();
 
       await expect(
@@ -332,7 +336,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const settings = vi.hoisted(() => ({
+const testState = vi.hoisted(() => ({
+  providerConfig: undefined as any,
   register: vi.fn(() => ({})),
   watch: vi.fn(() => false),
 }));
@@ -341,7 +346,10 @@ vi.mock(
   '@gitroom/frontend/components/new-launch/providers/high.order.provider',
   () => ({
     PostComment: { COMMENT: 'comment' },
-    withProvider: vi.fn(() => () => null),
+    withProvider: vi.fn((config) => {
+      testState.providerConfig = config;
+      return () => null;
+    }),
   })
 );
 vi.mock('@gitroom/react/form/checkbox', () => ({ Checkbox: () => null }));
@@ -354,7 +362,8 @@ vi.mock(
   '@gitroom/frontend/components/launches/helpers/use.values',
   () => ({
     useSettings: () => ({
-      ...settings,
+      register: testState.register,
+      watch: testState.watch,
       formState: {},
       control: {},
     }),
@@ -369,7 +378,7 @@ vi.mock(
   () => ({ LinkedinPreview: () => null })
 );
 
-import { LinkedInSettings } from './linkedin.provider';
+import './linkedin.provider';
 
 describe('LinkedInSettings', () => {
   beforeEach(() => {
@@ -377,9 +386,11 @@ describe('LinkedInSettings', () => {
   });
 
   it('enables image carousel mode by default', () => {
-    renderToStaticMarkup(createElement(LinkedInSettings));
+    renderToStaticMarkup(
+      createElement(testState.providerConfig.SettingsComponent)
+    );
 
-    expect(settings.register).toHaveBeenCalledWith(
+    expect(testState.register).toHaveBeenCalledWith(
       'post_as_images_carousel',
       { value: true }
     );
@@ -395,14 +406,14 @@ Run:
 pnpm exec vitest run apps/frontend/src/components/new-launch/providers/linkedin/linkedin.provider.spec.tsx
 ```
 
-Expected: FAIL because `LinkedInSettings` is not exported and its registration currently defaults to false.
+Expected: FAIL because the settings component registers the field with `{ value: false }`.
 
 - [ ] **Step 3: Export the settings component and enable the default**
 
-Change the component declaration and existing checkbox registration in `linkedin.provider.tsx`:
+Change the existing checkbox registration in `linkedin.provider.tsx`:
 
 ```tsx
-export const LinkedInSettings = () => {
+const LinkedInSettings = () => {
   const t = useT();
   const { watch, register } = useSettings();
   const isCarousel = watch('post_as_images_carousel');
