@@ -210,7 +210,8 @@ export class VkGroupProvider
         accessToken
       );
       const permissionNames = (permissionsPayload?.response?.permissions || [])
-        .map((permission: any) => permission?.name)
+        .filter((permission: any) => Number(permission?.setting) > 0)
+        .map((permission: any) => permission.name)
         .filter(Boolean);
 
       if (

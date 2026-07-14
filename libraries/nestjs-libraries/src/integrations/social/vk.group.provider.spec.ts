@@ -97,7 +97,10 @@ describe('VkGroupProvider community credentials', () => {
       .mockImplementationOnce(() =>
         response({
           response: {
-            permissions: [{ name: 'manage' }, { name: 'wall' }],
+            permissions: [
+              { name: 'manage', setting: 262144 },
+              { name: 'wall', setting: 8192 },
+            ],
           },
         })
       );
@@ -177,8 +180,15 @@ describe('VkGroupProvider community credentials', () => {
   });
 
   it.each([
-    [[{ name: 'manage' }], 'without wall'],
-    [[{ name: 'wall' }], 'without management'],
+    [[{ name: 'manage', setting: 262144 }], 'without wall'],
+    [[{ name: 'wall', setting: 8192 }], 'without management'],
+    [
+      [
+        { name: 'manage', setting: 262144 },
+        { name: 'wall', setting: 0 },
+      ],
+      'with wall disabled',
+    ],
   ])('rejects permissions %s (%s)', async (permissions) => {
     vi.spyOn(provider, 'fetch')
       .mockImplementationOnce(() =>
