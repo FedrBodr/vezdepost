@@ -283,8 +283,9 @@ describe('VkGroupProvider text-only publishing', () => {
     }
 
     expect(thrown).toBeInstanceOf(Error);
-    expect(String(thrown)).toContain('Access denied');
+    expect(String(thrown)).toContain('VK post failed');
     expect(JSON.stringify(thrown)).not.toContain(token);
+    expect(JSON.stringify(thrown)).not.toContain('error_code');
   });
 
   it('creates text comments as the community without attachments', async () => {

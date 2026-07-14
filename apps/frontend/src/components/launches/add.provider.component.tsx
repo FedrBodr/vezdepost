@@ -187,6 +187,7 @@ export const CustomVariables: FC<{
   } = props;
   const fetch = useFetch();
   const modals = useModals();
+  const toaster = useToaster();
   const schema = useMemo(() => {
     return object({
       ...variables.reduce((aIcc, item) => {
@@ -221,21 +222,47 @@ export const CustomVariables: FC<{
   });
   const submit = useCallback(
     async (data: FieldValues) => {
-      const { url } = await (
-        await fetch(
-          `/integrations/social/${identifier}${
-            onboarding ? '?onboarding=true' : ''
-          }`
-        )
-      ).json();
+      const startResponse = await fetch(
+        `/integrations/social/${identifier}${
+          onboarding ? '?onboarding=true' : ''
+        }`
+      );
+      const { url } = await startResponse.json();
+      if (!startResponse.ok || !url) {
+        toaster.show('Could not start the channel connection', 'warning');
+        return;
+      }
+
+      const connectResponse = await fetch(
+        `/integrations/social-connect/${identifier}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            state: url,
+            code: Buffer.from(JSON.stringify(data)).toString('base64'),
+            timezone: String(-new Date().getTimezoneOffset()),
+          }),
+        }
+      );
+
+      const result = await connectResponse.json().catch(() => ({}));
+      if (!connectResponse.ok) {
+        toaster.show(
+          result.message || result.msg || 'Could not connect the channel',
+          'warning'
+        );
+        return;
+      }
+
       modals.closeAll();
       gotoUrl(
-        `/integrations/social/${identifier}?state=${url}&code=${Buffer.from(
-          JSON.stringify(data)
-        ).toString('base64')}${onboarding ? '&onboarding=true' : ''}`
+        result.returnURL ||
+          `/launches?added=${identifier}&msg=Channel Updated${
+            onboarding ? '&onboarding=true' : ''
+          }`
       );
     },
-    [variables, onboarding]
+    [fetch, gotoUrl, identifier, modals, onboarding, toaster]
   );
 
   const t = useT();

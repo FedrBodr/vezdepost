@@ -48,4 +48,20 @@ describe('VK Group continue flow', () => {
     expect(source).not.toContain("'vk-group':");
     expect(source).not.toContain('VkGroupContinue');
   });
+
+  it('submits custom credentials without putting them in a callback URL', () => {
+    const source = readFileSync(
+      'apps/frontend/src/components/launches/add.provider.component.tsx',
+      'utf8'
+    );
+    const customVariablesSource = source.slice(
+      source.indexOf('export const CustomVariables'),
+      source.indexOf('const ExtensionNotFound')
+    );
+
+    expect(customVariablesSource).toContain(
+      '/integrations/social-connect/${identifier}'
+    );
+    expect(customVariablesSource).not.toContain('code=${Buffer.from');
+  });
 });

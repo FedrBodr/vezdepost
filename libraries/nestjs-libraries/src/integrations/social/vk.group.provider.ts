@@ -250,9 +250,9 @@ export class VkGroupProvider
     if (wallPostResult?.error || !wallPostResult?.response) {
       throw new BadBody(
         this.identifier,
-        JSON.stringify(wallPostResult),
         '{}',
-        wallPostResult?.error?.error_msg || 'VK post failed'
+        '{}',
+        'VK post failed'
       );
     }
 
@@ -289,9 +289,9 @@ export class VkGroupProvider
     if (wallCommentResult?.error || !wallCommentResult?.response) {
       throw new BadBody(
         this.identifier,
-        JSON.stringify(wallCommentResult),
         '{}',
-        wallCommentResult?.error?.error_msg || 'VK comment failed'
+        '{}',
+        'VK comment failed'
       );
     }
 
