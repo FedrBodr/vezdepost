@@ -164,6 +164,11 @@ export interface SocialProvider
       hint?: string;
     }[]
   >;
+  customFieldsInstructions?: {
+    title: string;
+    items: string[];
+    note?: string;
+  };
   name: string;
   toolTip?: string;
   oneTimeToken?: boolean;

@@ -80,6 +80,14 @@ export class VkGroupProvider
   isBetweenSteps = false;
   scopes = [] as string[];
   editor = 'normal' as const;
+  customFieldsInstructions = {
+    title: 'When creating the VK access key, select only:',
+    items: [
+      'Allow the application to manage the community',
+      'Allow the application to access the community wall',
+    ],
+    note: 'Messages, photos, documents, stories, and products/orders are not required.',
+  };
 
   maxLength() {
     return 16384;

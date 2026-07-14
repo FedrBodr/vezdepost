@@ -97,6 +97,9 @@ export class IntegrationManager {
             ? { extensionCookies: p.extensionCookies }
             : {}),
           ...(p.customFields ? { customFields: await p.customFields() } : {}),
+          ...(p.customFieldsInstructions
+            ? { customFieldsInstructions: p.customFieldsInstructions }
+            : {}),
         }))
       ),
       article: [] as any[],

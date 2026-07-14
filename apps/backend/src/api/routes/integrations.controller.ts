@@ -111,6 +111,12 @@ export class IntegrationsController {
             ...(findIntegration.customFields
               ? { customFields: await findIntegration.customFields() }
               : {}),
+            ...(findIntegration.customFieldsInstructions
+              ? {
+                  customFieldsInstructions:
+                    findIntegration.customFieldsInstructions,
+                }
+              : {}),
             display: p.profile,
             type: p.type,
             time: JSON.parse(p.postingTimes),

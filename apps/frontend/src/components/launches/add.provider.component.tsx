@@ -19,6 +19,10 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import clsx from 'clsx';
 import copy from 'copy-to-clipboard';
 import { capitalize } from 'lodash';
+import {
+  CustomFieldsInstructions,
+  CustomFieldsInstructionsData,
+} from '@gitroom/frontend/components/launches/custom-fields-instructions';
 const resolver = classValidatorResolver(ApiKeyDto);
 
 export const useAddProvider = (update?: () => void, invite?: boolean) => {
@@ -167,12 +171,20 @@ export const CustomVariables: FC<{
     type: 'text' | 'password';
     hint?: string;
   }>;
+  customFieldsInstructions?: CustomFieldsInstructionsData;
   close?: () => void;
   identifier: string;
   gotoUrl(url: string): void;
   onboarding?: boolean;
 }> = (props) => {
-  const { close, gotoUrl, identifier, variables, onboarding } = props;
+  const {
+    close,
+    gotoUrl,
+    identifier,
+    variables,
+    onboarding,
+    customFieldsInstructions,
+  } = props;
   const fetch = useFetch();
   const modals = useModals();
   const schema = useMemo(() => {
@@ -235,6 +247,9 @@ export const CustomVariables: FC<{
           className="gap-[8px] flex flex-col pt-[10px]"
           onSubmit={methods.handleSubmit(submit)}
         >
+          <CustomFieldsInstructions
+            instructions={customFieldsInstructions}
+          />
           {variables.map((variable) => (
             <div key={variable.key}>
               {variable.hint ? (
@@ -395,6 +410,7 @@ export const AddProviderComponent: FC<{
       type: 'text' | 'password';
       hint?: string;
     }>;
+    customFieldsInstructions?: CustomFieldsInstructionsData;
   }>;
   article: Array<{
     identifier: string;
@@ -425,7 +441,8 @@ export const AddProviderComponent: FC<{
           defaultValue?: string;
           type: 'text' | 'password';
           hint?: string;
-        }>
+        }>,
+        customFieldsInstructions?: CustomFieldsInstructionsData
       ) =>
       async () => {
         const onboardingParam = onboarding ? 'onboarding=true' : '';
@@ -655,6 +672,7 @@ export const AddProviderComponent: FC<{
                   identifier={identifier}
                   gotoUrl={(url: string) => router.push(url)}
                   variables={customFields}
+                  customFieldsInstructions={customFieldsInstructions}
                   onboarding={onboarding}
                 />
               </div>
@@ -702,7 +720,8 @@ export const AddProviderComponent: FC<{
                   item.isExternal,
                   item.isWeb3,
                   item.isChromeExtension,
-                  item.customFields
+                  item.customFields,
+                  item.customFieldsInstructions
                 )}
                 {...(!!item.toolTip
                   ? {

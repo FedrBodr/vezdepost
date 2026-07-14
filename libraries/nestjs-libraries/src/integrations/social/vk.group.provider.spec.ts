@@ -63,6 +63,17 @@ describe('VkGroupProvider community credentials', () => {
     ]);
   });
 
+  it('declares the exact community-key permission guide', () => {
+    expect(provider.customFieldsInstructions).toEqual({
+      title: 'When creating the VK access key, select only:',
+      items: [
+        'Allow the application to manage the community',
+        'Allow the application to access the community wall',
+      ],
+      note: 'Messages, photos, documents, stories, and products/orders are not required.',
+    });
+  });
+
   it('authenticates a token belonging to the requested group', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')

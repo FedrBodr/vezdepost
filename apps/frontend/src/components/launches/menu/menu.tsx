@@ -324,6 +324,7 @@ export const Menu: FC<{
           identifier={findIntegration.identifier}
           gotoUrl={(url: string) => router.push(url)}
           variables={findIntegration.customFields}
+          customFieldsInstructions={findIntegration.customFieldsInstructions}
         />
       ),
     });
