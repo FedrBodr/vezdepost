@@ -72,7 +72,7 @@ export const ContinueIntegration: FC<{
       };
     }
 
-    if (provider === 'vk' || provider === 'vk-group') {
+    if (provider === 'vk') {
       return {
         ...searchParams,
         state: searchParams.state || '',
