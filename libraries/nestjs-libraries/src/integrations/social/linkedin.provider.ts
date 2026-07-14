@@ -54,14 +54,6 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     const [firstPost, ...restPosts] = posts ?? [];
 
     if (
-      this.assetBoolean(vals?.post_as_images_carousel) &&
-      ((firstPost?.length ?? 0) < 2 ||
-        firstPost?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) > -1))
-    ) {
-      return 'Carousel can only be created with 2 or more images and no videos.';
-    }
-
-    if (
       (firstPost?.length ?? 0) > 1 &&
       firstPost?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) > -1)
     ) {
@@ -808,8 +800,14 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     let processedPostDetails = postDetails;
     const [firstPost] = postDetails;
 
-    // Check if we should convert images to PDF carousel
-    if (this.assetBoolean(firstPost.settings?.post_as_images_carousel)) {
+    const useCarousel =
+      this.assetBoolean(firstPost.settings?.post_as_images_carousel) &&
+      (firstPost.media?.length ?? 0) >= 2 &&
+      !firstPost.media?.some(
+        (media) => (media?.path?.indexOf?.('mp4') ?? -1) > -1
+      );
+
+    if (useCarousel) {
       processedPostDetails = await this.convertImagesToPdfCarousel(
         postDetails,
         firstPost
@@ -838,7 +836,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       processedFirstPost,
       mainPostMediaIds,
       type,
-      this.assetBoolean(firstPost.settings?.post_as_images_carousel)
+      useCarousel
     );
 
     // Return response for main post only
