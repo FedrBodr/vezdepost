@@ -41,6 +41,7 @@ services:
       TELEGRAM_BOT_NAME: 'fedrbodr_postiz_bot'
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
+      VK_ID: '${VK_ID:?set in .env}'
 
   # TLS terminator and host router:
   #   vezdepost.ru, www -> static landing (deploy/landing)
