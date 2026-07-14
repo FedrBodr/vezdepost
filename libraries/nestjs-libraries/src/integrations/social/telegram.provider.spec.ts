@@ -91,6 +91,23 @@ describe('TelegramProvider media captions', () => {
     vi.clearAllMocks();
   });
 
+  it('sends a 4096-character text-only post as one complete message', async () => {
+    const { bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+    const text = 'x'.repeat(4096);
+
+    const result = await provider.post('channel', '-1001', details(text, []));
+
+    expect(bot.sendMessage).toHaveBeenCalledTimes(1);
+    expect(bot.sendMessage).toHaveBeenCalledWith('-1001', text, {
+      parse_mode: 'HTML',
+    });
+    expect(bot.sendPhoto).not.toHaveBeenCalled();
+    expect(bot.sendMediaGroup).not.toHaveBeenCalled();
+    expect(result[0].postId).toBe('42');
+    expect(result[0].releaseURL).toContain('/42');
+  });
+
   it('keeps short text attached to a single media item', async () => {
     const { calls, bot } = makeBot();
     const provider = new TelegramProvider(bot as any);
