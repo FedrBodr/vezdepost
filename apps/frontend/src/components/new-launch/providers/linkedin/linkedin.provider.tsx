@@ -22,7 +22,7 @@ const LinkedInSettings = () => {
         variant="hollow"
         label={t('post_as_images_carousel', 'Post as images carousel')}
         {...register('post_as_images_carousel', {
-          value: false,
+          value: true,
         })}
       />
       {isCarousel && (
