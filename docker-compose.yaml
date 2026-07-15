@@ -46,6 +46,8 @@ services:
       THREADS_APP_SECRET: ''
       FACEBOOK_APP_ID: ''
       FACEBOOK_APP_SECRET: ''
+      GOOGLE_CLIENT_ID: ''
+      GOOGLE_CLIENT_SECRET: ''
       YOUTUBE_CLIENT_ID: ''
       YOUTUBE_CLIENT_SECRET: ''
       TIKTOK_CLIENT_ID: ''
