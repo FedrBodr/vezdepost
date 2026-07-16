@@ -23,7 +23,103 @@ import {
   CustomFieldsInstructions,
   CustomFieldsInstructionsData,
 } from '@gitroom/frontend/components/launches/custom-fields-instructions';
+import {
+  type ConnectionType,
+  useChannelConnectAnalytics,
+} from '@gitroom/frontend/components/launches/channel-connect.analytics';
+import { ChannelSupportLink } from '@gitroom/frontend/components/launches/channel-support-link';
 const resolver = classValidatorResolver(ApiKeyDto);
+
+export const getConnectionType = ({
+  isWeb3,
+  isChromeExtension,
+  isExternal,
+  customFields,
+}: {
+  isWeb3?: boolean;
+  isChromeExtension?: boolean;
+  isExternal?: boolean;
+  customFields?: unknown[];
+}): ConnectionType => {
+  if (isWeb3) return 'web3';
+  if (isChromeExtension) return 'browser_extension';
+  if (isExternal) return 'external';
+  if (customFields) return 'custom_fields';
+  return 'oauth';
+};
+
+export const isUsableStartUrl = (url: unknown): url is string =>
+  typeof url === 'string' && url.trim().length > 0;
+
+export const runAnalyticsSafely = (capture: () => void) => {
+  try {
+    capture();
+  } catch {
+    // Analytics must never block a connection flow or its error UI.
+  }
+};
+
+export const submitCustomFieldConnection = async ({
+  fetcher,
+  identifier,
+  onboarding,
+  data,
+  connectPath = `/integrations/social-connect/${identifier}`,
+  onFailed,
+  onCompleted,
+  onRedirect,
+}: {
+  fetcher: (url: string, init?: RequestInit) => Promise<Response>;
+  identifier: string;
+  onboarding?: boolean;
+  data: FieldValues;
+  connectPath?: string;
+  onFailed: () => void;
+  onCompleted: () => void;
+  onRedirect: (url: string) => void;
+}) => {
+  try {
+    const startResponse = await fetcher(
+      `/integrations/social/${identifier}${
+        onboarding ? '?onboarding=true' : ''
+      }`
+    );
+    const startResult = await startResponse.json().catch(() => ({}));
+    if (
+      !startResponse.ok ||
+      startResult.err ||
+      !isUsableStartUrl(startResult.url)
+    ) {
+      onFailed();
+      return;
+    }
+
+    const connectResponse = await fetcher(connectPath, {
+      method: 'POST',
+      body: JSON.stringify({
+        state: startResult.url,
+        code: Buffer.from(JSON.stringify(data)).toString('base64'),
+        timezone: String(-new Date().getTimezoneOffset()),
+      }),
+    });
+    const connectResult = await connectResponse.json().catch(() => ({}));
+    if (!connectResponse.ok) {
+      onFailed();
+      return;
+    }
+
+    onCompleted();
+    onRedirect(
+      typeof connectResult.returnURL === 'string' && connectResult.returnURL
+        ? connectResult.returnURL
+        : `/launches?added=${identifier}&msg=Channel Updated${
+            onboarding ? '&onboarding=true' : ''
+          }`
+    );
+  } catch {
+    onFailed();
+  }
+};
 
 export const useAddProvider = (update?: () => void, invite?: boolean) => {
   const modal = useModals();
@@ -176,6 +272,8 @@ export const CustomVariables: FC<{
   identifier: string;
   gotoUrl(url: string): void;
   onboarding?: boolean;
+  onStartFailure?: (safeMessage: string) => void;
+  onCompleted?: () => void;
 }> = (props) => {
   const {
     close,
@@ -184,10 +282,13 @@ export const CustomVariables: FC<{
     variables,
     onboarding,
     customFieldsInstructions,
+    onStartFailure,
+    onCompleted,
   } = props;
   const fetch = useFetch();
   const modals = useModals();
   const toaster = useToaster();
+  const t = useT();
   const schema = useMemo(() => {
     return object({
       ...variables.reduce((aIcc, item) => {
@@ -222,50 +323,43 @@ export const CustomVariables: FC<{
   });
   const submit = useCallback(
     async (data: FieldValues) => {
-      const startResponse = await fetch(
-        `/integrations/social/${identifier}${
-          onboarding ? '?onboarding=true' : ''
-        }`
+      const safeMessage = t(
+        'could_not_connect_to_platform',
+        'Не удалось подключить платформу'
       );
-      const { url } = await startResponse.json();
-      if (!startResponse.ok || !url) {
-        toaster.show('Could not start the channel connection', 'warning');
-        return;
-      }
-
-      const connectResponse = await fetch(
-        `/integrations/social-connect/${identifier}`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            state: url,
-            code: Buffer.from(JSON.stringify(data)).toString('base64'),
-            timezone: String(-new Date().getTimezoneOffset()),
-          }),
+      const failStart = () => {
+        if (onStartFailure) {
+          onStartFailure(safeMessage);
+        } else {
+          toaster.show(safeMessage, 'warning');
         }
-      );
-
-      const result = await connectResponse.json().catch(() => ({}));
-      if (!connectResponse.ok) {
-        toaster.show(
-          result.message || result.msg || 'Could not connect the channel',
-          'warning'
-        );
-        return;
-      }
-
-      modals.closeAll();
-      gotoUrl(
-        result.returnURL ||
-          `/launches?added=${identifier}&msg=Channel Updated${
-            onboarding ? '&onboarding=true' : ''
-          }`
-      );
+      };
+      await submitCustomFieldConnection({
+        fetcher: fetch,
+        identifier,
+        onboarding,
+        data,
+        connectPath: `/integrations/social-connect/${identifier}`,
+        onFailed: failStart,
+        onCompleted: () => onCompleted?.(),
+        onRedirect: (url) => {
+          modals.closeAll();
+          gotoUrl(url);
+        },
+      });
     },
-    [fetch, gotoUrl, identifier, modals, onboarding, toaster]
+    [
+      fetch,
+      gotoUrl,
+      identifier,
+      modals,
+      onboarding,
+      onCompleted,
+      onStartFailure,
+      t,
+      toaster,
+    ]
   );
-
-  const t = useT();
 
   return (
     <div className="rounded-[4px] relative">
@@ -274,9 +368,7 @@ export const CustomVariables: FC<{
           className="gap-[8px] flex flex-col pt-[10px]"
           onSubmit={methods.handleSubmit(submit)}
         >
-          <CustomFieldsInstructions
-            instructions={customFieldsInstructions}
-          />
+          <CustomFieldsInstructions instructions={customFieldsInstructions} />
           {variables.map((variable) => (
             <div key={variable.key}>
               {variable.hint ? (
@@ -454,6 +546,8 @@ export const AddProviderComponent: FC<{
   const router = useRouter();
   const fetch = useFetch();
   const modal = useModals();
+  const analytics = useChannelConnectAnalytics();
+  const t = useT();
   const getSocialLink = useCallback(
     (
         invite: boolean,
@@ -472,18 +566,76 @@ export const AddProviderComponent: FC<{
         customFieldsInstructions?: CustomFieldsInstructionsData
       ) =>
       async () => {
+        const connectionType = getConnectionType({
+          isWeb3,
+          isChromeExtension,
+          isExternal,
+          customFields,
+        });
+        const connectionContext = {
+          platform: identifier,
+          connectionType,
+          invite,
+          onboarding,
+          mobile: isMobile,
+        };
+        runAnalyticsSafely(() => analytics.resetTerminal());
+        runAnalyticsSafely(() => analytics.clicked(connectionContext));
+
         const onboardingParam = onboarding ? 'onboarding=true' : '';
+        const showStartFailure = (safeMessage: string) => {
+          runAnalyticsSafely(() =>
+            analytics.failed(identifier, 'start', safeMessage)
+          );
+          modal.openModal({
+            title: t(
+              'channel_connection_error_title',
+              'Не удалось подключить канал'
+            ),
+            withCloseButton: true,
+            children: (
+              <div className="flex flex-col gap-[10px] pt-[4px] text-[14px]">
+                <p className="text-textColor/80">{safeMessage}</p>
+                <ChannelSupportLink
+                  platform={identifier}
+                  source="connection_error"
+                >
+                  {t(
+                    'channel_connection_email_help',
+                    'Напишите нам — поможем с настройкой.'
+                  )}
+                </ChannelSupportLink>
+              </div>
+            ),
+          });
+        };
+        const getStartUrl = async (path: string) => {
+          const safeMessage = t(
+            'could_not_connect_to_platform',
+            'Не удалось подключить платформу'
+          );
+          try {
+            const response = await fetch(path);
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.err || !isUsableStartUrl(result.url)) {
+              showStartFailure(safeMessage);
+              return;
+            }
+            return result.url as string;
+          } catch {
+            showStartFailure(safeMessage);
+          }
+        };
         const openWeb3 = async () => {
           const { component: Web3Providers } = web3List.find(
             (item) => item.identifier === identifier
           )!;
-          const { url } = await (
-            await fetch(
-              `/integrations/social/${identifier}${
-                onboarding ? '?onboarding=true' : ''
-              }`
-            )
-          ).json();
+          const url = await getStartUrl(
+            `/integrations/social/${identifier}${
+              onboarding ? '?onboarding=true' : ''
+            }`
+          );
+          if (!url) return;
           modal.openModal({
             title: `Add ${capitalize(identifier)}`,
             withCloseButton: true,
@@ -506,6 +658,7 @@ export const AddProviderComponent: FC<{
               </div>
             ),
           });
+          runAnalyticsSafely(() => analytics.started(connectionContext));
           return;
         };
         const gotoIntegration = async (externalUrl?: string) => {
@@ -522,20 +675,12 @@ export const AddProviderComponent: FC<{
           ]
             .filter(Boolean)
             .join('&');
-          const { url, err } = await (
-            await fetch(
-              `/integrations/social/${identifier}${params ? `?${params}` : ''}`
-            )
-          ).json();
-          if (err) {
-            toaster.show(
-              t(
-                'could_not_connect_to_platform',
-                'Could not connect to the platform'
-              ),
-              'warning'
-            );
-            return;
+          const url = await getStartUrl(
+            `/integrations/social/${identifier}${params ? `?${params}` : ''}`
+          );
+          if (!url) return;
+          if (!isExternal) {
+            runAnalyticsSafely(() => analytics.started(connectionContext));
           }
 
           if (invite) {
@@ -592,7 +737,18 @@ export const AddProviderComponent: FC<{
           if (!confirmed) {
             return;
           }
-          if (!extensionId || !chrome?.runtime?.sendMessage) {
+          if (
+            !extensionId ||
+            typeof chrome === 'undefined' ||
+            !chrome.runtime?.sendMessage
+          ) {
+            const safeMessage = t(
+              'extension_not_available',
+              'The Postiz browser extension is not installed. You need to install it before connecting this channel.'
+            );
+            runAnalyticsSafely(() =>
+              analytics.failed(identifier, 'start', safeMessage)
+            );
             modal.openModal({
               title: t('extension_not_available_title', 'Extension Not Found'),
               withCloseButton: true,
@@ -615,13 +771,14 @@ export const AddProviderComponent: FC<{
               );
             });
           } catch {
-            toaster.show(
-              t(
-                'extension_not_installed',
-                'Postiz browser extension is not installed or not reachable.'
-              ),
-              'warning'
+            const safeMessage = t(
+              'extension_not_installed',
+              'Postiz browser extension is not installed or not reachable.'
             );
+            runAnalyticsSafely(() =>
+              analytics.failed(identifier, 'start', safeMessage)
+            );
+            toaster.show(safeMessage, 'warning');
             return;
           }
           try {
@@ -639,35 +796,36 @@ export const AddProviderComponent: FC<{
               );
             });
             if (!cookieResponse.success) {
-              toaster.show(
-                cookieResponse.error ||
-                  t(
-                    'extension_cookies_missing',
-                    'Could not get cookies. Please log in to the platform first.'
-                  ),
-                'warning'
+              const safeMessage = t(
+                'extension_cookies_missing',
+                'Could not get cookies. Please log in to the platform first.'
               );
+              runAnalyticsSafely(() =>
+                analytics.failed(identifier, 'start', safeMessage)
+              );
+              toaster.show(cookieResponse.error || safeMessage, 'warning');
               return;
             }
-            const { url } = await (
-              await fetch(
-                `/integrations/social/${identifier}${
-                  onboarding ? '?onboarding=true' : ''
-                }`
-              )
-            ).json();
+            const url = await getStartUrl(
+              `/integrations/social/${identifier}${
+                onboarding ? '?onboarding=true' : ''
+              }`
+            );
+            if (!url) return;
+            runAnalyticsSafely(() => analytics.started(connectionContext));
             modal.closeAll();
             window.location.href = `/integrations/social/${identifier}?state=${url}&code=${Buffer.from(
               JSON.stringify(cookieResponse.cookies)
             ).toString('base64')}${onboarding ? '&onboarding=true' : ''}`;
           } catch {
-            toaster.show(
-              t(
-                'extension_communication_error',
-                'Failed to communicate with the browser extension.'
-              ),
-              'warning'
+            const safeMessage = t(
+              'extension_communication_error',
+              'Failed to communicate with the browser extension.'
             );
+            runAnalyticsSafely(() =>
+              analytics.failed(identifier, 'start', safeMessage)
+            );
+            toaster.show(safeMessage, 'warning');
           }
           return;
         }
@@ -681,6 +839,7 @@ export const AddProviderComponent: FC<{
             },
             children: <UrlModal gotoUrl={gotoIntegration} />,
           });
+          runAnalyticsSafely(() => analytics.started(connectionContext));
           return;
         }
         if (customFields) {
@@ -701,18 +860,33 @@ export const AddProviderComponent: FC<{
                   variables={customFields}
                   customFieldsInstructions={customFieldsInstructions}
                   onboarding={onboarding}
+                  onStartFailure={showStartFailure}
+                  onCompleted={() =>
+                    runAnalyticsSafely(() =>
+                      analytics.completed(identifier, !!onboarding)
+                    )
+                  }
                 />
               </div>
             ),
           });
+          runAnalyticsSafely(() => analytics.started(connectionContext));
           return;
         }
         await gotoIntegration();
       },
-    [onboarding]
+    [
+      analytics,
+      extensionId,
+      fetch,
+      isMobile,
+      modal,
+      onboarding,
+      router,
+      t,
+      toaster,
+    ]
   );
-
-  const t = useT();
 
   return (
     <div className="w-full flex flex-col gap-[20px] rounded-[4px] relative]">
@@ -803,6 +977,15 @@ export const AddProviderComponent: FC<{
               </div>
             ))}
         </div>
+        <p className="mt-[14px] text-[13px] text-textColor/70 text-center">
+          {t('missing_platform_prompt', 'Не нашли нужную платформу?')}{' '}
+          <ChannelSupportLink source="channel_picker" className="underline">
+            {t(
+              'missing_platform_email',
+              'Напишите нам — постараемся добавить.'
+            )}
+          </ChannelSupportLink>
+        </p>
       </div>
     </div>
   );

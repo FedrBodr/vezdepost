@@ -5,6 +5,8 @@
 #   MAX_TOKEN=...
 #   GOOGLE_CLIENT_ID=...
 #   GOOGLE_CLIENT_SECRET=...
+# Optional integrations: X_API_KEY, X_API_SECRET, NEXT_PUBLIC_POSTHOG_KEY,
+# NEXT_PUBLIC_POSTHOG_HOST.
 services:
   postiz:
     image: postiz-max:local
@@ -46,6 +48,10 @@ services:
       VK_ID: '${VK_ID:?set in .env}'
       GOOGLE_CLIENT_ID: '${GOOGLE_CLIENT_ID:?set in .env}'
       GOOGLE_CLIENT_SECRET: '${GOOGLE_CLIENT_SECRET:?set in .env}'
+      X_API_KEY: '${X_API_KEY:-}'
+      X_API_SECRET: '${X_API_SECRET:-}'
+      NEXT_PUBLIC_POSTHOG_KEY: '${NEXT_PUBLIC_POSTHOG_KEY:-}'
+      NEXT_PUBLIC_POSTHOG_HOST: '${NEXT_PUBLIC_POSTHOG_HOST:-}'
 
   # TLS terminator and host router:
   #   vezdepost.ru, www -> static landing (deploy/landing)
