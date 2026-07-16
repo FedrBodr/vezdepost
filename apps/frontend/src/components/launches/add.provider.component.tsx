@@ -59,6 +59,68 @@ export const runAnalyticsSafely = (capture: () => void) => {
   }
 };
 
+export const submitCustomFieldConnection = async ({
+  fetcher,
+  identifier,
+  onboarding,
+  data,
+  connectPath = `/integrations/social-connect/${identifier}`,
+  onFailed,
+  onCompleted,
+  onRedirect,
+}: {
+  fetcher: (url: string, init?: RequestInit) => Promise<Response>;
+  identifier: string;
+  onboarding?: boolean;
+  data: FieldValues;
+  connectPath?: string;
+  onFailed: () => void;
+  onCompleted: () => void;
+  onRedirect: (url: string) => void;
+}) => {
+  try {
+    const startResponse = await fetcher(
+      `/integrations/social/${identifier}${
+        onboarding ? '?onboarding=true' : ''
+      }`
+    );
+    const startResult = await startResponse.json().catch(() => ({}));
+    if (
+      !startResponse.ok ||
+      startResult.err ||
+      !isUsableStartUrl(startResult.url)
+    ) {
+      onFailed();
+      return;
+    }
+
+    const connectResponse = await fetcher(connectPath, {
+      method: 'POST',
+      body: JSON.stringify({
+        state: startResult.url,
+        code: Buffer.from(JSON.stringify(data)).toString('base64'),
+        timezone: String(-new Date().getTimezoneOffset()),
+      }),
+    });
+    const connectResult = await connectResponse.json().catch(() => ({}));
+    if (!connectResponse.ok) {
+      onFailed();
+      return;
+    }
+
+    onCompleted();
+    onRedirect(
+      typeof connectResult.returnURL === 'string' && connectResult.returnURL
+        ? connectResult.returnURL
+        : `/launches?added=${identifier}&msg=Channel Updated${
+            onboarding ? '&onboarding=true' : ''
+          }`
+    );
+  } catch {
+    onFailed();
+  }
+};
+
 export const useAddProvider = (update?: () => void, invite?: boolean) => {
   const modal = useModals();
   const fetch = useFetch();
@@ -211,6 +273,7 @@ export const CustomVariables: FC<{
   gotoUrl(url: string): void;
   onboarding?: boolean;
   onStartFailure?: (safeMessage: string) => void;
+  onCompleted?: () => void;
 }> = (props) => {
   const {
     close,
@@ -220,6 +283,7 @@ export const CustomVariables: FC<{
     onboarding,
     customFieldsInstructions,
     onStartFailure,
+    onCompleted,
   } = props;
   const fetch = useFetch();
   const modals = useModals();
@@ -270,58 +334,31 @@ export const CustomVariables: FC<{
           toaster.show(safeMessage, 'warning');
         }
       };
-      let startResponse: Response;
-      try {
-        startResponse = await fetch(
-          `/integrations/social/${identifier}${
-            onboarding ? '?onboarding=true' : ''
-          }`
-        );
-      } catch {
-        failStart();
-        return;
-      }
-      const startResult = await startResponse.json().catch(() => ({}));
-      if (
-        !startResponse.ok ||
-        startResult.err ||
-        !isUsableStartUrl(startResult.url)
-      ) {
-        failStart();
-        return;
-      }
-      const { url } = startResult;
-
-      const connectResponse = await fetch(
-        `/integrations/social-connect/${identifier}`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            state: url,
-            code: Buffer.from(JSON.stringify(data)).toString('base64'),
-            timezone: String(-new Date().getTimezoneOffset()),
-          }),
-        }
-      );
-
-      const result = await connectResponse.json().catch(() => ({}));
-      if (!connectResponse.ok) {
-        toaster.show(
-          result.message || result.msg || 'Could not connect the channel',
-          'warning'
-        );
-        return;
-      }
-
-      modals.closeAll();
-      gotoUrl(
-        result.returnURL ||
-          `/launches?added=${identifier}&msg=Channel Updated${
-            onboarding ? '&onboarding=true' : ''
-          }`
-      );
+      await submitCustomFieldConnection({
+        fetcher: fetch,
+        identifier,
+        onboarding,
+        data,
+        connectPath: `/integrations/social-connect/${identifier}`,
+        onFailed: failStart,
+        onCompleted: () => onCompleted?.(),
+        onRedirect: (url) => {
+          modals.closeAll();
+          gotoUrl(url);
+        },
+      });
     },
-    [fetch, gotoUrl, identifier, modals, onboarding, onStartFailure, t, toaster]
+    [
+      fetch,
+      gotoUrl,
+      identifier,
+      modals,
+      onboarding,
+      onCompleted,
+      onStartFailure,
+      t,
+      toaster,
+    ]
   );
 
   return (
@@ -824,6 +861,11 @@ export const AddProviderComponent: FC<{
                   customFieldsInstructions={customFieldsInstructions}
                   onboarding={onboarding}
                   onStartFailure={showStartFailure}
+                  onCompleted={() =>
+                    runAnalyticsSafely(() =>
+                      analytics.completed(identifier, !!onboarding)
+                    )
+                  }
                 />
               </div>
             ),

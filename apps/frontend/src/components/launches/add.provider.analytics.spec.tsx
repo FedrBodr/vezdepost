@@ -4,12 +4,16 @@ import {
   getConnectionType,
   isUsableStartUrl,
   runAnalyticsSafely,
+  submitCustomFieldConnection,
 } from './add.provider.component';
 
 const source = readFileSync(
   new URL('./add.provider.component.tsx', import.meta.url),
   'utf8'
 );
+
+const response = (ok: boolean, body: unknown) =>
+  ({ ok, json: vi.fn().mockResolvedValue(body) }) as unknown as Response;
 
 describe('provider connection analytics', () => {
   it('derives the connection type by provider precedence', () => {
@@ -61,5 +65,64 @@ describe('provider connection analytics', () => {
     expect(source).not.toMatch(
       /<ChannelSupportLink\s+platform=[^>]+source="channel_picker"/
     );
+  });
+
+  it('records terminal custom-field outcomes and makes failures actionable', () => {
+    expect(source).toContain('onCompleted?: () => void;');
+    expect(source).toContain('onCompleted: () => onCompleted?.(),');
+    expect(source).toContain('onCompleted={() =>');
+    expect(source).toContain('analytics.completed(identifier, !!onboarding)');
+    expect(source).toContain('onStartFailure={showStartFailure}');
+    expect(source).not.toContain(
+      "result.message || result.msg || 'Could not connect the channel'"
+    );
+  });
+
+  it('completes and redirects a successful custom-field connection once', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(response(true, { returnURL: '/done' }));
+    const onFailed = vi.fn();
+    const onCompleted = vi.fn();
+    const onRedirect = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'listmonk',
+      onboarding: false,
+      data: { token: 'credential-value' },
+      onFailed,
+      onCompleted,
+      onRedirect,
+    });
+
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(onCompleted).toHaveBeenCalledOnce();
+    expect(onRedirect).toHaveBeenCalledWith('/done');
+  });
+
+  it.each([
+    ['non-OK response', vi.fn().mockResolvedValue(response(false, {}))],
+    ['malformed start response', vi.fn().mockResolvedValue(response(true, {}))],
+    ['rejected fetch', vi.fn().mockRejectedValue(new Error('offline'))],
+  ])('fails a custom-field connection on %s', async (_name, fetcher) => {
+    const onFailed = vi.fn();
+    const onCompleted = vi.fn();
+    const onRedirect = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'listmonk',
+      onboarding: true,
+      data: { token: 'credential-value' },
+      onFailed,
+      onCompleted,
+      onRedirect,
+    });
+
+    expect(onFailed).toHaveBeenCalledOnce();
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(onRedirect).not.toHaveBeenCalled();
   });
 });

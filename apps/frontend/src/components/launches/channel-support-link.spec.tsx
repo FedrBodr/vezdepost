@@ -50,4 +50,20 @@ describe('ChannelSupportLink', () => {
       'channel_picker'
     );
   });
+
+  it('does not let analytics failures escape the mail link click', () => {
+    requestClicked.mockImplementationOnce(() => {
+      throw new Error('analytics unavailable');
+    });
+    render(
+      <ChannelSupportLink platform="x" source="connection_error">
+        Failure-safe contact
+      </ChannelSupportLink>
+    );
+    const link = screen.getByRole('link', { name: 'Failure-safe contact' });
+    link.addEventListener('click', (event) => event.preventDefault());
+
+    expect(() => fireEvent.click(link)).not.toThrow();
+    expect(requestClicked).toHaveBeenCalledWith('x', 'connection_error');
+  });
 });

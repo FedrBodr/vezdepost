@@ -24,7 +24,13 @@ export const ChannelSupportLink = ({
     <a
       className={className}
       href={`mailto:fedrbodr@gmail.com?subject=${encodeURIComponent(subject)}`}
-      onClick={() => requestClicked(analyticsPlatform, source)}
+      onClick={() => {
+        try {
+          requestClicked(analyticsPlatform, source);
+        } catch {
+          // Analytics must never interfere with opening the user's mail client.
+        }
+      }}
     >
       {children}
     </a>
