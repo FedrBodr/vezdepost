@@ -377,7 +377,7 @@ export const ContinueIntegration: FC<{
   }
 
   // Show the two-step selection UI
-  if (twoStepState && Provider) {
+  if (twoStepState && Provider && !error) {
     return (
       <div className="flex flex-1 items-center justify-center text-white relative overflow-hidden">
         {/* Background gradient decoration */}

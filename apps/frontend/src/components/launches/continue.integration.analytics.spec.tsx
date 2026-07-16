@@ -85,4 +85,8 @@ describe('continued provider connection analytics', () => {
     expect(errorRender).toMatch(/href="\/launches"/);
     expect(errorRender).toContain("'Вернуться к каналам'");
   });
+
+  it('gives the actionable error screen precedence over two-step state', () => {
+    expect(source).toContain('if (twoStepState && Provider && !error) {');
+  });
 });
