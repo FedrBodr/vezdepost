@@ -2,8 +2,8 @@
 
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { HttpStatusCode } from 'axios';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Redirect } from '@gitroom/frontend/components/layout/redirect';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import dayjs from 'dayjs';
@@ -11,6 +11,31 @@ import { continueProviderList } from '@gitroom/frontend/components/new-launch/pr
 import { IntegrationContext } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
+import { useChannelConnectAnalytics } from '@gitroom/frontend/components/launches/channel-connect.analytics';
+import { ChannelSupportLink } from '@gitroom/frontend/components/launches/channel-support-link';
+
+export const getSafeErrorMessage = (data: unknown, fallback: string) => {
+  if (!data || typeof data !== 'object') {
+    return fallback;
+  }
+
+  const { message, msg } = data as { message?: unknown; msg?: unknown };
+  if (typeof message === 'string' && message.trim()) {
+    return message;
+  }
+  if (typeof msg === 'string' && msg.trim()) {
+    return msg;
+  }
+  return fallback;
+};
+
+export const runAnalyticsSafely = (capture: () => void) => {
+  try {
+    capture();
+  } catch {
+    // Analytics must never block a connection flow or its error UI.
+  }
+};
 
 interface TwoStepState {
   integrationId: string;
@@ -32,6 +57,7 @@ export const ContinueIntegration: FC<{
   const { push } = useRouter();
   const t = useT();
   const fetch = useFetch();
+  const analytics = useChannelConnectAnalytics();
   const { extensionId, backendUrl } = useVariables();
   const [error, setError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -103,10 +129,12 @@ export const ContinueIntegration: FC<{
         method: 'POST',
         body: JSON.stringify({ ...modifiedParams, timezone }),
       });
+      let parsedErrorData: unknown;
 
       // If public endpoint fails with specific errors, try authenticated endpoint
       if (data.status === HttpStatusCode.BadRequest) {
         const errorData = await data.json().catch(() => ({}));
+        parsedErrorData = errorData;
         // "Invalid connection type" means this wasn't started as a public flow
         if (
           errorData.message?.includes('Invalid connection type') ||
@@ -116,11 +144,15 @@ export const ContinueIntegration: FC<{
             method: 'POST',
             body: JSON.stringify({ ...modifiedParams, timezone }),
           });
+          parsedErrorData = undefined;
         }
       }
 
       if (data.status === HttpStatusCode.PreconditionFailed) {
         const { returnURL } = await data.json().catch(() => ({}));
+        runAnalyticsSafely(() =>
+          analytics.failed(provider, 'callback', 'Precondition failed')
+        );
         navigateOrShow(
           `/launches?precondition=true`,
           returnURL,
@@ -130,8 +162,19 @@ export const ContinueIntegration: FC<{
       }
 
       if (data.status === HttpStatusCode.NotAcceptable) {
-        const { msg, returnURL } = await data.json();
-        navigateOrShow(`/launches?msg=${msg}`, returnURL, msg);
+        const errorData = await data.json().catch(() => ({}));
+        const safeMessage = getSafeErrorMessage(
+          errorData,
+          'Could not add provider'
+        );
+        const returnURL =
+          errorData && typeof errorData.returnURL === 'string'
+            ? errorData.returnURL
+            : undefined;
+        runAnalyticsSafely(() =>
+          analytics.failed(provider, 'callback', safeMessage)
+        );
+        navigateOrShow(`/launches?msg=${safeMessage}`, returnURL, safeMessage);
         return;
       }
 
@@ -139,11 +182,17 @@ export const ContinueIntegration: FC<{
         data.status !== HttpStatusCode.Ok &&
         data.status !== HttpStatusCode.Created
       ) {
-        const errorData = await data.json().catch(() => ({}));
-        setErrorMessage(
-          errorData.message || errorData.msg || 'Could not add provider'
+        const errorData =
+          parsedErrorData ?? (await data.json().catch(() => ({})));
+        const safeMessage = getSafeErrorMessage(
+          errorData,
+          'Could not add provider'
         );
+        setErrorMessage(safeMessage);
         setError(true);
+        runAnalyticsSafely(() =>
+          analytics.failed(provider, 'callback', safeMessage)
+        );
         return;
       }
 
@@ -192,6 +241,7 @@ export const ContinueIntegration: FC<{
         return;
       }
 
+      runAnalyticsSafely(() => analytics.completed(provider, onboarding));
       navigateOrShow(
         `/launches?added=${provider}&msg=Channel Updated${
           onboarding ? '&onboarding=true' : ''
@@ -199,7 +249,14 @@ export const ContinueIntegration: FC<{
         returnURL,
         'Channel Updated'
       );
-    })();
+    })().catch(() => {
+      const safeMessage = 'Could not add provider';
+      setErrorMessage(safeMessage);
+      setError(true);
+      runAnalyticsSafely(() =>
+        analytics.failed(provider, 'callback', safeMessage)
+      );
+    });
   }, []);
 
   const onSave = useCallback(
@@ -224,19 +281,34 @@ export const ContinueIntegration: FC<{
           response.status !== HttpStatusCode.Created
         ) {
           const errorData = await response.json().catch(() => ({}));
-          setErrorMessage(
-            errorData.message || 'Failed to save channel configuration'
+          const safeMessage = getSafeErrorMessage(
+            errorData,
+            'Failed to save channel configuration'
           );
+          setErrorMessage(safeMessage);
           setError(true);
+          runAnalyticsSafely(() =>
+            analytics.failed(provider, 'two_step_save', safeMessage)
+          );
           return;
         }
 
+        runAnalyticsSafely(() =>
+          analytics.completed(provider, twoStepState.onboarding)
+        );
         navigateOrShow(
           `/launches?added=${provider}&msg=Channel Added${
             twoStepState.onboarding ? '&onboarding=true' : ''
           }`,
           twoStepState.returnURL,
           'Channel Added'
+        );
+      } catch {
+        const safeMessage = 'Failed to save channel configuration';
+        setErrorMessage(safeMessage);
+        setError(true);
+        runAnalyticsSafely(() =>
+          analytics.failed(provider, 'two_step_save', safeMessage)
         );
       } finally {
         setIsSaving(false);
@@ -396,7 +468,20 @@ export const ContinueIntegration: FC<{
                 'An error occurred. Please try again.'
               )}
           </div>
-          {logged && <Redirect url="/launches" delay={3000} />}
+          <div className="mt-[20px] flex flex-col items-center gap-[12px]">
+            <ChannelSupportLink platform={provider} source="connection_error">
+              {t(
+                'channel_connection_email_help',
+                'Напишите нам — поможем с настройкой.'
+              )}
+            </ChannelSupportLink>
+            <Link
+              href="/launches"
+              className="flex h-[44px] items-center justify-center rounded-[8px] bg-btnSimple px-[20px] text-btnText"
+            >
+              {t('return_to_channels', 'Вернуться к каналам')}
+            </Link>
+          </div>
         </div>
       </div>
     );
