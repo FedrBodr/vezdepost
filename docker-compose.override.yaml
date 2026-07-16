@@ -3,6 +3,8 @@
 #   JWT_SECRET=...
 #   TELEGRAM_TOKEN=...
 #   MAX_TOKEN=...
+# Optional integrations: X_API_KEY, X_API_SECRET, NEXT_PUBLIC_POSTHOG_KEY,
+# NEXT_PUBLIC_POSTHOG_HOST.
 services:
   postiz:
     image: postiz-max:local
@@ -42,6 +44,10 @@ services:
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
       VK_ID: '${VK_ID:?set in .env}'
+      X_API_KEY: '${X_API_KEY:-}'
+      X_API_SECRET: '${X_API_SECRET:-}'
+      NEXT_PUBLIC_POSTHOG_KEY: '${NEXT_PUBLIC_POSTHOG_KEY:-}'
+      NEXT_PUBLIC_POSTHOG_HOST: '${NEXT_PUBLIC_POSTHOG_HOST:-}'
 
   # TLS terminator and host router:
   #   vezdepost.ru, www -> static landing (deploy/landing)
