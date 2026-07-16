@@ -5,14 +5,37 @@ import {
 } from '@gitroom/backend/services/auth/providers.interface';
 
 const defaultRedirect = () =>
-  `${process.env.FRONTEND_URL}/integrations/social/youtube`;
+  `${process.env.FRONTEND_URL}/auth?provider=GOOGLE`;
 
-const makeClient = (redirectUri: string) =>
-  new google.auth.OAuth2({
-    clientId: process.env.YOUTUBE_CLIENT_ID,
-    clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
-    redirectUri,
-  });
+const getCredentials = () => {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID;
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (googleClientId || googleClientSecret) {
+    if (!googleClientId || !googleClientSecret) {
+      throw new Error(
+        'Google OAuth is misconfigured: set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET'
+      );
+    }
+
+    return { clientId: googleClientId, clientSecret: googleClientSecret };
+  }
+
+  const clientId = process.env.YOUTUBE_CLIENT_ID;
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      'Google OAuth is not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET'
+    );
+  }
+
+  return { clientId, clientSecret };
+};
+
+const makeClient = (redirectUri: string) => {
+  const { clientId, clientSecret } = getCredentials();
+  return new google.auth.OAuth2({ clientId, clientSecret, redirectUri });
+};
 
 @AuthProvider({ provider: 'GOOGLE' })
 export class GoogleProvider extends AuthProviderAbstract {
