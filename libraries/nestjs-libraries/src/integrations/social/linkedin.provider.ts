@@ -31,20 +31,26 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
   oneTimeToken = true;
 
   isBetweenSteps = false;
-  scopes = [
-    'openid',
-    'profile',
-    'w_member_social',
-    'r_basicprofile',
-    'rw_organization_admin',
-    'w_organization_social',
-    'r_organization_social',
-  ];
+  scopes = ['openid', 'profile', 'w_member_social'];
   override maxConcurrentJob = 2;
   refreshWait = true;
   editor = 'normal' as const;
   maxLength() {
     return 3000;
+  }
+
+  private getClientCredentials() {
+    const clientId = process.env.LINKEDIN_CLIENT_ID;
+    if (!clientId) {
+      throw new Error('LINKEDIN_CLIENT_ID is not configured');
+    }
+
+    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+    if (!clientSecret) {
+      throw new Error('LINKEDIN_CLIENT_SECRET is not configured');
+    }
+
+    return { clientId, clientSecret };
   }
 
   override async checkValidity(
@@ -139,15 +145,23 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
   }
 
   async generateAuthUrl() {
+    const { clientId } = this.getClientCredentials();
     const state = makeId(6);
     const codeVerifier = makeId(30);
-    const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${
-      process.env.LINKEDIN_CLIENT_ID
-    }&prompt=none&redirect_uri=${encodeURIComponent(
+    const url = new URL(
+      'https://www.linkedin.com/oauth/v2/authorization'
+    );
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('client_id', clientId);
+    url.searchParams.set(
+      'redirect_uri',
       `${process.env.FRONTEND_URL}/integrations/social/linkedin`
-    )}&state=${state}&scope=${encodeURIComponent(this.scopes.join(' '))}`;
+    );
+    url.searchParams.set('state', state);
+    url.searchParams.set('scope', this.scopes.join(' '));
+
     return {
-      url,
+      url: url.toString(),
       codeVerifier,
       state,
     };

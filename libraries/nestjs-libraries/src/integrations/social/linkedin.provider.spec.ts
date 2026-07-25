@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const originalEnv = { ...process.env };
 
 vi.mock(
   '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface',
@@ -22,6 +24,10 @@ vi.mock('@gitroom/nestjs-libraries/integrations/social.abstract', () => ({
     assetBoolean(value: unknown) {
       return value === true || value === 'true';
     }
+
+    checkScopes() {
+      return undefined;
+    }
   },
 }));
 vi.mock('@gitroom/helpers/decorators/post.plug', () => ({
@@ -36,6 +42,21 @@ vi.mock('@gitroom/nestjs-libraries/chat/rules.description.decorator', () => ({
 }));
 
 import { LinkedinProvider } from './linkedin.provider';
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  process.env = {
+    ...originalEnv,
+    FRONTEND_URL: 'https://app.vezdepost.ru',
+    LINKEDIN_CLIENT_ID: 'linkedin-client-id',
+    LINKEDIN_CLIENT_SECRET: 'linkedin-client-secret',
+  };
+});
+
+afterEach(() => {
+  process.env = { ...originalEnv };
+  vi.unstubAllGlobals();
+});
 
 const image = (name: string) => ({
   id: name,
@@ -86,10 +107,6 @@ const prepareProvider = () => {
 };
 
 describe('LinkedinProvider carousel fallback', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it('converts two images and publishes them as a PDF carousel', async () => {
     const setup = prepareProvider();
     const postDetails = details([image('one'), image('two')], true);
@@ -206,5 +223,42 @@ describe('LinkedinProvider carousel fallback', () => {
         post_as_images_carousel: true,
       })
     ).resolves.toBe('Can have maximum 1 media when selecting a video.');
+  });
+});
+
+describe('LinkedinProvider personal OAuth configuration', () => {
+  it('generates an interactive authorization URL with only personal scopes', async () => {
+    const { url } = await new LinkedinProvider().generateAuthUrl();
+    const parsed = new URL(url);
+
+    expect(parsed.origin + parsed.pathname).toBe(
+      'https://www.linkedin.com/oauth/v2/authorization'
+    );
+    expect(parsed.searchParams.get('client_id')).toBe('linkedin-client-id');
+    expect(parsed.searchParams.get('redirect_uri')).toBe(
+      'https://app.vezdepost.ru/integrations/social/linkedin'
+    );
+    expect(parsed.searchParams.get('scope')?.split(' ')).toEqual([
+      'openid',
+      'profile',
+      'w_member_social',
+    ]);
+    expect(parsed.searchParams.has('prompt')).toBe(false);
+  });
+
+  it('fails locally when the Client ID is missing', async () => {
+    delete process.env.LINKEDIN_CLIENT_ID;
+
+    await expect(new LinkedinProvider().generateAuthUrl()).rejects.toThrow(
+      'LINKEDIN_CLIENT_ID is not configured'
+    );
+  });
+
+  it('fails locally when the Client Secret is missing', async () => {
+    delete process.env.LINKEDIN_CLIENT_SECRET;
+
+    await expect(new LinkedinProvider().generateAuthUrl()).rejects.toThrow(
+      'LINKEDIN_CLIENT_SECRET is not configured'
+    );
   });
 });
