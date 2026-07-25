@@ -3,9 +3,22 @@
 Server: 201.51.7.50 (`~/postiz-app`, branch `prod`).
 
 - `autodeploy.sh` — polls `origin/prod` every 3 minutes (cron `/etc/cron.d/vezdepost-autodeploy`), on new commits: `git reset --hard` + `docker compose up -d --build`. Log: `/var/log/vezdepost-autodeploy.log`.
-- `docker-compose.override.yaml` (repo root, tracked in prod only) — server config; secrets come from untracked `.env` (`JWT_SECRET`, `TELEGRAM_TOKEN`, `MAX_TOKEN`).
+- `docker-compose.override.yaml` (repo root, tracked in prod only) — server config; secrets come from untracked `.env` (`JWT_SECRET`, `TELEGRAM_TOKEN`, `MAX_TOKEN`, `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`).
 - `wait-temporal.js` (repo root) — gates app startup until temporal accepts connections.
 - Temporal UI: `ssh -L 8080:127.0.0.1:8080 root@201.51.7.50` → http://localhost:8080
+
+## LinkedIn personal profiles
+
+Create an application in the LinkedIn Developer Portal and enable
+**Sign In with LinkedIn using OpenID Connect** and **Share on LinkedIn**. Add
+this exact authorized redirect URL:
+
+`https://app.vezdepost.ru/integrations/social/linkedin`
+
+Put its Client ID in `LINKEDIN_CLIENT_ID` and Client Secret in
+`LINKEDIN_CLIENT_SECRET` in the server `.env`. The personal integration asks
+only for `openid profile w_member_social`. Never commit or print the Client
+Secret.
 
 ## X
 

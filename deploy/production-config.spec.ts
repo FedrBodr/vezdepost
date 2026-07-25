@@ -29,4 +29,21 @@ describe('production configuration', () => {
     expect(readme).toContain('OAuth 1.0a');
     expect(readme).toContain('Read and write');
   });
+
+  it('requires personal LinkedIn credentials and documents the OAuth setup', () => {
+    const override = readRootFile('docker-compose.override.yaml');
+    const readme = readRootFile('deploy/README.md');
+
+    expect(override).toContain(
+      "LINKEDIN_CLIENT_ID: '${LINKEDIN_CLIENT_ID:?set in .env}'"
+    );
+    expect(override).toContain(
+      "LINKEDIN_CLIENT_SECRET: '${LINKEDIN_CLIENT_SECRET:?set in .env}'"
+    );
+    expect(readme).toContain('Sign In with LinkedIn using OpenID Connect');
+    expect(readme).toContain('Share on LinkedIn');
+    expect(readme).toContain(
+      'https://app.vezdepost.ru/integrations/social/linkedin'
+    );
+  });
 });
