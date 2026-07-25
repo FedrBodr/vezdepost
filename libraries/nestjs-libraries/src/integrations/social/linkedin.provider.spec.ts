@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const originalEnv = { ...process.env };
 
+const jsonResponse = (body: unknown) =>
+  ({
+    json: vi.fn().mockResolvedValue(body),
+  }) as unknown as Response;
+
 vi.mock(
   '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface',
   () => ({})
@@ -260,5 +265,84 @@ describe('LinkedinProvider personal OAuth configuration', () => {
     await expect(new LinkedinProvider().generateAuthUrl()).rejects.toThrow(
       'LINKEDIN_CLIENT_SECRET is not configured'
     );
+  });
+
+  it('authenticates with OIDC userinfo and does not request the legacy profile', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3600,
+          scope: 'openid profile w_member_social',
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          sub: 'person-1',
+          name: 'Personal Profile',
+          picture: 'https://cdn.test/profile.jpg',
+        })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new LinkedinProvider().authenticate({
+        code: 'authorization-code',
+        codeVerifier: 'unused-code-verifier',
+      })
+    ).resolves.toEqual({
+      id: 'person-1',
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresIn: 3600,
+      name: 'Personal Profile',
+      picture: 'https://cdn.test/profile.jpg',
+      username: '',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      'https://www.linkedin.com/oauth/v2/accessToken',
+      'https://api.linkedin.com/v2/userinfo',
+    ]);
+  });
+
+  it('refreshes identity through OIDC userinfo without requesting /v2/me', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          access_token: 'new-access-token',
+          refresh_token: 'new-refresh-token',
+          expires_in: 7200,
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          sub: 'person-1',
+          name: 'Personal Profile',
+          picture: 'https://cdn.test/profile.jpg',
+        })
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new LinkedinProvider().refreshToken('old-refresh-token')
+    ).resolves.toEqual({
+      id: 'person-1',
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      expiresIn: 7200,
+      name: 'Personal Profile',
+      picture: 'https://cdn.test/profile.jpg',
+      username: '',
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      'https://www.linkedin.com/oauth/v2/accessToken',
+      'https://api.linkedin.com/v2/userinfo',
+    ]);
   });
 });
