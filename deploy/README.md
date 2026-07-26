@@ -38,4 +38,15 @@ Set the public frontend values `NEXT_PUBLIC_POSTHOG_KEY` and
 `NEXT_PUBLIC_POSTHOG_HOST` in the server `.env`. Analytics remains safely
 disabled when either value is absent.
 
+Apply the EU Cloud configuration through the numbered production script:
+
+```bash
+ssh -tt -o BatchMode=yes -o ConnectTimeout=10 root@201.51.7.50 \
+  'bash -s' < docs/server-scripts/14-configure-posthog.sh
+```
+
+Enter the `phc_` project token at the hidden prompt. The script updates `.env`
+without printing the token, validates Compose, and recreates only `postiz`
+without rebuilding the image.
+
 This directory lives only on the `prod` branch — do not merge it into `main`.
