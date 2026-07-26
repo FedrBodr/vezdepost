@@ -46,6 +46,26 @@ Document: project-overview
 - Доступ на сервер: `ssh vezdepost` (alias). State-changing операции — только
   через скрипты из `docs/server-scripts/`, см. devops-доки.
 
+### Что считать реально задеплоенным
+
+Не считать deploy завершённым только потому, что `origin/prod`, серверный Git
+HEAD или лендинг/страница приложения уже показывают новый commit. Для
+production-кода обязательны все сигналы:
+
+1. `/var/lib/vezdepost-deployed-rev` равен целевому commit;
+2. `/var/log/vezdepost-autodeploy.log` содержит свежую строку `deploy finished`;
+3. контейнер `postiz` пересоздан и имеет новое `StartedAt`;
+4. внутри контейнера слушают порты backend/frontend/nginx: `3000`, `4200`,
+   `5000`;
+5. в Temporal task queue `main` зарегистрирован workflow poller.
+
+HTTP 200 от `/launches` подтверждает только frontend: backend при этом может
+возвращать 502. Полные команды и recovery-процедуры — в
+[`devops/deployment.md`](devops/deployment.md) и
+[`devops/diagnostics.md`](devops/diagnostics.md). Никогда не вставляй в чат или
+логи полный `Cookie`, `Authorization`, `auth`, JWT, OAuth/session token или
+секрет; заменяй значение на `<redacted>`.
+
 ## Лендинг vezdepost.ru
 
 Один файл `deploy/landing/index.html`. Тёмная тема, CSS-переменные в `:root`
