@@ -3,8 +3,9 @@
 #
 # Idempotent. The script never prints the token or .env contents.
 # Run from the operator machine:
-#   ssh -tt -o BatchMode=yes -o ConnectTimeout=10 root@201.51.7.50 \
-#     'bash -s' < docs/server-scripts/14-configure-posthog.sh
+#   scp -q -o BatchMode=yes -o ConnectTimeout=10 docs/server-scripts/14-configure-posthog.sh vezdepost:/tmp/vezdepost-configure-posthog.sh
+#   ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+#     'status=0; bash /tmp/vezdepost-configure-posthog.sh || status=$?; rm -f /tmp/vezdepost-configure-posthog.sh; exit "$status"'
 set -euo pipefail
 
 REPO_DIR=${REPO_DIR:-/root/postiz-app}

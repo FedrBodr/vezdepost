@@ -112,6 +112,20 @@ test_rejects_invalid_token_before_mutation() {
     fail 'invalid project token leaked to output'
 }
 
+test_documents_transport_with_available_tty_input() {
+  local readme="$SCRIPT_DIR/../../deploy/README.md"
+
+  grep -q 'scp .*14-configure-posthog.sh' "$readme" ||
+    fail 'documentation must copy the script before the interactive SSH run'
+  grep -q 'bash /tmp/vezdepost-configure-posthog.sh' "$readme" ||
+    fail 'documentation must execute the copied script through a remote TTY'
+  ! grep -q "'bash -s' < docs/server-scripts/14-configure-posthog.sh" "$readme" ||
+    fail 'stdin script transport prevents the hidden remote prompt from reading input'
+  ! grep -q "'bash -s' < docs/server-scripts/14-configure-posthog.sh" "$SCRIPT" ||
+    fail 'script header documents the broken stdin transport'
+}
+
 test_configures_posthog_without_leaking_token
 test_rejects_invalid_token_before_mutation
+test_documents_transport_with_available_tty_input
 echo 'PostHog configuration script tests passed'

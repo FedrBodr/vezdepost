@@ -104,8 +104,9 @@ Expected: both commands exit `0`; the behavior test reports all cases passed.
 Extend the PostHog section in `deploy/README.md` with:
 
 ```bash
-ssh -tt -o BatchMode=yes -o ConnectTimeout=10 root@201.51.7.50 \
-  'bash -s' < docs/server-scripts/14-configure-posthog.sh
+scp -q -o BatchMode=yes -o ConnectTimeout=10 docs/server-scripts/14-configure-posthog.sh vezdepost:/tmp/vezdepost-configure-posthog.sh
+ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/vezdepost-configure-posthog.sh || status=$?; rm -f /tmp/vezdepost-configure-posthog.sh; exit "$status"'
 ```
 
 Document that the prompt is hidden, the project token must start with `phc_`,
@@ -145,8 +146,9 @@ rtk git commit -m "ops: configure PostHog analytics"
 Run from the repository worktree:
 
 ```bash
-ssh -tt -o BatchMode=yes -o ConnectTimeout=10 root@201.51.7.50 \
-  'bash -s' < docs/server-scripts/14-configure-posthog.sh
+scp -q -o BatchMode=yes -o ConnectTimeout=10 docs/server-scripts/14-configure-posthog.sh vezdepost:/tmp/vezdepost-configure-posthog.sh
+ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/vezdepost-configure-posthog.sh || status=$?; rm -f /tmp/vezdepost-configure-posthog.sh; exit "$status"'
 ```
 
 At the hidden prompt, enter the PostHog project token. Expected safe output ends
