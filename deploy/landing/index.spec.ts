@@ -108,6 +108,97 @@ describe('landing locale detection', () => {
   });
 });
 
+describe('landing translations', () => {
+  it('has matching, non-empty Russian and English dictionaries', () => {
+    const { window } = createLanding();
+    const { ru, en } = window.__landingI18n.translations;
+    expect(Object.keys(ru).sort()).toEqual(Object.keys(en).sort());
+    expect(Object.keys(en).length).toBeGreaterThan(70);
+    expect(Object.values(ru).every(Boolean)).toBe(true);
+    expect(Object.values(en).every(Boolean)).toBe(true);
+  });
+
+  it('binds every translation key used by the document in both dictionaries', () => {
+    const { document, window } = createLanding();
+    const boundKeys = Array.from(
+      document.querySelectorAll(
+        '[data-i18n], [data-i18n-html], [data-i18n-content], [data-i18n-aria-label]'
+      )
+    ).flatMap((element) =>
+      [
+        element.getAttribute('data-i18n'),
+        element.getAttribute('data-i18n-html'),
+        element.getAttribute('data-i18n-content'),
+        element.getAttribute('data-i18n-aria-label'),
+      ].filter((key): key is string => Boolean(key))
+    );
+
+    for (const key of boundKeys) {
+      expect(window.__landingI18n.translations.ru[key], `ru.${key}`).toBeTruthy();
+      expect(window.__landingI18n.translations.en[key], `en.${key}`).toBeTruthy();
+    }
+  });
+
+  it.each([
+    ['ru', 'Как начать', 'Сколько это стоит', 'Частые вопросы'],
+    [
+      'en',
+      'How to get started',
+      'How much does it cost?',
+      'Frequently asked questions',
+    ],
+  ] as const)(
+    'renders complete %s section copy',
+    (language, steps, pricing, faq) => {
+      const { document, window } = createLanding({ locale: 'en-US' });
+      window.__landingI18n.applyLanguage(language);
+      expect(document.querySelector('#steps h2')?.textContent).toBe(steps);
+      expect(document.querySelector('#pricing h2')?.textContent).toBe(pricing);
+      expect(document.querySelector('#faq h2')?.textContent).toBe(faq);
+      expect(document.querySelector('#services h2')?.textContent).toContain(
+        language === 'ru' ? 'до 7 дней' : 'in up to 7 days'
+      );
+    }
+  );
+
+  it('updates document and Open Graph metadata in English', () => {
+    const { document } = createLanding({ locale: 'en-US' });
+    expect(document.documentElement.lang).toBe('en');
+    expect(document.title).toBe(
+      'Vezdepost — social media and messenger post scheduler'
+    );
+    expect(
+      document
+        .querySelector('meta[name="description"]')
+        ?.getAttribute('content')
+    ).toContain('open-source publishing scheduler');
+    expect(
+      document
+        .querySelector('meta[property="og:title"]')
+        ?.getAttribute('content')
+    ).toBe('Vezdepost — social media and messenger post scheduler');
+    expect(
+      document
+        .querySelector('meta[property="og:description"]')
+        ?.getAttribute('content')
+    ).toContain('Schedule and publish posts');
+  });
+
+  it('updates the calendar accessibility label and examples', () => {
+    const { document } = createLanding({ locale: 'en-US' });
+    expect(document.querySelector('.window')?.getAttribute('aria-label')).toContain(
+      'Vezdepost interface preview'
+    );
+    expect(document.querySelector('.window-title')?.textContent).toContain(
+      'calendar'
+    );
+    expect(document.querySelector('.dow')?.textContent).toBe('Mon');
+    expect(document.querySelector('.post small')?.textContent).toContain(
+      'release announcement'
+    );
+  });
+});
+
 declare global {
   interface Window {
     __landingI18n: {
