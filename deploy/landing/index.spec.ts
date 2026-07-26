@@ -262,10 +262,7 @@ describe('landing language switcher', () => {
 
 describe('landing brand assets', () => {
   it('publishes the supplied logo unchanged and a LinkedIn-sized social card', async () => {
-    const source = join(
-      process.cwd(),
-      'apps/frontend/public/vezdepost.png'
-    );
+    const source = join(process.cwd(), 'apps/frontend/public/vezdepost.png');
     const logo = join(
       process.cwd(),
       'deploy/landing/assets/vezdepost-logo.png'
@@ -288,6 +285,84 @@ describe('landing brand assets', () => {
       width: 1200,
       height: 630,
     });
+  });
+});
+
+describe('landing brand integration', () => {
+  it('exposes complete social preview and icon metadata', () => {
+    const { document } = createLanding({ locale: 'ru-RU' });
+
+    expect(
+      document.querySelector('link[rel="canonical"]')?.getAttribute('href')
+    ).toBe('https://vezdepost.ru/');
+    expect(
+      document.querySelector('link[rel="icon"]')?.getAttribute('href')
+    ).toBe('/assets/vezdepost-logo.png');
+    expect(
+      document
+        .querySelector('link[rel="apple-touch-icon"]')
+        ?.getAttribute('href')
+    ).toBe('/assets/vezdepost-logo.png');
+    expect(
+      document
+        .querySelector('meta[property="og:image"]')
+        ?.getAttribute('content')
+    ).toBe('https://vezdepost.ru/assets/vezdepost-og.png');
+    expect(
+      document
+        .querySelector('meta[property="og:image:secure_url"]')
+        ?.getAttribute('content')
+    ).toBe('https://vezdepost.ru/assets/vezdepost-og.png');
+    expect(
+      document
+        .querySelector('meta[property="og:image:width"]')
+        ?.getAttribute('content')
+    ).toBe('1200');
+    expect(
+      document
+        .querySelector('meta[property="og:image:height"]')
+        ?.getAttribute('content')
+    ).toBe('630');
+    expect(
+      document
+        .querySelector('meta[property="og:image:type"]')
+        ?.getAttribute('content')
+    ).toBe('image/png');
+    expect(
+      document
+        .querySelector('meta[property="og:image:alt"]')
+        ?.getAttribute('content')
+    ).toBe('Vezdepost — один пост для 30+ платформ');
+    expect(
+      document
+        .querySelector('meta[name="twitter:card"]')
+        ?.getAttribute('content')
+    ).toBe('summary_large_image');
+    expect(
+      document
+        .querySelector('meta[name="twitter:image"]')
+        ?.getAttribute('content')
+    ).toBe('https://vezdepost.ru/assets/vezdepost-og.png');
+    expect(
+      document
+        .querySelector('meta[name="twitter:image:alt"]')
+        ?.getAttribute('content')
+    ).toBe('Vezdepost — один пост для 30+ платформ');
+  });
+
+  it('uses intrinsic, decorative logos in the navigation and hero', () => {
+    const { document } = createLanding();
+    const navLogo = document.querySelector<HTMLImageElement>('.nav-logo img');
+    const heroLogo = document.querySelector<HTMLImageElement>('.hero-logo');
+
+    expect(navLogo?.getAttribute('src')).toBe('/assets/vezdepost-logo.png');
+    expect(navLogo?.getAttribute('width')).toBe('28');
+    expect(navLogo?.getAttribute('height')).toBe('28');
+    expect(navLogo?.getAttribute('alt')).toBe('');
+    expect(heroLogo?.getAttribute('src')).toBe('/assets/vezdepost-logo.png');
+    expect(heroLogo?.getAttribute('width')).toBe('112');
+    expect(heroLogo?.getAttribute('height')).toBe('112');
+    expect(heroLogo?.getAttribute('alt')).toBe('');
   });
 });
 

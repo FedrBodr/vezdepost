@@ -5,10 +5,7 @@ import sharp from 'sharp';
 
 const landingDir = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(landingDir, '../..');
-const sourceLogo = join(
-  repositoryRoot,
-  'apps/frontend/public/vezdepost.png'
-);
+const sourceLogo = join(repositoryRoot, 'apps/frontend/public/vezdepost.png');
 const assetsDir = join(landingDir, 'assets');
 const landingLogo = join(assetsDir, 'vezdepost-logo.png');
 const socialCard = join(assetsDir, 'vezdepost-og.png');

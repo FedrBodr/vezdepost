@@ -12,10 +12,26 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-i18n="meta.title">Vezdepost — планировщик постов для соцсетей и мессенджеров</title>
 <meta name="description" data-i18n-content="meta.description" content="Vezdepost — open-source планировщик публикаций: Telegram, MAX, X, VK и 30+ платформ. AI-developed форк Postiz с поддержкой российских мессенджеров.">
+<link rel="canonical" href="https://vezdepost.ru/">
+<link rel="icon" type="image/png" href="/assets/vezdepost-logo.png">
+<link rel="apple-touch-icon" href="/assets/vezdepost-logo.png">
 <meta property="og:title" data-i18n-content="meta.ogTitle" content="Vezdepost — планировщик постов для соцсетей и мессенджеров">
 <meta property="og:description" data-i18n-content="meta.ogDescription" content="Планируй и публикуй посты во все соцсети и мессенджеры из одного окна. Open source, бесплатно, без инвесторов и наценки.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://vezdepost.ru">
+<meta property="og:url" content="https://vezdepost.ru/">
+<meta property="og:site_name" content="Vezdepost">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:image" content="https://vezdepost.ru/assets/vezdepost-og.png">
+<meta property="og:image:secure_url" content="https://vezdepost.ru/assets/vezdepost-og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Vezdepost — один пост для 30+ платформ">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" data-i18n-content="meta.ogTitle" content="Vezdepost — планировщик постов для соцсетей и мессенджеров">
+<meta name="twitter:description" data-i18n-content="meta.ogDescription" content="Планируй и публикуй посты во все соцсети и мессенджеры из одного окна. Open source, бесплатно, без инвесторов и наценки.">
+<meta name="twitter:image" content="https://vezdepost.ru/assets/vezdepost-og.png">
+<meta name="twitter:image:alt" content="Vezdepost — один пост для 30+ платформ">
 <style>
   :root {
     color-scheme: dark;
@@ -52,7 +68,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     border-bottom: 1px solid var(--line);
   }
   .nav { display: flex; align-items: center; gap: 28px; height: 60px; }
-  .nav-logo { font-size: 20px; font-weight: 800; letter-spacing: -.5px; text-decoration: none; }
+  .nav-logo { display: inline-flex; align-items: center; gap: 9px; font-size: 20px; font-weight: 800; letter-spacing: -.5px; text-decoration: none; }
+  .nav-logo img { display: block; width: 28px; height: 28px; border-radius: 7px; }
   .nav-links { display: flex; gap: 22px; margin-left: auto; }
   .nav-links a { font-size: 14px; text-decoration: none; color: var(--dim); transition: color .15s; }
   .nav-links a:hover { color: var(--text); }
@@ -93,6 +110,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     border: 1px solid rgba(78,205,196,.35); border-radius: 999px;
     padding: 4px 14px; margin-bottom: 22px;
   }
+  .hero-logo { display: block; width: min(112px, 28vw); height: auto; margin: 0 auto 18px; border-radius: 24px; }
   .logo { font-size: 60px; font-weight: 800; letter-spacing: -1.5px; }
   .tagline { margin: 18px auto 0; max-width: 620px; font-size: 20px; color: var(--muted); }
   .channels { margin-top: 12px; font-size: 15px; color: var(--dim); }
@@ -202,7 +220,10 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <header>
   <div class="wrap nav">
-    <a class="nav-logo grad-text" href="#">Vezdepost</a>
+    <a class="nav-logo" href="#" aria-label="Vezdepost">
+      <img src="/assets/vezdepost-logo.png" alt="" width="28" height="28">
+      <span class="grad-text">Vezdepost</span>
+    </a>
     <nav class="nav-links">
       <a href="#preview" data-i18n="nav.preview">Скриншоты</a>
       <a href="#steps" data-i18n="nav.steps">Как начать</a>
@@ -222,6 +243,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <section class="hero">
   <span class="badge" data-i18n="hero.badge">Open source · AGPL-3.0 · сейчас бесплатно</span>
+  <img class="hero-logo" src="/assets/vezdepost-logo.png" alt="" width="112" height="112">
   <h1 class="logo grad-text">Vezdepost</h1>
   <p class="tagline" data-i18n="hero.tagline">Планируй и публикуй посты во все соцсети и мессенджеры из одного окна — по расписанию, с календарём и аналитикой.</p>
   <p class="channels" data-i18n="hero.channels">Telegram · MAX · X · Instagram · VK* · YouTube · и ещё 30+ платформ</p>
