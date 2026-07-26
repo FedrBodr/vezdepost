@@ -39,10 +39,7 @@ const createLanding = (options: LandingOptions = {}) => {
       },
     });
   } else if (options.storedLanguage !== undefined) {
-    window.localStorage.setItem(
-      'vezdepost-language',
-      options.storedLanguage
-    );
+    window.localStorage.setItem('vezdepost-language', options.storedLanguage);
   }
 
   if (options.ym) window.ym = options.ym as never;
@@ -134,8 +131,14 @@ describe('landing translations', () => {
     );
 
     for (const key of boundKeys) {
-      expect(window.__landingI18n.translations.ru[key], `ru.${key}`).toBeTruthy();
-      expect(window.__landingI18n.translations.en[key], `en.${key}`).toBeTruthy();
+      expect(
+        window.__landingI18n.translations.ru[key],
+        `ru.${key}`
+      ).toBeTruthy();
+      expect(
+        window.__landingI18n.translations.en[key],
+        `en.${key}`
+      ).toBeTruthy();
     }
   });
 
@@ -186,9 +189,9 @@ describe('landing translations', () => {
 
   it('updates the calendar accessibility label and examples', () => {
     const { document } = createLanding({ locale: 'en-US' });
-    expect(document.querySelector('.window')?.getAttribute('aria-label')).toContain(
-      'Vezdepost interface preview'
-    );
+    expect(
+      document.querySelector('.window')?.getAttribute('aria-label')
+    ).toContain('Vezdepost interface preview');
     expect(document.querySelector('.window-title')?.textContent).toContain(
       'calendar'
     );
@@ -196,6 +199,63 @@ describe('landing translations', () => {
     expect(document.querySelector('.post small')?.textContent).toContain(
       'release announcement'
     );
+  });
+});
+
+describe('landing language switcher', () => {
+  it('shows both language buttons with the active state', () => {
+    const { document } = createLanding({ locale: 'en-US' });
+    expect(
+      document
+        .querySelector('[data-language="en"]')
+        ?.getAttribute('aria-pressed')
+    ).toBe('true');
+    expect(
+      document
+        .querySelector('[data-language="ru"]')
+        ?.getAttribute('aria-pressed')
+    ).toBe('false');
+  });
+
+  it('switches immediately and persists a manual choice', () => {
+    const { document, window } = createLanding({ locale: 'en-US' });
+    document.querySelector<HTMLButtonElement>('[data-language="ru"]')!.click();
+    expect(window.__landingI18n.getCurrentLanguage()).toBe('ru');
+    expect(document.documentElement.lang).toBe('ru');
+    expect(document.querySelector('#steps h2')?.textContent).toBe('Как начать');
+    expect(window.localStorage.getItem('vezdepost-language')).toBe('ru');
+  });
+
+  it('keeps switching usable when persistence throws', () => {
+    const { document, window } = createLanding({
+      locale: 'en-US',
+      storageThrows: true,
+    });
+    document.querySelector<HTMLButtonElement>('[data-language="ru"]')!.click();
+    expect(window.__landingI18n.getCurrentLanguage()).toBe('ru');
+    expect(document.documentElement.lang).toBe('ru');
+  });
+
+  it('sends the language_switch goal with the selected language', () => {
+    const ym = vi.fn();
+    const { document } = createLanding({ locale: 'en-US', ym });
+    document.querySelector<HTMLButtonElement>('[data-language="ru"]')!.click();
+    expect(ym).toHaveBeenCalledWith(110559699, 'reachGoal', 'language_switch', {
+      language: 'ru',
+    });
+  });
+
+  it('does not require Metrica to switch', () => {
+    const { document, window } = createLanding({ locale: 'ru-RU' });
+    document.querySelector<HTMLButtonElement>('[data-language="en"]')!.click();
+    expect(window.__landingI18n.getCurrentLanguage()).toBe('en');
+  });
+
+  it('preserves existing CTA goal routing', () => {
+    expect(landingHtml).toContain("'cta_app_click'");
+    expect(landingHtml).toContain("'github_click'");
+    expect(landingHtml).toContain("'services_click'");
+    expect(landingHtml).toContain("'tg_footer_click'");
   });
 });
 
