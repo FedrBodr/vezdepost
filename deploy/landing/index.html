@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" class="i18n-pending">
 <head>
 <!-- Google Tag Manager -->
 <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -32,6 +32,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+  .i18n-pending body { visibility: hidden; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--bg); color: var(--text);
@@ -177,6 +178,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   .final-cta { text-align: center; }
   footer { padding: 36px 24px; text-align: center; font-size: 13px; color: var(--dim); line-height: 1.8; border-top: 1px solid var(--line); }
 </style>
+<noscript><style>.i18n-pending body { visibility: visible; }</style></noscript>
 </head>
 <body>
 <!-- Google Tag Manager (noscript) -->
@@ -402,6 +404,84 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   Исходный код: <a href="https://github.com/FedrBodr/vezdepost">github.com/FedrBodr/vezdepost</a>
   <br><span style="font-size:11px">* через VK-провайдер апстрима, где доступен</span>
 </footer>
+
+<script id="landing-i18n">
+(function () {
+  var STORAGE_KEY = 'vezdepost-language';
+  var RUSSIAN_REGIONS = ['RU', 'BY', 'KZ', 'KG'];
+  var currentLanguage = 'en';
+  var translations = { ru: {}, en: {} };
+
+  function languageFromLocale(locale) {
+    if (typeof locale !== 'string' || !locale.trim()) return 'en';
+    var normalized = locale.trim().replace(/_/g, '-');
+    var language = '';
+    var region = '';
+
+    try {
+      if (typeof Intl !== 'undefined' && Intl.Locale) {
+        var parsed = new Intl.Locale(normalized);
+        language = (parsed.language || '').toLowerCase();
+        region = (parsed.region || '').toUpperCase();
+      }
+    } catch (error) {
+      language = '';
+      region = '';
+    }
+
+    if (!language) {
+      var parts = normalized.split('-');
+      if (!/^[A-Za-z]{2,3}$/.test(parts[0] || '')) return 'en';
+      language = parts[0].toLowerCase();
+      for (var index = 1; index < parts.length; index += 1) {
+        if (/^[A-Za-z]{2}$/.test(parts[index])) {
+          region = parts[index].toUpperCase();
+          break;
+        }
+      }
+    }
+
+    return language === 'ru' || RUSSIAN_REGIONS.indexOf(region) !== -1
+      ? 'ru'
+      : 'en';
+  }
+
+  function detectLanguage() {
+    try {
+      var stored = window.localStorage.getItem(STORAGE_KEY);
+      if (stored === 'ru' || stored === 'en') return stored;
+    } catch (error) {}
+
+    var locale = '';
+    if (navigator.languages && navigator.languages.length) {
+      locale = navigator.languages[0];
+    } else {
+      locale = navigator.language || '';
+    }
+    return languageFromLocale(locale);
+  }
+
+  function applyLanguage(language) {
+    currentLanguage = language === 'ru' ? 'ru' : 'en';
+    document.documentElement.lang = currentLanguage;
+    document.documentElement.classList.remove('i18n-pending');
+  }
+
+  window.__landingI18n = {
+    languageFromLocale: languageFromLocale,
+    detectLanguage: detectLanguage,
+    getCurrentLanguage: function () { return currentLanguage; },
+    applyLanguage: applyLanguage,
+    translations: translations
+  };
+
+  try {
+    applyLanguage(detectLanguage());
+  } catch (error) {
+    applyLanguage('en');
+  }
+})();
+</script>
 
 <script>
 // конверсионные события в Метрику (цели создаются в интерфейсе Метрики)
