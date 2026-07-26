@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
+import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
 
 const landingHtml = readFileSync(
@@ -256,6 +257,37 @@ describe('landing language switcher', () => {
     expect(landingHtml).toContain("'github_click'");
     expect(landingHtml).toContain("'services_click'");
     expect(landingHtml).toContain("'tg_footer_click'");
+  });
+});
+
+describe('landing brand assets', () => {
+  it('publishes the supplied logo unchanged and a LinkedIn-sized social card', async () => {
+    const source = join(
+      process.cwd(),
+      'apps/frontend/public/vezdepost.png'
+    );
+    const logo = join(
+      process.cwd(),
+      'deploy/landing/assets/vezdepost-logo.png'
+    );
+    const social = join(
+      process.cwd(),
+      'deploy/landing/assets/vezdepost-og.png'
+    );
+
+    expect(existsSync(logo)).toBe(true);
+    expect(existsSync(social)).toBe(true);
+    expect(readFileSync(logo)).toEqual(readFileSync(source));
+    await expect(sharp(logo).metadata()).resolves.toMatchObject({
+      format: 'png',
+      width: 1254,
+      height: 1254,
+    });
+    await expect(sharp(social).metadata()).resolves.toMatchObject({
+      format: 'png',
+      width: 1200,
+      height: 630,
+    });
   });
 });
 
