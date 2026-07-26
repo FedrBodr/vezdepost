@@ -119,8 +119,12 @@ the `pnpm install` cache layer on **any** file change. Mitigations:
   lockfile so dependency layers cache independently of source changes.
 - Watch for a **BuildKit hang** at `exporting layers`: the successful revision
   marker and log stop changing, the old container remains active, and the
-  compose build is older than ten minutes. Confirm age and activity before
-  recovery; a server Git HEAD on the new commit does not mean the image is live.
+  compose build is older than ten minutes. Age alone is not proof of a hang.
+  On the 2026-07-26 deploy, `exporting layers` legitimately took 501 seconds
+  and `unpacking` another 149 seconds (650 seconds total). If the log advances,
+  disk usage changes, or `dockerd` consumes CPU, let the active export/unpack
+  finish even after the ten-minute mark. A server Git HEAD on the new commit
+  still does not mean the image is live.
 - Recover with the guarded project script, not ad-hoc `kill`/Docker commands:
   ```sh
   cd /root/postiz-app
@@ -130,6 +134,58 @@ the `pnpm install` cache layer on **any** file change. Mitigations:
   stuck compose build, restarts Docker, and leaves the successful revision
   marker unchanged. Run `bash deploy/autodeploy.sh` or let cron retry, then
   repeat the full deployment gate above.
+
+### Compose stuck at `Container postiz Recreate`
+
+After a completed image export, Compose can stall while replacing the old
+container. Confirm the exact states before intervening:
+
+```bash
+docker ps -a --filter name=postiz \
+  --format '{{.Names}}|{{.Status}}|{{.Image}}'
+docker inspect postiz \
+  --format '{{.State.Status}}|{{.State.Running}}|{{.State.Dead}}|{{.State.ExitCode}}'
+```
+
+The observed failure signature was the old `postiz` in `removing`,
+`Running=false`, `Dead=true`, while a newly created temporary container named
+like `<old-id>_postiz` remained in `Created`. The new image was ready, but the
+old dead container still owned the final name.
+
+If the enclosing `docker compose up -d --build` is older than 600 seconds and
+the states remain unchanged, use `10-recover-buildkit-export.sh`. After Docker
+returns, verify that the old dead container disappeared, then rerun the normal
+guarded deploy:
+
+```bash
+cd /root/postiz-app
+bash deploy/autodeploy.sh
+```
+
+Do not write `/var/lib/vezdepost-deployed-rev` manually. The deploy script must
+advance it only after Compose starts the replacement container and emits
+`deploy finished`.
+
+### Public smoke test and route-specific Timeweb failures
+
+Finish with independent public probes, not only an SSH session:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' \
+  https://vezdepost.ru/
+curl -sS -o /dev/null -w '%{http_code} %{content_type}\n' \
+  https://vezdepost.ru/assets/vezdepost-og.png
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  https://app.vezdepost.ru/api/user/self
+```
+
+Expected: landing `200 text/html`, preview `200 image/png`, unauthenticated API
+`401`. Timeweb routing can fail selectively: TCP may connect while the SSH
+banner or TLS payload times out from one network, even though the site opens
+from another. Before rebooting a healthy VM, compare at least two routes (for
+example the operator connection plus a proxy/another client) and separate a
+route failure from an application failure. A reboot is especially risky here
+because Timeweb network tuning may reset on reboot.
 
 ---
 
