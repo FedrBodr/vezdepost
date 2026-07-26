@@ -38,4 +38,18 @@ Set the public frontend values `NEXT_PUBLIC_POSTHOG_KEY` and
 `NEXT_PUBLIC_POSTHOG_HOST` in the server `.env`. Analytics remains safely
 disabled when either value is absent.
 
+Apply the EU Cloud configuration through the numbered production script:
+
+```bash
+scp -q -o BatchMode=yes -o ConnectTimeout=10 docs/server-scripts/14-configure-posthog.sh vezdepost:/tmp/vezdepost-configure-posthog.sh
+ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/vezdepost-configure-posthog.sh || status=$?; rm -f /tmp/vezdepost-configure-posthog.sh; exit "$status"'
+```
+
+Enter the `phc_` project token at the hidden prompt. The script updates `.env`
+without printing the token, validates Compose, and recreates only `postiz`
+without rebuilding the image. Copying first is required: piping the script into
+`ssh` would occupy standard input and prevent the hidden remote prompt from
+receiving the token.
+
 This directory lives only on the `prod` branch — do not merge it into `main`.
