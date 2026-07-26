@@ -67,6 +67,7 @@ import {
   DelayIcon,
 } from '@gitroom/frontend/components/ui/icons';
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
+import { PlainTextPasteExtension } from '@gitroom/frontend/components/new-launch/plain-text-paste.extension';
 
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
 
@@ -910,6 +911,7 @@ export const OnlyEditor = forwardRef<
       Document,
       Paragraph,
       Text,
+      PlainTextPasteExtension,
       Underline,
       Bold,
       InterceptBoldShortcut,
