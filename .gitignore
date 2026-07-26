@@ -54,6 +54,7 @@ Thumbs.db
 *.~*~
 *.tsbuildinfo
 /.worktrees/
+/.tmp/
 
 # ignore Secrets folder
 .secrets/
