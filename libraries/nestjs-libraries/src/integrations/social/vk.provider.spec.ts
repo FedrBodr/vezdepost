@@ -90,6 +90,37 @@ describe('VkProvider verified publishing', () => {
     await expectSanitizedFailure(request, [accessToken, mediaUrl, uploadUrl]);
   });
 
+  it('sanitizes an Axios media download failure', async () => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { upload_url: uploadUrl } })
+    );
+    vi.mocked(axios.get).mockRejectedValue(
+      Object.assign(new Error('download failed'), {
+        config: { url: mediaUrl },
+      })
+    );
+
+    const request = provider.upload('1', accessToken, imagePost);
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [accessToken, mediaUrl, uploadUrl]);
+  });
+
+  it('sanitizes an Axios media upload failure', async () => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { upload_url: uploadUrl } })
+    );
+    vi.mocked(axios.get).mockResolvedValue({ data: 'image-data' });
+    vi.mocked(axios.post).mockRejectedValue(
+      Object.assign(new Error('upload failed'), {
+        config: { url: uploadUrl },
+      })
+    );
+
+    const request = provider.upload('1', accessToken, imagePost);
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [accessToken, mediaUrl, uploadUrl]);
+  });
+
   it('rejects non-refresh VK media errors without leaking credentials', async () => {
     vi.spyOn(provider, 'fetch').mockResolvedValue(
       response({ error: { error_code: 15, error_msg: 'access denied' } })
@@ -124,6 +155,16 @@ describe('VkProvider verified publishing', () => {
     ]);
   });
 
+  it('rejects an empty wall.post ID', async () => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { post_id: '' } })
+    );
+
+    await expect(
+      provider.post('1', accessToken, [textPost])
+    ).rejects.toBeInstanceOf(BadBody);
+  });
+
   it('rejects a wall.createComment response without comment_id', async () => {
     vi.spyOn(provider, 'fetch').mockResolvedValue(response({ response: {} }));
 
@@ -137,5 +178,15 @@ describe('VkProvider verified publishing', () => {
     );
     await expect(request).rejects.toBeInstanceOf(BadBody);
     await expectSanitizedFailure(request);
+  });
+
+  it('rejects an empty wall.createComment ID', async () => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { comment_id: '' } })
+    );
+
+    await expect(
+      provider.comment('1', '77', undefined, accessToken, [textPost], {} as any)
+    ).rejects.toBeInstanceOf(BadBody);
   });
 });

@@ -254,9 +254,19 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
           );
         }
 
-        const { data } = await axios.get(media.path!, {
-          responseType: 'stream',
-        });
+        let data: unknown;
+        try {
+          ({ data } = await axios.get(media.path!, {
+            responseType: 'stream',
+          }));
+        } catch {
+          throw new BadBody(
+            'vk',
+            '{}',
+            {} as BodyInit,
+            `VK ${method} media download failed`
+          );
+        }
 
         const slash = media.path.split('/').at(-1);
 
@@ -265,13 +275,23 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
           filename: slash,
           contentType: mime.lookup(slash!) || '',
         });
-        const value = (
-          await axios.post(upload.upload_url, formData, {
-            headers: {
-              ...formData.getHeaders(),
-            },
-          })
-        ).data;
+        let value: { photo: string; server: string | number; hash: string };
+        try {
+          value = (
+            await axios.post(upload.upload_url, formData, {
+              headers: {
+                ...formData.getHeaders(),
+              },
+            })
+          ).data;
+        } catch {
+          throw new BadBody(
+            'vk',
+            '{}',
+            {} as BodyInit,
+            `VK ${method} media upload failed`
+          );
+        }
 
         if (isVideo) {
           return {
@@ -282,7 +302,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
 
         const formSend = new FormData();
         formSend.append('photo', value.photo);
-        formSend.append('server', value.server);
+        formSend.append('server', String(value.server));
         formSend.append('hash', value.hash);
 
         const savedPhoto = unwrapVkResponse<{ id?: string | number }[]>(
@@ -335,7 +355,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       );
     }
 
-    const wallPost = unwrapVkResponse<{ post_id?: number }>(
+    const wallPost = unwrapVkResponse<{ post_id?: number | string }>(
       await (
         await this.fetch(
           `https://api.vk.com/method/wall.post?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
@@ -347,7 +367,8 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       ).json(),
       'wall.post'
     );
-    if (wallPost.post_id === undefined || wallPost.post_id === null) {
+    const publishedPostId = String(wallPost.post_id ?? '').trim();
+    if (!publishedPostId) {
       throw new BadBody(
         'vk',
         '{}',
@@ -359,8 +380,8 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     return [
       {
         id: firstPost.id,
-        postId: String(wallPost.post_id),
-        releaseURL: `https://vk.com/feed?w=wall${userId}_${wallPost.post_id}`,
+        postId: publishedPostId,
+        releaseURL: `https://vk.com/feed?w=wall${userId}_${publishedPostId}`,
         status: 'completed',
       },
     ];
@@ -390,7 +411,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       );
     }
 
-    const wallComment = unwrapVkResponse<{ comment_id?: number }>(
+    const wallComment = unwrapVkResponse<{ comment_id?: number | string }>(
       await (
         await this.fetch(
           `https://api.vk.com/method/wall.createComment?v=5.251&access_token=${accessToken}&client_id=${process.env.VK_ID}`,
@@ -402,10 +423,8 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       ).json(),
       'wall.createComment'
     );
-    if (
-      wallComment.comment_id === undefined ||
-      wallComment.comment_id === null
-    ) {
+    const publishedCommentId = String(wallComment.comment_id ?? '').trim();
+    if (!publishedCommentId) {
       throw new BadBody(
         'vk',
         '{}',
@@ -417,7 +436,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     return [
       {
         id: commentPost.id,
-        postId: String(wallComment.comment_id),
+        postId: publishedCommentId,
         releaseURL: `https://vk.com/feed?w=wall${userId}_${postId}`,
         status: 'completed',
       },
