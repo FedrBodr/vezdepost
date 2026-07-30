@@ -58,6 +58,10 @@ describe('VkProvider verified publishing', () => {
     vi.clearAllMocks();
   });
 
+  it('opts into proactive token refresh', () => {
+    expect(new VkProvider().refreshCron).toBe(true);
+  });
+
   it('throws RefreshToken when a media API returns VK error 5', async () => {
     vi.spyOn(provider, 'fetch').mockResolvedValue(
       response({ error: { error_code: 5, error_msg: 'expired' } })

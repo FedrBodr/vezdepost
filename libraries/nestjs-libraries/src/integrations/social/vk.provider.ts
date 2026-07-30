@@ -20,6 +20,7 @@ import { unwrapVkResponse } from './vk.response';
 
 export class VkProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2; // VK has moderate API limits
+  refreshCron = true;
   identifier = 'vk';
   name = 'VK';
   isBetweenSteps = false;
