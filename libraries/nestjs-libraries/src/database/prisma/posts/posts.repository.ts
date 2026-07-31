@@ -398,6 +398,7 @@ export class PostsRepository {
         state: 'PUBLISHED',
         releaseURL,
         releaseId: postId,
+        publishedAt: new Date(),
       },
     });
   }
