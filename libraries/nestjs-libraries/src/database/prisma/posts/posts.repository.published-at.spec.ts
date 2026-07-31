@@ -36,7 +36,7 @@ describe('PostsRepository.updatePost', () => {
 });
 
 describe('PostsService.updatePost', () => {
-  it.each([undefined, '', '  '])(
+  it.each([undefined, '', '  ', 'undefined'])(
     'rejects an invalid provider post ID: %s',
     (postId) => {
       const repository = { updatePost: vi.fn() };

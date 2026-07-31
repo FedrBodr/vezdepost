@@ -78,7 +78,11 @@ export class PostsService {
   }
 
   updatePost(id: string, postId: string, releaseURL: string) {
-    if (typeof postId !== 'string' || postId.trim() === '') {
+    if (
+      typeof postId !== 'string' ||
+      postId.trim() === '' ||
+      postId === 'undefined'
+    ) {
       throw new BadRequestException('A provider post ID is required');
     }
 
