@@ -89,6 +89,7 @@ model User {
   pictureId             String?
   providerId            String?
   timezone              Int
+  timezoneName          String?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   lastReadNotifications DateTime             @default(now())
@@ -394,6 +395,7 @@ model Post {
   id                         String                    @id @default(cuid())
   state                      State                     @default(QUEUE)
   publishDate                DateTime
+  publishedAt                DateTime?
   organizationId             String
   integrationId              String
   content                    String
@@ -431,6 +433,7 @@ model Post {
   @@index([group])
   @@index([deletedAt])
   @@index([publishDate])
+  @@index([publishedAt])
   @@index([state])
   @@index([organizationId])
   @@index([parentPostId])
