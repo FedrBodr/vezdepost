@@ -15,7 +15,7 @@ describe('StreakService.getPersonalStreak', () => {
         .fn()
         .mockResolvedValue(['2026-07-29', '2026-07-28']),
     };
-    const service = new StreakService(repository as any);
+    const service = new StreakService(repository as any, {} as any);
 
     await expect(
       service.getPersonalStreak(
@@ -42,7 +42,7 @@ describe('StreakService.getPersonalStreak', () => {
     const repository = {
       getDistinctPublicationDates: vi.fn().mockResolvedValue(['2026-07-29']),
     };
-    const service = new StreakService(repository as any);
+    const service = new StreakService(repository as any, {} as any);
 
     await expect(
       service.getPersonalStreak(
@@ -60,6 +60,74 @@ describe('StreakService.getPersonalStreak', () => {
         minutes: 330,
         label: 'UTC+05:30',
       }
+    );
+  });
+});
+
+describe('StreakService reminder checks', () => {
+  it('reloads membership, preference, timezone, and confirmed dates', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-29T09:00:00.000Z'));
+    const repository = {
+      getDistinctPublicationDates: vi.fn().mockResolvedValue(['2026-07-29']),
+    };
+    const usersService = {
+      getStreakReminderUser: vi.fn().mockResolvedValue({
+        id: 'user-1',
+        email: 'person@example.test',
+        activated: true,
+        disabled: false,
+        sendStreakEmails: true,
+        timezone: 0,
+        timezoneName: 'Europe/Moscow',
+      }),
+    };
+    const service = new StreakService(repository as any, usersService as any);
+
+    await expect(
+      service.getStreakReminderContext('org-1', 'user-1')
+    ).resolves.toEqual({
+      enabled: true,
+      hasActiveStreak: true,
+      timezone: {
+        kind: 'iana',
+        name: 'Europe/Moscow',
+        label: 'Europe/Moscow',
+      },
+    });
+    expect(usersService.getStreakReminderUser).toHaveBeenCalledWith(
+      'org-1',
+      'user-1'
+    );
+    expect(repository.getDistinctPublicationDates).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ name: 'Europe/Moscow' })
+    );
+  });
+
+  it('uses the freshly loaded user zone for the local-date publication check', async () => {
+    const repository = {
+      getDistinctPublicationDates: vi.fn().mockResolvedValue(['2026-07-29']),
+      hasPublishedOnLocalDate: vi.fn().mockResolvedValue(true),
+    };
+    const usersService = {
+      getStreakReminderUser: vi.fn().mockResolvedValue({
+        activated: true,
+        disabled: false,
+        sendStreakEmails: true,
+        timezone: 330,
+        timezoneName: null,
+      }),
+    };
+    const service = new StreakService(repository as any, usersService as any);
+
+    await expect(
+      service.hasPublishedOnLocalDate('org-1', 'user-1', '2026-07-29')
+    ).resolves.toBe(true);
+    expect(repository.hasPublishedOnLocalDate).toHaveBeenCalledWith(
+      'org-1',
+      '2026-07-29',
+      { kind: 'offset', minutes: 330, label: 'UTC+05:30' }
     );
   });
 });

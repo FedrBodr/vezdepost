@@ -86,6 +86,68 @@ describe('UsersRepository.updateTimezone', () => {
   });
 });
 
+describe('UsersRepository streak reminder users', () => {
+  it('selects only activated users with enabled organization memberships', () => {
+    const model = { user: { findMany: vi.fn() } };
+    const repository = new UsersRepository({ model } as any);
+
+    repository.getEnabledOrganizationUsers('org-1');
+
+    expect(model.user.findMany).toHaveBeenCalledWith({
+      where: {
+        activated: true,
+        organizations: {
+          some: { organizationId: 'org-1', disabled: false },
+        },
+      },
+      select: { id: true },
+    });
+  });
+
+  it('loads current membership, preference, timezone, and recipient', async () => {
+    const model = {
+      userOrganization: {
+        findUnique: vi.fn().mockResolvedValue({
+          disabled: false,
+          user: {
+            id: 'user-1',
+            email: 'person@example.test',
+            activated: true,
+            sendStreakEmails: true,
+            timezone: 0,
+            timezoneName: 'UTC',
+          },
+        }),
+      },
+    };
+    const repository = new UsersRepository({ model } as any);
+
+    await expect(
+      repository.getStreakReminderUser('org-1', 'user-1')
+    ).resolves.toEqual({
+      disabled: false,
+      id: 'user-1',
+      email: 'person@example.test',
+      activated: true,
+      sendStreakEmails: true,
+      timezone: 0,
+      timezoneName: 'UTC',
+    });
+    expect(model.userOrganization.findUnique).toHaveBeenCalledWith({
+      where: {
+        userId_organizationId: {
+          userId: 'user-1',
+          organizationId: 'org-1',
+        },
+      },
+      select: expect.objectContaining({
+        disabled: true,
+        user: expect.anything(),
+      }),
+    });
+  });
+});
+
 describe('UsersService.updateTimezone', () => {
   it('rejects an empty time zone before persistence', () => {
     const repository = { updateTimezone: vi.fn() };

@@ -64,6 +64,34 @@ describe('StreakRepository.getDistinctPublicationDates', () => {
   });
 });
 
+describe('StreakRepository.hasPublishedOnLocalDate', () => {
+  it('parameterizes the user zone, organization, state, and local date', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([{ exists: true }]);
+    const repository = new StreakRepository({ $queryRaw: queryRaw } as any);
+
+    await expect(
+      repository.hasPublishedOnLocalDate('org-1', '2026-07-29', {
+        kind: 'iana',
+        name: 'Europe/Moscow',
+        label: 'Europe/Moscow',
+      })
+    ).resolves.toBe(true);
+
+    const query = queryRaw.mock.calls[0][0] as SqlQuery;
+    expect(query.values).toEqual([
+      'org-1',
+      'PUBLISHED',
+      'Europe/Moscow',
+      'UTC',
+      '2026-07-29',
+    ]);
+    expect(query.sql).toContain('SELECT EXISTS');
+    expect(query.sql).toContain('::date = CAST(? AS date)');
+    expect(query.sql).not.toContain('Europe/Moscow');
+    expect(query.sql).not.toContain('org-1');
+  });
+});
+
 describe('Post streak query index', () => {
   it('indexes organization, state, and publication timestamp together', () => {
     const schema = readFileSync(new URL('../schema.prisma', import.meta.url), {

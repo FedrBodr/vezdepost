@@ -7,7 +7,7 @@ import { EmailNotificationsDto } from '@gitroom/nestjs-libraries/dtos/users/emai
 
 @Injectable()
 export class UsersRepository {
-  constructor(private _user: PrismaRepository<'user'>) {}
+  constructor(private _user: PrismaRepository<'user' | 'userOrganization'>) {}
 
   getImpersonateUser(name: string) {
     return this._user.model.user.findMany({
@@ -102,6 +102,46 @@ export class UsersRepository {
       data: { timezoneName },
       select: { timezoneName: true },
     });
+  }
+
+  getEnabledOrganizationUsers(organizationId: string) {
+    return this._user.model.user.findMany({
+      where: {
+        activated: true,
+        organizations: {
+          some: {
+            organizationId,
+            disabled: false,
+          },
+        },
+      },
+      select: { id: true },
+    });
+  }
+
+  async getStreakReminderUser(organizationId: string, userId: string) {
+    const membership = await this._user.model.userOrganization.findUnique({
+      where: {
+        userId_organizationId: { userId, organizationId },
+      },
+      select: {
+        disabled: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            activated: true,
+            sendStreakEmails: true,
+            timezone: true,
+            timezoneName: true,
+          },
+        },
+      },
+    });
+
+    return membership
+      ? { disabled: membership.disabled, ...membership.user }
+      : null;
   }
 
   changeAudienceSize(userId: string, audience: number) {

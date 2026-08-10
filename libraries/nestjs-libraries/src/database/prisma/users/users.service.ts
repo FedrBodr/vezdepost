@@ -57,6 +57,14 @@ export class UsersService {
     return this._usersRepository.updateTimezone(userId, zone.name);
   }
 
+  getEnabledOrganizationUsers(organizationId: string) {
+    return this._usersRepository.getEnabledOrganizationUsers(organizationId);
+  }
+
+  getStreakReminderUser(organizationId: string, userId: string) {
+    return this._usersRepository.getStreakReminderUser(organizationId, userId);
+  }
+
   getPersonal(userId: string) {
     return this._usersRepository.getPersonal(userId);
   }

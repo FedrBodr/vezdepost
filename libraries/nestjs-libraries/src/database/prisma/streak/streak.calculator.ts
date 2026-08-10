@@ -22,6 +22,20 @@ function formatCalendarDate({ year, month, day }: CalendarDateParts) {
   )}-${String(day).padStart(2, '0')}`;
 }
 
+function formatCalendarDateTime({
+  year,
+  month,
+  day,
+  hour,
+  minute,
+  second,
+}: CalendarDateTimeParts) {
+  return `${formatCalendarDate({ year, month, day })}T${String(hour).padStart(
+    2,
+    '0'
+  )}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`;
+}
+
 function parseCalendarDate(value: string): CalendarDateParts | null {
   const match = DATE_PATTERN.exec(value);
   if (!match) {
@@ -46,7 +60,7 @@ function parseCalendarDate(value: string): CalendarDateParts | null {
   return parts;
 }
 
-function shiftCalendarDate(value: string, days: number) {
+export function shiftCalendarDate(value: string, days: number) {
   const parts = parseCalendarDate(value);
   if (!parts) {
     throw new RangeError(`Invalid calendar date: ${value}`);
@@ -92,7 +106,7 @@ function getIanaDateTimeParts(date: Date, timeZone: string) {
   } satisfies CalendarDateTimeParts;
 }
 
-function getLocalCalendarDate(date: Date, timezone: UserCalendarZone) {
+export function getLocalCalendarDate(date: Date, timezone: UserCalendarZone) {
   if (timezone.kind === 'offset') {
     const localDate = new Date(date.getTime() + timezone.minutes * 60_000);
     return formatCalendarDate({
@@ -105,32 +119,55 @@ function getLocalCalendarDate(date: Date, timezone: UserCalendarZone) {
   return formatCalendarDate(getIanaDateTimeParts(date, timezone.name));
 }
 
-function getUtcAtLocalMidnight(
+export function getUtcAtLocalTime(
   calendarDate: string,
+  hour: number,
+  minute: number,
   timezone: UserCalendarZone
 ) {
   const parts = parseCalendarDate(calendarDate);
   if (!parts) {
     throw new RangeError(`Invalid calendar date: ${calendarDate}`);
   }
+  if (
+    !Number.isInteger(hour) ||
+    hour < 0 ||
+    hour > 23 ||
+    !Number.isInteger(minute) ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    throw new RangeError(`Invalid local time: ${hour}:${minute}`);
+  }
 
   if (timezone.kind === 'offset') {
     return new Date(
-      Date.UTC(parts.year, parts.month - 1, parts.day, 0, -timezone.minutes)
+      Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        hour,
+        minute - timezone.minutes
+      )
     );
   }
 
-  let lowerBound = Date.UTC(parts.year, parts.month - 1, parts.day - 2);
-  let upperBound = Date.UTC(parts.year, parts.month - 1, parts.day + 2);
+  const target = formatCalendarDateTime({
+    ...parts,
+    hour,
+    minute,
+    second: 0,
+  });
+  let lowerBound = Date.UTC(parts.year, parts.month - 1, parts.day - 3);
+  let upperBound = Date.UTC(parts.year, parts.month - 1, parts.day + 3);
 
   while (lowerBound < upperBound) {
-    const candidate =
-      lowerBound + Math.floor((upperBound - lowerBound) / 2);
-    const candidateLocalDate = formatCalendarDate(
+    const candidate = lowerBound + Math.floor((upperBound - lowerBound) / 2);
+    const candidateLocalDateTime = formatCalendarDateTime(
       getIanaDateTimeParts(new Date(candidate), timezone.name)
     );
 
-    if (candidateLocalDate < calendarDate) {
+    if (candidateLocalDateTime < target) {
       lowerBound = candidate + 1;
     } else {
       upperBound = candidate;
@@ -138,6 +175,13 @@ function getUtcAtLocalMidnight(
   }
 
   return new Date(lowerBound);
+}
+
+function getUtcAtLocalMidnight(
+  calendarDate: string,
+  timezone: UserCalendarZone
+) {
+  return getUtcAtLocalTime(calendarDate, 0, 0, timezone);
 }
 
 function normalizeDates(localDates: string[]) {
