@@ -92,6 +92,24 @@ describe('StreakRepository.hasPublishedOnLocalDate', () => {
   });
 });
 
+describe('StreakRepository.getLatestConfirmedPublication', () => {
+  it('uses an indexed LIMIT query instead of scanning historical local dates', async () => {
+    const publishedAt = new Date('2026-07-29T20:59:59.900Z');
+    const queryRaw = vi.fn().mockResolvedValue([{ publishedAt }]);
+    const repository = new StreakRepository({ $queryRaw: queryRaw } as any);
+
+    await expect(
+      repository.getLatestConfirmedPublication('org-1')
+    ).resolves.toEqual(publishedAt);
+
+    const query = queryRaw.mock.calls[0][0] as SqlQuery;
+    expect(query.values).toEqual(['org-1', 'PUBLISHED']);
+    expect(query.sql).toContain('ORDER BY "publishedAt" DESC');
+    expect(query.sql).toContain('LIMIT 1');
+    expect(query.sql).not.toContain('DISTINCT');
+  });
+});
+
 describe('Post streak query index', () => {
   it('indexes organization, state, and publication timestamp together', () => {
     const schema = readFileSync(new URL('../schema.prisma', import.meta.url), {

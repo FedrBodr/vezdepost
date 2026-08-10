@@ -1,19 +1,18 @@
-import { proxyActivities, sleep } from '@temporalio/workflow';
+import { continueAsNew, proxyActivities, sleep } from '@temporalio/workflow';
 import type { EmailActivity } from '@gitroom/orchestrator/activities/email.activity';
-import {
-  getLocalCalendarDate,
-  getUtcAtLocalTime,
-  shiftCalendarDate,
-} from '@gitroom/nestjs-libraries/database/prisma/streak/streak.calculator';
 
-const {
-  getStreakReminderContext,
-  hasPublishedOnLocalDate,
-  sendStreakReminder,
-} = proxyActivities<EmailActivity>({
+const { getStreakReminderSchedule, hasPublishedOnLocalDate } =
+  proxyActivities<EmailActivity>({
+    startToCloseTimeout: '10 minute',
+    taskQueue: 'main',
+    cancellationType: 'ABANDON',
+  });
+
+const { sendStreakReminder } = proxyActivities<EmailActivity>({
   startToCloseTimeout: '10 minute',
   taskQueue: 'main',
   cancellationType: 'ABANDON',
+  retry: { maximumAttempts: 1 },
 });
 
 export async function personalStreakReminderWorkflow({
@@ -22,46 +21,49 @@ export async function personalStreakReminderWorkflow({
 }: {
   organizationId: string;
   userId: string;
-}) {
-  const initialContext = await getStreakReminderContext(organizationId, userId);
-  if (!initialContext.enabled || !initialContext.hasActiveStreak) {
+}): Promise<void> {
+  const schedule = await getStreakReminderSchedule(organizationId, userId);
+  if (
+    !schedule.enabled ||
+    !schedule.active ||
+    !schedule.targetLocalDate ||
+    !schedule.reminderAt ||
+    !schedule.midnightAt
+  ) {
     return;
   }
 
-  const now = new Date();
-  const targetLocalDate = shiftCalendarDate(
-    getLocalCalendarDate(now, initialContext.timezone),
-    1
-  );
-  const reminderAt = getUtcAtLocalTime(
-    targetLocalDate,
-    22,
-    0,
-    initialContext.timezone
-  );
-  await sleep(Math.max(0, reminderAt.getTime() - now.getTime()));
+  await sleep(Math.max(0, Date.parse(schedule.reminderAt) - Date.now()));
 
-  const reminderContext = await getStreakReminderContext(
+  const currentSchedule = await getStreakReminderSchedule(
     organizationId,
     userId
   );
-  if (!reminderContext.enabled || !reminderContext.hasActiveStreak) {
+  if (!currentSchedule.enabled || !currentSchedule.active) {
     return;
   }
 
-  if (await hasPublishedOnLocalDate(organizationId, userId, targetLocalDate)) {
-    return;
-  }
-
-  await sendStreakReminder(organizationId, userId, targetLocalDate);
-
-  const dayAfterTarget = shiftCalendarDate(targetLocalDate, 1);
-  const midnightAt = getUtcAtLocalTime(
-    dayAfterTarget,
-    0,
-    0,
-    initialContext.timezone
+  const publishedAtReminder = await hasPublishedOnLocalDate(
+    organizationId,
+    userId,
+    schedule.targetLocalDate
   );
-  await sleep(Math.max(0, midnightAt.getTime() - new Date().getTime()));
-  await hasPublishedOnLocalDate(organizationId, userId, targetLocalDate);
+  if (!publishedAtReminder) {
+    await sendStreakReminder(organizationId, userId, schedule.targetLocalDate);
+  }
+
+  await sleep(Math.max(0, Date.parse(schedule.midnightAt) - Date.now()));
+  const publishedAtMidnight = await hasPublishedOnLocalDate(
+    organizationId,
+    userId,
+    schedule.targetLocalDate
+  );
+  if (!publishedAtMidnight) {
+    return;
+  }
+
+  await continueAsNew<typeof personalStreakReminderWorkflow>({
+    organizationId,
+    userId,
+  });
 }

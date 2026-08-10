@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   Activity,
   ActivityMethod,
@@ -23,7 +23,7 @@ import {
   postId as postIdSearchParam,
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
-import { UsersService } from '@gitroom/nestjs-libraries/database/prisma/users/users.service';
+import { PersonalStreakReminderStarter } from '@gitroom/nestjs-libraries/temporal/personal-streak-reminder.starter';
 
 // Drops fields the workflow and downstream activities never read — biggest wins are `error` (grows per retry) and `childrenPost` (Prisma side-loads it on every recursive row).
 function slimPost(post: any) {
@@ -55,8 +55,6 @@ function slimPost(post: any) {
 @Injectable()
 @Activity()
 export class PostActivity {
-  private readonly _logger = new Logger(PostActivity.name);
-
   constructor(
     private _postService: PostsService,
     private _notificationService: NotificationService,
@@ -66,7 +64,7 @@ export class PostActivity {
     private _webhookService: WebhooksService,
     private _temporalService: TemporalService,
     private _subscriptionService: SubscriptionService,
-    private _usersService: UsersService
+    private _personalStreakReminderStarter: PersonalStreakReminderStarter
   ) {}
 
   @ActivityMethod()
@@ -111,50 +109,14 @@ export class PostActivity {
 
   @ActivityMethod()
   async updatePost(id: string, postId: string, releaseURL: string) {
-    const publishedPost = await this._postService.updatePost(
-      id,
-      postId,
-      releaseURL
+    return this._postService.updatePost(id, postId, releaseURL);
+  }
+
+  @ActivityMethod()
+  async startPersonalStreakReminders(organizationId: string) {
+    return this._personalStreakReminderStarter.startForOrganization(
+      organizationId
     );
-
-    try {
-      const users = await this._usersService.getEnabledOrganizationUsers(
-        publishedPost.organizationId
-      );
-      for (const user of users) {
-        try {
-          await this._temporalService.client
-            .getRawClient()
-            .workflow.start('personalStreakReminderWorkflow', {
-              args: [
-                {
-                  organizationId: publishedPost.organizationId,
-                  userId: user.id,
-                },
-              ],
-              workflowId: `streak_${publishedPost.organizationId}_${user.id}`,
-              taskQueue: 'main',
-              workflowIdConflictPolicy: 'TERMINATE_EXISTING',
-              typedSearchAttributes: new TypedSearchAttributes([
-                {
-                  key: organizationId,
-                  value: publishedPost.organizationId,
-                },
-              ]),
-            });
-        } catch {
-          this._logger.error(
-            `Failed to start streak reminder organizationId=${publishedPost.organizationId} userId=${user.id}`
-          );
-        }
-      }
-    } catch {
-      this._logger.error(
-        `Failed to load streak reminder users organizationId=${publishedPost.organizationId}`
-      );
-    }
-
-    return publishedPost;
   }
 
   @ActivityMethod()

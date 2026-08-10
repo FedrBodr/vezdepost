@@ -50,6 +50,7 @@ import { AdminStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/
 import { AdminStatsService } from '@gitroom/nestjs-libraries/database/prisma/admin-stats/admin-stats.service';
 import { StreakRepository } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.repository';
 import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.service';
+import { PersonalStreakReminderStarter } from '@gitroom/nestjs-libraries/temporal/personal-streak-reminder.starter';
 
 @Global()
 @Module({
@@ -105,6 +106,7 @@ import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/
     AdminStatsService,
     StreakRepository,
     StreakService,
+    PersonalStreakReminderStarter,
   ],
   get exports() {
     return this.providers;

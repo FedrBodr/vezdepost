@@ -8,6 +8,7 @@ import {
   Req,
   Res,
   Put,
+  Logger,
 } from '@nestjs/common';
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
 import { sign } from 'jsonwebtoken';
@@ -37,10 +38,13 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { UserTimezoneDto } from '@gitroom/nestjs-libraries/dtos/users/user-timezone.dto';
 import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.service';
+import { PersonalStreakReminderStarter } from '@gitroom/nestjs-libraries/temporal/personal-streak-reminder.starter';
 
 @ApiTags('User')
 @Controller('/user')
 export class UsersController {
+  private readonly _logger = new Logger(UsersController.name);
+
   constructor(
     private _subscriptionService: SubscriptionService,
     private _stripeService: StripeService,
@@ -48,7 +52,8 @@ export class UsersController {
     private _orgService: OrganizationService,
     private _userService: UsersService,
     private _trackService: TrackService,
-    private _streakService: StreakService
+    private _streakService: StreakService,
+    private _personalStreakReminderStarter: PersonalStreakReminderStarter
   ) {}
 
   @Get('/chatbase-token')
@@ -207,9 +212,25 @@ export class UsersController {
   @Put('/timezone')
   async updateTimezone(
     @GetUserFromRequest() user: User,
+    @GetOrgFromRequest() organization: Organization,
     @Body() body: UserTimezoneDto
   ) {
-    return this._userService.updateTimezone(user.id, body.timezoneName);
+    const timezone = await this._userService.updateTimezone(
+      user.id,
+      body.timezoneName
+    );
+    try {
+      await this._personalStreakReminderStarter.startForUser(
+        organization.id,
+        user.id
+      );
+    } catch {
+      this._logger.error(
+        `Failed to replace streak reminder after timezone update organizationId=${organization.id} userId=${user.id}`
+      );
+    }
+
+    return timezone;
   }
 
   @Get('/email-notifications')

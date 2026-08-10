@@ -5,8 +5,10 @@ export type PersonalStreak = {
   nextChangeAt: string | null;
 };
 
-export type StreakReminderContext = {
+export type StreakReminderSchedule = {
   enabled: boolean;
-  hasActiveStreak: boolean;
-  timezone: import('../users/user-timezone').UserCalendarZone;
+  active: boolean;
+  targetLocalDate: string | null;
+  reminderAt: string | null;
+  midnightAt: string | null;
 };

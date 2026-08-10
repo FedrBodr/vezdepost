@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { resolveUserCalendarZone } from '../users/user-timezone';
-import { calculatePersonalStreak } from './streak.calculator';
+import {
+  calculatePersonalStreak,
+  getLocalCalendarDate,
+  getUtcAtLocalTime,
+  shiftCalendarDate,
+} from './streak.calculator';
 import { StreakRepository } from './streak.repository';
 import { UsersService } from '../users/users.service';
-import type { StreakReminderContext } from './streak.types';
+import type { StreakReminderSchedule } from './streak.types';
 
 type StreakUser = Pick<User, 'timezoneName' | 'timezone'>;
 
@@ -28,30 +33,56 @@ export class StreakService {
     return calculatePersonalStreak(sortedDates, new Date(), timezone);
   }
 
-  async getStreakReminderContext(
+  async getStreakReminderSchedule(
     orgId: string,
     userId: string
-  ): Promise<StreakReminderContext> {
+  ): Promise<StreakReminderSchedule> {
     const user = await this._usersService.getStreakReminderUser(orgId, userId);
     if (!user) {
       return {
         enabled: false,
-        hasActiveStreak: false,
-        timezone: { kind: 'iana', name: 'UTC', label: 'UTC' },
+        active: false,
+        targetLocalDate: null,
+        reminderAt: null,
+        midnightAt: null,
       };
     }
 
     const timezone = resolveUserCalendarZone(user.timezoneName, user.timezone);
-    const dates = await this._streakRepository.getDistinctPublicationDates(
-      orgId,
+    const latestPublishedAt =
+      await this._streakRepository.getLatestConfirmedPublication(orgId);
+    const enabled = user.activated && !user.disabled && user.sendStreakEmails;
+    if (!latestPublishedAt) {
+      return {
+        enabled,
+        active: false,
+        targetLocalDate: null,
+        reminderAt: null,
+        midnightAt: null,
+      };
+    }
+
+    const now = new Date();
+    const latestLocalDate = getLocalCalendarDate(latestPublishedAt, timezone);
+    const today = getLocalCalendarDate(now, timezone);
+    const active =
+      latestLocalDate === today ||
+      latestLocalDate === shiftCalendarDate(today, -1);
+    const targetLocalDate = shiftCalendarDate(latestLocalDate, 1);
+    const reminderAt = getUtcAtLocalTime(targetLocalDate, 22, 0, timezone);
+    const midnightAt = getUtcAtLocalTime(
+      shiftCalendarDate(targetLocalDate, 1),
+      0,
+      0,
       timezone
     );
-    const streak = calculatePersonalStreak(dates, new Date(), timezone);
 
     return {
-      enabled: user.activated && !user.disabled && user.sendStreakEmails,
-      hasActiveStreak: streak.days > 0,
-      timezone,
+      enabled,
+      active,
+      targetLocalDate,
+      reminderAt: reminderAt.toISOString(),
+      midnightAt: midnightAt.toISOString(),
     };
   }
 
@@ -60,15 +91,17 @@ export class StreakService {
     userId: string,
     localDate: string
   ) {
-    const context = await this.getStreakReminderContext(orgId, userId);
-    if (!context.enabled) {
+    const user = await this._usersService.getStreakReminderUser(orgId, userId);
+    if (!user) {
       return false;
     }
+
+    const timezone = resolveUserCalendarZone(user.timezoneName, user.timezone);
 
     return this._streakRepository.hasPublishedOnLocalDate(
       orgId,
       localDate,
-      context.timezone
+      timezone
     );
   }
 }

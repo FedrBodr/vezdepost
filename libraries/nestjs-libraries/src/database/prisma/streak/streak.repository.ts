@@ -57,4 +57,20 @@ export class StreakRepository {
 
     return result?.exists === true;
   }
+
+  async getLatestConfirmedPublication(orgId: string) {
+    const [result] = await this._prisma.$queryRaw<Array<{ publishedAt: Date }>>(
+      Prisma.sql`
+        SELECT "publishedAt"
+        FROM "Post"
+        WHERE "organizationId" = ${orgId}
+          AND "publishedAt" IS NOT NULL
+          AND "state" = CAST(${State.PUBLISHED} AS "State")
+        ORDER BY "publishedAt" DESC
+        LIMIT 1
+      `
+    );
+
+    return result?.publishedAt ?? null;
+  }
 }

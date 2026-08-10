@@ -108,6 +108,7 @@ export class UsersRepository {
     return this._user.model.user.findMany({
       where: {
         activated: true,
+        sendStreakEmails: true,
         organizations: {
           some: {
             organizationId,

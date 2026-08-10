@@ -87,7 +87,7 @@ describe('UsersRepository.updateTimezone', () => {
 });
 
 describe('UsersRepository streak reminder users', () => {
-  it('selects only activated users with enabled organization memberships', () => {
+  it('selects only activated users with enabled membership and streak email preference', () => {
     const model = { user: { findMany: vi.fn() } };
     const repository = new UsersRepository({ model } as any);
 
@@ -96,6 +96,7 @@ describe('UsersRepository streak reminder users', () => {
     expect(model.user.findMany).toHaveBeenCalledWith({
       where: {
         activated: true,
+        sendStreakEmails: true,
         organizations: {
           some: { organizationId: 'org-1', disabled: false },
         },

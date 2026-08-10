@@ -50,9 +50,9 @@ export class EmailActivity {
   }
 
   @ActivityMethod()
-  async getStreakReminderContext(organizationId: string, userId: string) {
+  async getStreakReminderSchedule(organizationId: string, userId: string) {
     try {
-      return await this._streakService.getStreakReminderContext(
+      return await this._streakService.getStreakReminderSchedule(
         organizationId,
         userId
       );
@@ -91,11 +91,11 @@ export class EmailActivity {
     localDate: string
   ) {
     try {
-      const context = await this._streakService.getStreakReminderContext(
+      const schedule = await this._streakService.getStreakReminderSchedule(
         organizationId,
         userId
       );
-      if (!context.enabled || !context.hasActiveStreak) {
+      if (!schedule.enabled || !schedule.active) {
         return false;
       }
 

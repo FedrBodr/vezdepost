@@ -7,6 +7,7 @@ import {
   sleep,
   defineSignal,
   setHandler,
+  log,
 } from '@temporalio/workflow';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
@@ -42,6 +43,11 @@ const {
     backoffCoefficient: 1,
     initialInterval: '2 minutes',
   },
+});
+
+const { startPersonalStreakReminders } = proxyActivities<PostActivity>({
+  startToCloseTimeout: '30 seconds',
+  retry: { maximumAttempts: 1 },
 });
 
 const poke = defineSignal('poke');
@@ -199,6 +205,15 @@ export async function postWorkflowV104({
           postsResults[i].postId,
           postsResults[i].releaseURL
         );
+
+        try {
+          await startPersonalStreakReminders(post.organizationId);
+        } catch {
+          log.error(
+            'Failed to start personal streak reminders after confirmed publication',
+            { organizationId: post.organizationId }
+          );
+        }
 
         if (i === 0) {
           // send notification on a sucessful post

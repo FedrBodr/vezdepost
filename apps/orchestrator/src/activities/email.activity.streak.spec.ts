@@ -15,10 +15,12 @@ function createActivity() {
     }),
   };
   const streakService = {
-    getStreakReminderContext: vi.fn().mockResolvedValue({
+    getStreakReminderSchedule: vi.fn().mockResolvedValue({
       enabled: true,
-      hasActiveStreak: true,
-      timezone: { kind: 'iana', name: 'UTC', label: 'UTC' },
+      active: true,
+      targetLocalDate: '2026-07-30',
+      reminderAt: '2026-07-30T22:00:00.000Z',
+      midnightAt: '2026-07-31T00:00:00.000Z',
     }),
     hasPublishedOnLocalDate: vi.fn().mockResolvedValue(false),
   };
@@ -41,7 +43,7 @@ describe('EmailActivity personal streak reminders', () => {
       activity.sendStreakReminder('org-1', 'user-1', '2026-07-30')
     ).resolves.toBe(true);
 
-    expect(streakService.getStreakReminderContext).toHaveBeenCalledWith(
+    expect(streakService.getStreakReminderSchedule).toHaveBeenCalledWith(
       'org-1',
       'user-1'
     );
