@@ -96,6 +96,14 @@ export class UsersRepository {
     });
   }
 
+  updateTimezone(userId: string, timezoneName: string) {
+    return this._user.model.user.update({
+      where: { id: userId },
+      data: { timezoneName },
+      select: { timezoneName: true },
+    });
+  }
+
   changeAudienceSize(userId: string, audience: number) {
     return this._user.model.user.update({
       where: {

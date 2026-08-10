@@ -7,6 +7,7 @@ import {
   Query,
   Req,
   Res,
+  Put,
 } from '@nestjs/common';
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
 import { sign } from 'jsonwebtoken';
@@ -34,6 +35,7 @@ import {
   AuthorizationActions,
   Sections,
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
+import { UserTimezoneDto } from '@gitroom/nestjs-libraries/dtos/users/user-timezone.dto';
 
 @ApiTags('User')
 @Controller('/user')
@@ -109,6 +111,7 @@ export class UsersController {
     // @ts-ignore
     return {
       ...user,
+      timezoneName: user.timezoneName,
       orgId: organization.id,
       totalChannels: !process.env.STRIPE_PUBLISHABLE_KEY
         ? 10000
@@ -189,6 +192,14 @@ export class UsersController {
     @Body() body: UserDetailDto
   ) {
     return this._userService.changePersonal(user.id, body);
+  }
+
+  @Put('/timezone')
+  async updateTimezone(
+    @GetUserFromRequest() user: User,
+    @Body() body: UserTimezoneDto
+  ) {
+    return this._userService.updateTimezone(user.id, body.timezoneName);
   }
 
   @Get('/email-notifications')
