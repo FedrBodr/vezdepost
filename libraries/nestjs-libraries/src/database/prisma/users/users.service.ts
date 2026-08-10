@@ -61,6 +61,10 @@ export class UsersService {
     return this._usersRepository.getEnabledOrganizationUsers(organizationId);
   }
 
+  getEnabledReminderOrganizations(userId: string) {
+    return this._usersRepository.getEnabledReminderOrganizations(userId);
+  }
+
   getStreakReminderUser(organizationId: string, userId: string) {
     return this._usersRepository.getStreakReminderUser(organizationId, userId);
   }

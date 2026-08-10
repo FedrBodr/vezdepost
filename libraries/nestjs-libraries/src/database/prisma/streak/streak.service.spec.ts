@@ -98,6 +98,7 @@ describe('StreakService reminder checks', () => {
       targetLocalDate: '2026-07-30',
       reminderAt: '2026-07-30T19:00:00.000Z',
       midnightAt: '2026-07-30T21:00:00.000Z',
+      timezone: 'Europe/Moscow',
     });
     expect(usersService.getStreakReminderUser).toHaveBeenCalledWith(
       'org-1',
@@ -165,9 +166,9 @@ describe('StreakService reminder checks', () => {
     });
   });
 
-  it('uses the freshly loaded user zone for the local-date publication check', async () => {
+  it('computes fixed-offset UTC publication boundaries outside the repository', async () => {
     const repository = {
-      hasPublishedOnLocalDate: vi.fn().mockResolvedValue(true),
+      hasPublishedBetween: vi.fn().mockResolvedValue(true),
     };
     const usersService = {
       getStreakReminderUser: vi.fn().mockResolvedValue({
@@ -183,10 +184,35 @@ describe('StreakService reminder checks', () => {
     await expect(
       service.hasPublishedOnLocalDate('org-1', 'user-1', '2026-07-29')
     ).resolves.toBe(true);
-    expect(repository.hasPublishedOnLocalDate).toHaveBeenCalledWith(
+    expect(repository.hasPublishedBetween).toHaveBeenCalledWith(
       'org-1',
-      '2026-07-29',
-      { kind: 'offset', minutes: 330, label: 'UTC+05:30' }
+      new Date('2026-07-28T18:30:00.000Z'),
+      new Date('2026-07-29T18:30:00.000Z')
+    );
+  });
+
+  it('computes DST-aware IANA UTC publication boundaries outside the repository', async () => {
+    const repository = {
+      hasPublishedBetween: vi.fn().mockResolvedValue(true),
+    };
+    const usersService = {
+      getStreakReminderUser: vi.fn().mockResolvedValue({
+        activated: true,
+        disabled: false,
+        sendStreakEmails: true,
+        timezone: 0,
+        timezoneName: 'America/New_York',
+      }),
+    };
+    const service = new StreakService(repository as any, usersService as any);
+
+    await expect(
+      service.hasPublishedOnLocalDate('org-1', 'user-1', '2026-03-08')
+    ).resolves.toBe(true);
+    expect(repository.hasPublishedBetween).toHaveBeenCalledWith(
+      'org-1',
+      new Date('2026-03-08T05:00:00.000Z'),
+      new Date('2026-03-09T04:00:00.000Z')
     );
   });
 });

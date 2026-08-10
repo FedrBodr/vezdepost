@@ -36,6 +36,7 @@ const activeSchedule = {
   targetLocalDate: '2026-07-30',
   reminderAt: '2026-07-30T19:00:00.000Z',
   midnightAt: '2026-07-30T21:00:00.000Z',
+  timezone: 'Europe/Moscow',
 };
 
 describe('personalStreakReminderWorkflow', () => {
@@ -129,6 +130,7 @@ describe('personalStreakReminderWorkflow', () => {
       targetLocalDate: null,
       reminderAt: null,
       midnightAt: null,
+      timezone: null,
     });
 
     await personalStreakReminderWorkflow({
@@ -149,6 +151,31 @@ describe('personalStreakReminderWorkflow', () => {
     });
 
     expect(sendActivities.sendStreakReminder).not.toHaveBeenCalled();
+  });
+
+  it('continues as new before sending when the serialized schedule identity changed', async () => {
+    scheduleActivities.getStreakReminderSchedule
+      .mockResolvedValueOnce(activeSchedule)
+      .mockResolvedValueOnce({
+        ...activeSchedule,
+        targetLocalDate: '2026-07-31',
+        reminderAt: '2026-08-01T02:00:00.000Z',
+        midnightAt: '2026-08-01T04:00:00.000Z',
+        timezone: 'America/New_York',
+      });
+
+    await personalStreakReminderWorkflow({
+      organizationId: 'org-1',
+      userId: 'user-1',
+    });
+
+    expect(continueAsNew).toHaveBeenCalledWith({
+      organizationId: 'org-1',
+      userId: 'user-1',
+    });
+    expect(scheduleActivities.hasPublishedOnLocalDate).not.toHaveBeenCalled();
+    expect(sendActivities.sendStreakReminder).not.toHaveBeenCalled();
+    expect(sleep).toHaveBeenCalledTimes(1);
   });
 
   it('configures the email send activity for at most one attempt', () => {

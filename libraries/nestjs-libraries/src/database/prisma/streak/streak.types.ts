@@ -11,4 +11,5 @@ export type StreakReminderSchedule = {
   targetLocalDate: string | null;
   reminderAt: string | null;
   midnightAt: string | null;
+  timezone: string | null;
 };

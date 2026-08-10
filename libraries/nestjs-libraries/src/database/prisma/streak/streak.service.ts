@@ -45,6 +45,7 @@ export class StreakService {
         targetLocalDate: null,
         reminderAt: null,
         midnightAt: null,
+        timezone: null,
       };
     }
 
@@ -59,6 +60,7 @@ export class StreakService {
         targetLocalDate: null,
         reminderAt: null,
         midnightAt: null,
+        timezone: timezone.label,
       };
     }
 
@@ -83,6 +85,7 @@ export class StreakService {
       targetLocalDate,
       reminderAt: reminderAt.toISOString(),
       midnightAt: midnightAt.toISOString(),
+      timezone: timezone.label,
     };
   }
 
@@ -98,10 +101,14 @@ export class StreakService {
 
     const timezone = resolveUserCalendarZone(user.timezoneName, user.timezone);
 
-    return this._streakRepository.hasPublishedOnLocalDate(
-      orgId,
-      localDate,
+    const start = getUtcAtLocalTime(localDate, 0, 0, timezone);
+    const end = getUtcAtLocalTime(
+      shiftCalendarDate(localDate, 1),
+      0,
+      0,
       timezone
     );
+
+    return this._streakRepository.hasPublishedBetween(orgId, start, end);
   }
 }

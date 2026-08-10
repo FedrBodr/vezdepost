@@ -120,6 +120,17 @@ export class UsersRepository {
     });
   }
 
+  getEnabledReminderOrganizations(userId: string) {
+    return this._user.model.userOrganization.findMany({
+      where: {
+        userId,
+        disabled: false,
+        user: { activated: true },
+      },
+      select: { organizationId: true },
+    });
+  }
+
   async getStreakReminderUser(organizationId: string, userId: string) {
     const membership = await this._user.model.userOrganization.findUnique({
       where: {

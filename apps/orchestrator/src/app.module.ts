@@ -6,6 +6,7 @@ import { AutopostService } from '@gitroom/nestjs-libraries/database/prisma/autop
 import { EmailActivity } from '@gitroom/orchestrator/activities/email.activity';
 import { IntegrationsActivity } from '@gitroom/orchestrator/activities/integrations.activity';
 import { HealthController } from '@gitroom/orchestrator/health.controller';
+import { PersonalStreakReminderModule } from '@gitroom/nestjs-libraries/temporal/personal-streak-reminder.module';
 
 const activities = [
   PostActivity,
@@ -17,6 +18,7 @@ const activities = [
   imports: [
     DatabaseModule,
     getTemporalModule(true, require.resolve('./workflows'), activities),
+    PersonalStreakReminderModule,
   ],
   controllers: [HealthController],
   providers: [...activities],

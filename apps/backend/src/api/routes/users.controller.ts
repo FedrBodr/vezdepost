@@ -212,7 +212,6 @@ export class UsersController {
   @Put('/timezone')
   async updateTimezone(
     @GetUserFromRequest() user: User,
-    @GetOrgFromRequest() organization: Organization,
     @Body() body: UserTimezoneDto
   ) {
     const timezone = await this._userService.updateTimezone(
@@ -220,13 +219,12 @@ export class UsersController {
       body.timezoneName
     );
     try {
-      await this._personalStreakReminderStarter.startForUser(
-        organization.id,
+      await this._personalStreakReminderStarter.startForUserOrganizations(
         user.id
       );
     } catch {
       this._logger.error(
-        `Failed to replace streak reminder after timezone update organizationId=${organization.id} userId=${user.id}`
+        `Failed to replace streak reminders after timezone update userId=${user.id}`
       );
     }
 

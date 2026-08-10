@@ -31,17 +31,7 @@ export class StreakRepository {
     return dates.map(({ localDate }) => localDate);
   }
 
-  async hasPublishedOnLocalDate(
-    orgId: string,
-    localDate: string,
-    timezone: UserCalendarZone
-  ) {
-    const localTimestamp =
-      timezone.kind === 'iana'
-        ? Prisma.sql`timezone(${
-            timezone.name
-          }, "publishedAt" AT TIME ZONE ${'UTC'})`
-        : Prisma.sql`"publishedAt" + make_interval(mins => CAST(${timezone.minutes} AS int4))`;
+  async hasPublishedBetween(orgId: string, start: Date, end: Date) {
     const [result] = await this._prisma.$queryRaw<Array<{ exists: boolean }>>(
       Prisma.sql`
         SELECT EXISTS (
@@ -50,7 +40,8 @@ export class StreakRepository {
           WHERE "organizationId" = ${orgId}
             AND "publishedAt" IS NOT NULL
             AND "state" = CAST(${State.PUBLISHED} AS "State")
-            AND (${localTimestamp})::date = CAST(${localDate} AS date)
+            AND "publishedAt" >= ${start}
+            AND "publishedAt" < ${end}
         ) AS "exists"
       `
     );

@@ -1,6 +1,19 @@
 import { continueAsNew, proxyActivities, sleep } from '@temporalio/workflow';
 import type { EmailActivity } from '@gitroom/orchestrator/activities/email.activity';
 
+type SerializedSchedule = Awaited<
+  ReturnType<EmailActivity['getStreakReminderSchedule']>
+>;
+
+function isSameSchedule(first: SerializedSchedule, second: SerializedSchedule) {
+  return (
+    first.targetLocalDate === second.targetLocalDate &&
+    first.reminderAt === second.reminderAt &&
+    first.midnightAt === second.midnightAt &&
+    first.timezone === second.timezone
+  );
+}
+
 const { getStreakReminderSchedule, hasPublishedOnLocalDate } =
   proxyActivities<EmailActivity>({
     startToCloseTimeout: '10 minute',
@@ -42,6 +55,13 @@ export async function personalStreakReminderWorkflow({
   if (!currentSchedule.enabled || !currentSchedule.active) {
     return;
   }
+  if (!isSameSchedule(schedule, currentSchedule)) {
+    await continueAsNew<typeof personalStreakReminderWorkflow>({
+      organizationId,
+      userId,
+    });
+    return;
+  }
 
   const publishedAtReminder = await hasPublishedOnLocalDate(
     organizationId,
@@ -66,4 +86,5 @@ export async function personalStreakReminderWorkflow({
     organizationId,
     userId,
   });
+  return;
 }

@@ -64,30 +64,25 @@ describe('StreakRepository.getDistinctPublicationDates', () => {
   });
 });
 
-describe('StreakRepository.hasPublishedOnLocalDate', () => {
-  it('parameterizes the user zone, organization, state, and local date', async () => {
+describe('StreakRepository.hasPublishedBetween', () => {
+  it('uses direct indexed UTC range predicates', async () => {
     const queryRaw = vi.fn().mockResolvedValue([{ exists: true }]);
     const repository = new StreakRepository({ $queryRaw: queryRaw } as any);
+    const start = new Date('2026-03-08T05:00:00.000Z');
+    const end = new Date('2026-03-09T04:00:00.000Z');
 
     await expect(
-      repository.hasPublishedOnLocalDate('org-1', '2026-07-29', {
-        kind: 'iana',
-        name: 'Europe/Moscow',
-        label: 'Europe/Moscow',
-      })
+      repository.hasPublishedBetween('org-1', start, end)
     ).resolves.toBe(true);
 
     const query = queryRaw.mock.calls[0][0] as SqlQuery;
-    expect(query.values).toEqual([
-      'org-1',
-      'PUBLISHED',
-      'Europe/Moscow',
-      'UTC',
-      '2026-07-29',
-    ]);
+    expect(query.values).toEqual(['org-1', 'PUBLISHED', start, end]);
     expect(query.sql).toContain('SELECT EXISTS');
-    expect(query.sql).toContain('::date = CAST(? AS date)');
-    expect(query.sql).not.toContain('Europe/Moscow');
+    expect(query.sql).toContain('"publishedAt" >= ?');
+    expect(query.sql).toContain('"publishedAt" < ?');
+    expect(query.sql).not.toContain('timezone(');
+    expect(query.sql).not.toContain('make_interval');
+    expect(query.sql).not.toContain('::date');
     expect(query.sql).not.toContain('org-1');
   });
 });

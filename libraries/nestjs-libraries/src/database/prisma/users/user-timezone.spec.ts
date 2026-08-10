@@ -147,6 +147,22 @@ describe('UsersRepository streak reminder users', () => {
       }),
     });
   });
+
+  it('enumerates every enabled organization membership for timezone replacement', () => {
+    const model = { userOrganization: { findMany: vi.fn() } };
+    const repository = new UsersRepository({ model } as any);
+
+    repository.getEnabledReminderOrganizations('user-1');
+
+    expect(model.userOrganization.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        disabled: false,
+        user: { activated: true },
+      },
+      select: { organizationId: true },
+    });
+  });
 });
 
 describe('UsersService.updateTimezone', () => {
@@ -197,5 +213,23 @@ describe('UsersService.updateTimezone', () => {
       'America/New_York'
     );
     expect(result).toBe(normalizedResult);
+  });
+});
+
+describe('UsersService reminder organizations', () => {
+  it('delegates enabled membership enumeration to the repository', () => {
+    const repository = {
+      getEnabledReminderOrganizations: vi
+        .fn()
+        .mockReturnValue([{ organizationId: 'org-1' }]),
+    };
+    const service = new UsersService(repository as any, {} as any);
+
+    expect(service.getEnabledReminderOrganizations('user-1')).toEqual([
+      { organizationId: 'org-1' },
+    ]);
+    expect(repository.getEnabledReminderOrganizations).toHaveBeenCalledWith(
+      'user-1'
+    );
   });
 });

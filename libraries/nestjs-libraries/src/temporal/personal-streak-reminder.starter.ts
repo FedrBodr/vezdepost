@@ -34,14 +34,38 @@ export class PersonalStreakReminderStarter {
     const users = await this._usersService.getEnabledOrganizationUsers(
       organizationId
     );
-    for (const user of users) {
-      try {
-        await this.startForUser(organizationId, user.id);
-      } catch {
+    await this.startAll(
+      users.map(({ id: userId }) => ({ organizationId, userId }))
+    );
+  }
+
+  async startForUserOrganizations(userId: string) {
+    const organizations =
+      await this._usersService.getEnabledReminderOrganizations(userId);
+    await this.startAll(
+      organizations.map(({ organizationId }) => ({ organizationId, userId }))
+    );
+  }
+
+  private async startAll(
+    targets: Array<{ organizationId: string; userId: string }>
+  ) {
+    const results = await Promise.allSettled(
+      targets.map(({ organizationId, userId }) => {
+        try {
+          return Promise.resolve(this.startForUser(organizationId, userId));
+        } catch (error) {
+          return Promise.reject(error);
+        }
+      })
+    );
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const { organizationId, userId } = targets[index];
         this._logger.error(
-          `Failed to start streak reminder organizationId=${organizationId} userId=${user.id}`
+          `Failed to start streak reminder organizationId=${organizationId} userId=${userId}`
         );
       }
-    }
+    });
   }
 }

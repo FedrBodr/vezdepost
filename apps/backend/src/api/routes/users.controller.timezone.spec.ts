@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UsersController } from './users.controller';
 
-function createController(startForUser = vi.fn().mockResolvedValue(undefined)) {
+function createController(
+  startForUserOrganizations = vi.fn().mockResolvedValue(undefined)
+) {
   const userService = {
     updateTimezone: vi
       .fn()
       .mockResolvedValue({ timezoneName: 'America/New_York' }),
   };
-  const reminderStarter = { startForUser };
+  const reminderStarter = { startForUserOrganizations };
   const controller = new UsersController(
     {} as any,
     {} as any,
@@ -27,38 +29,35 @@ describe('UsersController.updateTimezone reminder replacement', () => {
     const { controller, userService, reminderStarter } = createController();
 
     await expect(
-      controller.updateTimezone(
-        { id: 'user-1' } as any,
-        { id: 'org-1' } as any,
-        { timezoneName: 'US/Eastern' }
-      )
+      controller.updateTimezone({ id: 'user-1' } as any, {
+        timezoneName: 'US/Eastern',
+      })
     ).resolves.toEqual({ timezoneName: 'America/New_York' });
 
     expect(userService.updateTimezone).toHaveBeenCalledWith(
       'user-1',
       'US/Eastern'
     );
-    expect(reminderStarter.startForUser).toHaveBeenCalledWith(
-      'org-1',
+    expect(reminderStarter.startForUserOrganizations).toHaveBeenCalledWith(
       'user-1'
     );
     expect(userService.updateTimezone.mock.invocationCallOrder[0]).toBeLessThan(
-      reminderStarter.startForUser.mock.invocationCallOrder[0]
+      reminderStarter.startForUserOrganizations.mock.invocationCallOrder[0]
     );
   });
 
   it('keeps a valid persisted timezone when reminder replacement fails', async () => {
-    const startForUser = vi
+    const startForUserOrganizations = vi
       .fn()
       .mockRejectedValue(new Error('Temporal unavailable'));
-    const { controller, userService } = createController(startForUser);
+    const { controller, userService } = createController(
+      startForUserOrganizations
+    );
 
     await expect(
-      controller.updateTimezone(
-        { id: 'user-1' } as any,
-        { id: 'org-1' } as any,
-        { timezoneName: 'America/New_York' }
-      )
+      controller.updateTimezone({ id: 'user-1' } as any, {
+        timezoneName: 'America/New_York',
+      })
     ).resolves.toEqual({ timezoneName: 'America/New_York' });
 
     expect(userService.updateTimezone).toHaveBeenCalledTimes(1);
