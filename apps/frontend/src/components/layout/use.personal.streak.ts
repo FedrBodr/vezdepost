@@ -13,11 +13,22 @@ export type PersonalStreak = {
 };
 
 const MAXIMUM_TIMEOUT = 2_147_483_647;
+const TIMEZONE_RETRY_DELAY = 1_000;
+const MAXIMUM_TIMEZONE_RETRY_DELAY = 30_000;
+const MAXIMUM_TIMEZONE_ATTEMPTS = 5;
+
+class NonRetryableTimezoneError extends Error {}
 
 export const usePersonalStreak = () => {
   const fetch = useFetch();
   const loadStreak = useCallback(
-    async (path: string) => await (await fetch(path)).json(),
+    async (path: string) => {
+      const response = await fetch(path);
+      if (!response.ok) {
+        throw new Error(`Could not load personal streak (${response.status})`);
+      }
+      return await response.json();
+    },
     [fetch]
   );
   const response = useSWR<PersonalStreak>('/user/streak', loadStreak, {
@@ -55,6 +66,10 @@ export const usePersonalStreak = () => {
 };
 
 const isValidIanaTimezone = (timezone: string) => {
+  if (timezone.startsWith('+') || timezone.startsWith('-')) {
+    return false;
+  }
+
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
     return true;
@@ -69,46 +84,78 @@ export const useUserTimezoneSync = (
 ) => {
   const fetch = useFetch();
   const { mutate } = useSWRConfig();
-  const requestedTimezone = useRef<string | null>(null);
+  const requestVersion = useRef(0);
+  const browserTimezone = getTimezone();
 
   useEffect(() => {
-    if (timezoneName === undefined) {
-      return;
-    }
-
-    const browserTimezone = getTimezone();
+    const version = ++requestVersion.current;
     if (
+      timezoneName === undefined ||
       !browserTimezone ||
       !isValidIanaTimezone(browserTimezone) ||
       browserTimezone === timezoneName
     ) {
-      if (browserTimezone === timezoneName) {
-        requestedTimezone.current = null;
+      return;
+    }
+
+    const controller = new AbortController();
+    let stopped = false;
+    let attempt = 0;
+    let retryTimeout: ReturnType<typeof setTimeout>;
+
+    const scheduleRetry = (error: unknown) => {
+      if (
+        stopped ||
+        version !== requestVersion.current ||
+        error instanceof NonRetryableTimezoneError ||
+        attempt >= MAXIMUM_TIMEZONE_ATTEMPTS
+      ) {
+        return;
       }
-      return;
-    }
 
-    if (requestedTimezone.current === browserTimezone) {
-      return;
-    }
-    requestedTimezone.current = browserTimezone;
+      const delay = Math.min(
+        TIMEZONE_RETRY_DELAY * 2 ** (attempt - 1),
+        MAXIMUM_TIMEZONE_RETRY_DELAY
+      );
+      retryTimeout = setTimeout(syncTimezone, delay);
+    };
 
-    void (async () => {
+    const syncTimezone = async () => {
+      attempt += 1;
       try {
         const response = await fetch('/user/timezone', {
           method: 'PUT',
           body: JSON.stringify({ timezoneName: browserTimezone }),
+          signal: controller.signal,
         });
         if (!response.ok) {
+          if (
+            response.status >= 400 &&
+            response.status < 500 &&
+            response.status !== 408 &&
+            response.status !== 429
+          ) {
+            throw new NonRetryableTimezoneError(
+              'Could not update user timezone'
+            );
+          }
           throw new Error('Could not update user timezone');
         }
 
-        await Promise.all([mutateUser(), mutate('/user/streak')]);
-      } catch {
-        if (requestedTimezone.current === browserTimezone) {
-          requestedTimezone.current = null;
+        if (stopped || version !== requestVersion.current) {
+          return;
         }
+        await Promise.allSettled([mutateUser(), mutate('/user/streak')]);
+      } catch (error) {
+        scheduleRetry(error);
       }
-    })();
-  }, [fetch, mutate, mutateUser, timezoneName]);
+    };
+
+    void syncTimezone();
+    return () => {
+      stopped = true;
+      controller.abort();
+      clearTimeout(retryTimeout);
+    };
+  }, [browserTimezone, fetch, mutate, mutateUser, timezoneName]);
 };

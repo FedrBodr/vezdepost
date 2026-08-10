@@ -1,13 +1,10 @@
 // @vitest-environment jsdom
 
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen } from '@testing-library/react';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StreakComponent } from './streak.component';
-import {
-  usePersonalStreak,
-  useUserTimezoneSync,
-} from './use.personal.streak';
+import { usePersonalStreak, useUserTimezoneSync } from './use.personal.streak';
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -48,9 +45,16 @@ describe('StreakComponent', () => {
     render(<StreakComponent />);
 
     expect(screen.getByText('3')).toBeTruthy();
-    expect(
-      screen.getByText('3').parentElement?.getAttribute('data-tooltip-content')
-    ).toBe("You're on a 3 day posting streak! Keep it going!");
+    const indicator = screen.getByLabelText(
+      "You're on a 3 day posting streak! Keep it going!"
+    );
+    expect(indicator.getAttribute('data-tooltip-content')).toBe(
+      "You're on a 3 day posting streak! Keep it going!"
+    );
+    expect(indicator.getAttribute('tabindex')).toBe('0');
+    expect(indicator.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
+      'true'
+    );
   });
 
   it('renders nothing when the streak is zero', () => {
@@ -92,6 +96,22 @@ describe('usePersonalStreak', () => {
     );
   });
 
+  it('throws non-successful streak responses for SWR retry handling', async () => {
+    mocks.fetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: vi.fn(),
+    });
+    mocks.useSWR.mockReturnValue({ data: undefined, mutate: vi.fn() });
+
+    renderHook(() => usePersonalStreak());
+    const loadStreak = mocks.useSWR.mock.calls[0][1];
+
+    await expect(loadStreak('/user/streak')).rejects.toThrow(
+      'Could not load personal streak (503)'
+    );
+  });
+
   it('revalidates exactly when nextChangeAt is reached', () => {
     const mutate = vi.fn();
     mocks.useSWR.mockReturnValue({
@@ -113,7 +133,9 @@ describe('usePersonalStreak', () => {
     const maximumTimeout = 2_147_483_647;
     mocks.useSWR.mockReturnValue({
       data: streak({
-        nextChangeAt: new Date(Date.now() + maximumTimeout + 1_000).toISOString(),
+        nextChangeAt: new Date(
+          Date.now() + maximumTimeout + 1_000
+        ).toISOString(),
       }),
       mutate,
     });
@@ -126,14 +148,47 @@ describe('usePersonalStreak', () => {
     act(() => vi.advanceTimersByTime(1_000));
     expect(mutate).toHaveBeenCalledTimes(1);
   });
+
+  it('cancels the previous boundary when nextChangeAt changes', () => {
+    const mutate = vi.fn();
+    let data = streak({ nextChangeAt: '2026-08-10T21:00:00.000Z' });
+    mocks.useSWR.mockImplementation(() => ({ data, mutate }));
+    const { rerender } = renderHook(() => usePersonalStreak());
+
+    data = streak({ nextChangeAt: '2026-08-10T21:00:01.000Z' });
+    rerender();
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(mutate).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels boundary revalidation on unmount', () => {
+    const mutate = vi.fn();
+    mocks.useSWR.mockReturnValue({
+      data: streak({ nextChangeAt: '2026-08-10T21:00:00.000Z' }),
+      mutate,
+    });
+    const { unmount } = renderHook(() => usePersonalStreak());
+
+    unmount();
+    act(() => vi.advanceTimersByTime(1_000));
+
+    expect(mutate).not.toHaveBeenCalled();
+  });
 });
 
 describe('useUserTimezoneSync', () => {
   beforeEach(() => {
-    vi.useRealTimers();
+    vi.useFakeTimers();
     mocks.fetch.mockReset();
     mocks.getTimezone.mockReset();
     mocks.mutateCache.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('updates a changed browser zone once and revalidates user and streak', async () => {
@@ -146,18 +201,41 @@ describe('useUserTimezoneSync', () => {
       { initialProps: { timezoneName: 'UTC' as string | null } }
     );
 
-    await waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
+    await act(async () => Promise.resolve());
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
     rerender({ timezoneName: 'UTC' });
 
-    await waitFor(() => {
-      expect(mocks.fetch).toHaveBeenCalledWith('/user/timezone', {
+    await act(async () => Promise.resolve());
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      '/user/timezone',
+      expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({ timezoneName: 'Europe/Moscow' }),
-      });
-      expect(mutateUser).toHaveBeenCalledTimes(1);
-      expect(mocks.mutateCache).toHaveBeenCalledWith('/user/streak');
-    });
+      })
+    );
+    expect(mutateUser).toHaveBeenCalledTimes(1);
+    expect(mocks.mutateCache).toHaveBeenCalledWith('/user/streak');
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a transient update failure without another render', async () => {
+    const mutateUser = vi.fn().mockResolvedValue(undefined);
+    mocks.getTimezone.mockReturnValue('Europe/Moscow');
+    mocks.fetch
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({ ok: true });
+
+    renderHook(() => useUserTimezoneSync('UTC', mutateUser));
+    await act(async () => Promise.resolve());
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(mutateUser).toHaveBeenCalledTimes(1);
+    expect(mocks.mutateCache).toHaveBeenCalledWith('/user/streak');
   });
 
   it('does not update when the stored and browser zones match', async () => {
@@ -170,5 +248,50 @@ describe('useUserTimezoneSync', () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
     expect(mutateUser).not.toHaveBeenCalled();
     expect(mocks.mutateCache).not.toHaveBeenCalled();
+  });
+
+  it.each(['+05:30', '-05:30'])(
+    'does not send raw offset identifiers: %s',
+    async (browserTimezone) => {
+      mocks.getTimezone.mockReturnValue(browserTimezone);
+
+      renderHook(() => useUserTimezoneSync('UTC', vi.fn()));
+      await act(async () => Promise.resolve());
+
+      expect(mocks.fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it('aborts an older zone request and only applies the latest result', async () => {
+    let resolveFirstRequest: (response: { ok: boolean }) => void = () => {};
+    const firstRequest = new Promise<{ ok: boolean }>((resolve) => {
+      resolveFirstRequest = resolve;
+    });
+    const mutateUser = vi.fn().mockResolvedValue(undefined);
+    mocks.getTimezone.mockReturnValue('Europe/Moscow');
+    mocks.fetch
+      .mockReturnValueOnce(firstRequest)
+      .mockResolvedValueOnce({ ok: true });
+
+    const { rerender } = renderHook(() =>
+      useUserTimezoneSync('UTC', mutateUser)
+    );
+    await act(async () => Promise.resolve());
+    const firstSignal = mocks.fetch.mock.calls[0][1].signal as AbortSignal;
+
+    mocks.getTimezone.mockReturnValue('America/New_York');
+    rerender();
+    await act(async () => Promise.resolve());
+
+    expect(firstSignal.aborted).toBe(true);
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(mocks.fetch.mock.calls[1][1].body).toBe(
+      JSON.stringify({ timezoneName: 'America/New_York' })
+    );
+
+    resolveFirstRequest({ ok: true });
+    await act(async () => Promise.resolve());
+    expect(mutateUser).toHaveBeenCalledTimes(1);
+    expect(mocks.mutateCache).toHaveBeenCalledTimes(1);
   });
 });
