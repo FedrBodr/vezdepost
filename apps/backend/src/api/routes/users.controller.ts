@@ -36,6 +36,7 @@ import {
   Sections,
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { UserTimezoneDto } from '@gitroom/nestjs-libraries/dtos/users/user-timezone.dto';
+import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.service';
 
 @ApiTags('User')
 @Controller('/user')
@@ -46,7 +47,8 @@ export class UsersController {
     private _authService: AuthService,
     private _orgService: OrganizationService,
     private _userService: UsersService,
-    private _trackService: TrackService
+    private _trackService: TrackService,
+    private _streakService: StreakService
   ) {}
 
   @Get('/chatbase-token')
@@ -140,6 +142,14 @@ export class UsersController {
           ? organization?.apiKey
           : '',
     };
+  }
+
+  @Get('/streak')
+  async getStreak(
+    @GetUserFromRequest() user: User,
+    @GetOrgFromRequest() organization: Organization
+  ) {
+    return this._streakService.getPersonalStreak(user, organization.id);
   }
 
   @Get('/personal')
