@@ -436,6 +436,7 @@ model Post {
   @@index([publishedAt])
   @@index([state])
   @@index([organizationId])
+  @@index([organizationId, state, publishedAt])
   @@index([parentPostId])
   @@index([submittedForOrderId])
   @@index([intervalInDays])

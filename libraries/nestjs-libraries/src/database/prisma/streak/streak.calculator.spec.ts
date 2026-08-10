@@ -117,6 +117,24 @@ describe('calculatePersonalStreak', () => {
     });
   });
 
+  it('uses the first actual instant of a local date when midnight is skipped', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-04T16:00:00.000Z'));
+
+    expect(
+      calculatePersonalStreak(['2026-09-04'], new Date(), {
+        kind: 'iana',
+        name: 'America/Santiago',
+        label: 'America/Santiago',
+      })
+    ).toEqual({
+      days: 1,
+      timezone: 'America/Santiago',
+      lastPublishedLocalDate: '2026-09-04',
+      nextChangeAt: '2026-09-06T04:00:00.000Z',
+    });
+  });
+
   it('supports a legacy fractional fixed offset', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-28T19:00:00.000Z'));

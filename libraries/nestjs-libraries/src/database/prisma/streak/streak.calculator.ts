@@ -120,29 +120,24 @@ function getUtcAtLocalMidnight(
     );
   }
 
-  const desiredLocalTime = Date.UTC(parts.year, parts.month - 1, parts.day);
-  let candidate = desiredLocalTime;
+  let lowerBound = Date.UTC(parts.year, parts.month - 1, parts.day - 2);
+  let upperBound = Date.UTC(parts.year, parts.month - 1, parts.day + 2);
 
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const local = getIanaDateTimeParts(new Date(candidate), timezone.name);
-    const representedAsUtc = Date.UTC(
-      local.year,
-      local.month - 1,
-      local.day,
-      local.hour,
-      local.minute,
-      local.second
+  while (lowerBound < upperBound) {
+    const candidate =
+      lowerBound + Math.floor((upperBound - lowerBound) / 2);
+    const candidateLocalDate = formatCalendarDate(
+      getIanaDateTimeParts(new Date(candidate), timezone.name)
     );
-    const adjustment = desiredLocalTime - representedAsUtc;
 
-    if (adjustment === 0) {
-      break;
+    if (candidateLocalDate < calendarDate) {
+      lowerBound = candidate + 1;
+    } else {
+      upperBound = candidate;
     }
-
-    candidate += adjustment;
   }
 
-  return new Date(candidate);
+  return new Date(lowerBound);
 }
 
 function normalizeDates(localDates: string[]) {

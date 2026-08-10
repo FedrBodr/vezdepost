@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { UserCalendarZone } from '../users/user-timezone';
 import { StreakRepository } from './streak.repository';
@@ -56,9 +57,22 @@ describe('StreakRepository.getDistinctPublicationDates', () => {
 
     const query = queryRaw.mock.calls[0][0] as SqlQuery;
     expect(query.values).toEqual([330, 'org-offset', 'PUBLISHED']);
-    expect(query.sql).toContain('make_interval(mins => ?)');
+    expect(query.sql).toContain('make_interval(mins => CAST(? AS int4))');
     expect(query.sql).toContain('::date');
     expect(query.sql).not.toContain('330');
     expect(query.sql).not.toContain('org-offset');
+  });
+});
+
+describe('Post streak query index', () => {
+  it('indexes organization, state, and publication timestamp together', () => {
+    const schema = readFileSync(new URL('../schema.prisma', import.meta.url), {
+      encoding: 'utf8',
+    });
+    const postModel = schema.match(/model Post \{[\s\S]*?\n\}/)?.[0];
+
+    expect(postModel).toContain(
+      '@@index([organizationId, state, publishedAt])'
+    );
   });
 });

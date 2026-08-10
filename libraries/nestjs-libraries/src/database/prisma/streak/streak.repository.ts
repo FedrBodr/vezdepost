@@ -16,7 +16,7 @@ export class StreakRepository {
         ? Prisma.sql`timezone(${
             timezone.name
           }, "publishedAt" AT TIME ZONE ${'UTC'})`
-        : Prisma.sql`"publishedAt" + make_interval(mins => ${timezone.minutes})`;
+        : Prisma.sql`"publishedAt" + make_interval(mins => CAST(${timezone.minutes} AS int4))`;
     const dates = await this._prisma.$queryRaw<Array<{ localDate: string }>>(
       Prisma.sql`
         SELECT DISTINCT (${localTimestamp})::date::text AS "localDate"
