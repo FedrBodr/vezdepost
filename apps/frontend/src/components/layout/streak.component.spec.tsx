@@ -250,6 +250,35 @@ describe('useUserTimezoneSync', () => {
     expect(mocks.mutateCache).not.toHaveBeenCalled();
   });
 
+  it('does not update when stored and browser zones are equivalent aliases', async () => {
+    mocks.getTimezone.mockReturnValue('US/Eastern');
+
+    renderHook(() => useUserTimezoneSync('America/New_York', vi.fn()));
+    await act(async () => Promise.resolve());
+
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it('sends the canonical browser zone and does not repeat after revalidation', async () => {
+    const mutateUser = vi.fn().mockResolvedValue(undefined);
+    mocks.getTimezone.mockReturnValue('US/Eastern');
+    mocks.fetch.mockResolvedValue({ ok: true });
+
+    const { rerender } = renderHook(
+      ({ timezoneName }) => useUserTimezoneSync(timezoneName, mutateUser),
+      { initialProps: { timezoneName: 'UTC' as string | null } }
+    );
+    await act(async () => Promise.resolve());
+
+    expect(mocks.fetch.mock.calls[0][1].body).toBe(
+      JSON.stringify({ timezoneName: 'America/New_York' })
+    );
+
+    rerender({ timezoneName: 'America/New_York' });
+    await act(async () => Promise.resolve());
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['+05:30', '-05:30'])(
     'does not send raw offset identifiers: %s',
     async (browserTimezone) => {
@@ -293,5 +322,75 @@ describe('useUserTimezoneSync', () => {
     await act(async () => Promise.resolve());
     expect(mutateUser).toHaveBeenCalledTimes(1);
     expect(mocks.mutateCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a pending timezone retry on unmount', async () => {
+    mocks.getTimezone.mockReturnValue('Europe/Moscow');
+    mocks.fetch.mockRejectedValue(new Error('network down'));
+    const { unmount } = renderHook(() => useUserTimezoneSync('UTC', vi.fn()));
+    await act(async () => Promise.resolve());
+
+    unmount();
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears an older retry when the browser zone changes', async () => {
+    mocks.getTimezone.mockReturnValue('Europe/Moscow');
+    mocks.fetch
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({ ok: true });
+    const { rerender } = renderHook(() =>
+      useUserTimezoneSync('UTC', vi.fn().mockResolvedValue(undefined))
+    );
+    await act(async () => Promise.resolve());
+
+    mocks.getTimezone.mockReturnValue('America/New_York');
+    rerender();
+    await act(async () => Promise.resolve());
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry a non-retryable client response', async () => {
+    mocks.getTimezone.mockReturnValue('Europe/Moscow');
+    mocks.fetch.mockResolvedValue({ ok: false, status: 400 });
+
+    renderHook(() => useUserTimezoneSync('UTC', vi.fn()));
+    await act(async () => Promise.resolve());
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+    });
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops retrying after the configured attempt limit', async () => {
+    mocks.getTimezone.mockReturnValue('Europe/Moscow');
+    mocks.fetch.mockRejectedValue(new Error('network down'));
+
+    renderHook(() => useUserTimezoneSync('UTC', vi.fn()));
+    await act(async () => Promise.resolve());
+    for (const delay of [1_000, 2_000, 4_000, 8_000]) {
+      await act(async () => {
+        vi.advanceTimersByTime(delay);
+        await Promise.resolve();
+      });
+    }
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+      await Promise.resolve();
+    });
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(5);
   });
 });

@@ -65,16 +65,17 @@ export const usePersonalStreak = () => {
   return response;
 };
 
-const isValidIanaTimezone = (timezone: string) => {
+const canonicalizeIanaTimezone = (timezone: string) => {
   if (timezone.startsWith('+') || timezone.startsWith('-')) {
-    return false;
+    return null;
   }
 
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
-    return true;
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+    }).resolvedOptions().timeZone;
   } catch {
-    return false;
+    return null;
   }
 };
 
@@ -85,15 +86,18 @@ export const useUserTimezoneSync = (
   const fetch = useFetch();
   const { mutate } = useSWRConfig();
   const requestVersion = useRef(0);
-  const browserTimezone = getTimezone();
+  const browserTimezone = canonicalizeIanaTimezone(getTimezone());
+  const storedTimezone =
+    timezoneName === null || timezoneName === undefined
+      ? timezoneName
+      : canonicalizeIanaTimezone(timezoneName);
 
   useEffect(() => {
     const version = ++requestVersion.current;
     if (
-      timezoneName === undefined ||
+      storedTimezone === undefined ||
       !browserTimezone ||
-      !isValidIanaTimezone(browserTimezone) ||
-      browserTimezone === timezoneName
+      browserTimezone === storedTimezone
     ) {
       return;
     }
@@ -157,5 +161,5 @@ export const useUserTimezoneSync = (
       controller.abort();
       clearTimeout(retryTimeout);
     };
-  }, [browserTimezone, fetch, mutate, mutateUser, timezoneName]);
+  }, [browserTimezone, fetch, mutate, mutateUser, storedTimezone]);
 };
