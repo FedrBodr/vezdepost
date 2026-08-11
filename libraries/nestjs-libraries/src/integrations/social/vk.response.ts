@@ -30,3 +30,29 @@ export function unwrapVkResponse<T>(payload: unknown, method: string): T {
   }
   return envelope.response;
 }
+
+export function parseVkPositiveIntegerId(
+  value: unknown,
+  method: string,
+  field: string
+): string {
+  if (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value > 0
+  ) {
+    return String(value);
+  }
+
+  if (typeof value === 'string' && /^\d+$/.test(value) && /[1-9]/.test(value)) {
+    return value;
+  }
+
+  throw new BadBody(
+    'vk',
+    '{}',
+    {} as BodyInit,
+    `VK ${method} returned invalid ${field}`
+  );
+}

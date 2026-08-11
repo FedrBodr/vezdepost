@@ -3,14 +3,14 @@ import {
   normalizeVkGroupIdentifier,
   VkGroupProvider,
 } from './vk.group.provider';
+import { BadBody } from '../social.abstract';
 
 const token = 'vk-community-secret-token';
 
 const encodedCredentials = (
   group: unknown = 'https://vk.com/fedrbodr_pro',
   accessToken: unknown = token
-) =>
-  Buffer.from(JSON.stringify({ group, accessToken })).toString('base64');
+) => Buffer.from(JSON.stringify({ group, accessToken })).toString('base64');
 
 const response = (body: unknown) =>
   Promise.resolve({ json: async () => body } as Response);
@@ -197,9 +197,7 @@ describe('VkGroupProvider community credentials', () => {
       .mockImplementationOnce(() =>
         response({ response: { groups: [{ id: 123, name: 'Requested' }] } })
       )
-      .mockImplementationOnce(() =>
-        response({ response: { permissions } })
-      );
+      .mockImplementationOnce(() => response({ response: { permissions } }));
 
     const result = await provider.authenticate({
       code: encodedCredentials(),
@@ -298,10 +296,45 @@ describe('VkGroupProvider text-only publishing', () => {
     expect(JSON.stringify(thrown)).not.toContain('error_code');
   });
 
-  it('creates text comments as the community without attachments', async () => {
-    const fetchMock = vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
-      response({ response: { comment_id: 456 } })
+  it.each([
+    [{ malicious: true }, 'object'],
+    [true, 'boolean'],
+    [0, 'zero'],
+    [-1, 'negative'],
+    [1.5, 'fractional'],
+    ['', 'empty'],
+    ['abc', 'nonnumeric'],
+  ])('rejects a %s wall.post ID (%s)', async (postId) => {
+    vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+      response({ response: { post_id: postId } })
     );
+
+    await expect(
+      provider.post('-123', token, [
+        { id: 'postiz-post', message: 'Hello VK', settings: {} },
+      ])
+    ).rejects.toBeInstanceOf(BadBody);
+  });
+
+  it('preserves a digit-only wall.post ID without numeric conversion', async () => {
+    const postId = '90071992547409931234567890';
+    vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+      response({ response: { post_id: postId } })
+    );
+
+    await expect(
+      provider.post('-123', token, [
+        { id: 'postiz-post', message: 'Hello VK', settings: {} },
+      ])
+    ).resolves.toEqual([expect.objectContaining({ postId })]);
+  });
+
+  it('creates text comments as the community without attachments', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({ response: { comment_id: 456 } })
+      );
 
     const result = await provider.comment(
       '-123',
@@ -334,5 +367,30 @@ describe('VkGroupProvider text-only publishing', () => {
     expect(body.get('post_id')).toBe('789');
     expect(body.get('message')).toBe('A reply');
     expect(body.has('attachments')).toBe(false);
+  });
+
+  it.each([
+    [{ malicious: true }, 'object'],
+    [false, 'boolean'],
+    [0, 'zero'],
+    [-1, 'negative'],
+    [2.5, 'fractional'],
+    ['', 'empty'],
+    ['not-an-id', 'nonnumeric'],
+  ])('rejects a %s wall.createComment ID (%s)', async (commentId) => {
+    vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+      response({ response: { comment_id: commentId } })
+    );
+
+    await expect(
+      provider.comment(
+        '-123',
+        '789',
+        undefined,
+        token,
+        [{ id: 'postiz-comment', message: 'A reply', settings: {} }],
+        {} as any
+      )
+    ).rejects.toBeInstanceOf(BadBody);
   });
 });

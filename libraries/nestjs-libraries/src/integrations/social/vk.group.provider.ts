@@ -12,6 +12,7 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { Integration } from '@prisma/client';
 import dayjs from 'dayjs';
+import { parseVkPositiveIntegerId } from './vk.response';
 
 const INVALID_GROUP = 'Enter a valid VK community link or short name.';
 const INVALID_TOKEN = 'The VK community token is invalid.';
@@ -70,10 +71,7 @@ export function normalizeVkGroupIdentifier(value: string): string | null {
   return /^[a-zA-Z0-9_.-]+$/.test(candidate) ? candidate : null;
 }
 
-export class VkGroupProvider
-  extends SocialAbstract
-  implements SocialProvider
-{
+export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2;
   identifier = 'vk-group';
   name = 'VK Group';
@@ -249,19 +247,19 @@ export class VkGroupProvider
     });
 
     if (wallPostResult?.error || !wallPostResult?.response) {
-      throw new BadBody(
-        this.identifier,
-        '{}',
-        '{}',
-        'VK post failed'
-      );
+      throw new BadBody(this.identifier, '{}', '{}', 'VK post failed');
     }
+    const publishedPostId = parseVkPositiveIntegerId(
+      wallPostResult.response.post_id,
+      'wall.post',
+      'post ID'
+    );
 
     return [
       {
         id: firstPost.id,
-        postId: String(wallPostResult.response.post_id),
-        releaseURL: `https://vk.com/wall${userId}_${wallPostResult.response.post_id}`,
+        postId: publishedPostId,
+        releaseURL: `https://vk.com/wall${userId}_${publishedPostId}`,
         status: 'completed',
       },
     ];
@@ -288,18 +286,18 @@ export class VkGroupProvider
     );
 
     if (wallCommentResult?.error || !wallCommentResult?.response) {
-      throw new BadBody(
-        this.identifier,
-        '{}',
-        '{}',
-        'VK comment failed'
-      );
+      throw new BadBody(this.identifier, '{}', '{}', 'VK comment failed');
     }
+    const publishedCommentId = parseVkPositiveIntegerId(
+      wallCommentResult.response.comment_id,
+      'wall.createComment',
+      'comment ID'
+    );
 
     return [
       {
         id: commentPost.id,
-        postId: String(wallCommentResult.response.comment_id),
+        postId: publishedCommentId,
         releaseURL: `https://vk.com/wall${userId}_${postId}`,
         status: 'completed',
       },

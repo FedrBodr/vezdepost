@@ -8,6 +8,7 @@ import {
   defineSignal,
   setHandler,
   log,
+  patched,
 } from '@temporalio/workflow';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
@@ -89,11 +90,7 @@ export async function postWorkflowV104({
 
   // in case doesn't exists for some reason, fail it
   if (!post) {
-    await changeState(
-      postId,
-      'ERROR',
-      'No Post'
-    );
+    await changeState(postId, 'ERROR', 'No Post');
     return;
   }
 
@@ -206,13 +203,15 @@ export async function postWorkflowV104({
           postsResults[i].releaseURL
         );
 
-        try {
-          await startPersonalStreakReminders(post.organizationId);
-        } catch {
-          log.error(
-            'Failed to start personal streak reminders after confirmed publication',
-            { organizationId: post.organizationId }
-          );
+        if (patched('start-personal-streak-reminders-after-published-v1')) {
+          try {
+            await startPersonalStreakReminders(post.organizationId);
+          } catch {
+            log.error(
+              'Failed to start personal streak reminders after confirmed publication',
+              { organizationId: post.organizationId }
+            );
+          }
         }
 
         if (i === 0) {

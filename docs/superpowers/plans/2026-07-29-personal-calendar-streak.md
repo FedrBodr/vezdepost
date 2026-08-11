@@ -475,7 +475,12 @@ Record this order in the handoff:
 
 1. deploy schema/application;
 2. run `docs/server-scripts/09-backfill-published-at.sh` once and record counts;
-3. reconnect the personal VK channel;
-4. publish one explicitly approved controlled media post;
-5. verify real `releaseId`, VK URL, `publishedAt`, and streak endpoint output;
-6. do not replay historical posts without separate approval.
+3. run `docs/server-scripts/15-retire-legacy-streak-workflows.sh` in its default
+   dry-run mode and review every exact workflow/run pair;
+4. before a controlled VK post, explicitly run the same script with `APPLY=1`
+   to terminate only the listed running `WorkflowType='streakWorkflow'`
+   executions, and record its result counts;
+5. reconnect the personal VK channel;
+6. publish one explicitly approved controlled media post;
+7. verify real `releaseId`, VK URL, `publishedAt`, and streak endpoint output;
+8. do not replay historical posts without separate approval.

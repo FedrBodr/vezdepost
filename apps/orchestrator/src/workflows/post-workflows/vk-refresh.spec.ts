@@ -17,6 +17,7 @@ const activities = vi.hoisted(() => ({
     postSocial: vi.fn(),
     postComment: vi.fn(),
     getIntegrationById: vi.fn(),
+    refreshToken: vi.fn(),
     refreshTokenWithCause: vi.fn(),
     internalPlugs: vi.fn(),
     globalPlugs: vi.fn(),
@@ -26,6 +27,7 @@ const activities = vi.hoisted(() => ({
 }));
 const proxyOptions = vi.hoisted(() => [] as Array<Record<string, any>>);
 const workflowLog = vi.hoisted(() => ({ error: vi.fn() }));
+const workflowPatch = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock('@temporalio/workflow', async (importOriginal) => {
   const temporal = await importOriginal<
@@ -42,11 +44,24 @@ vi.mock('@temporalio/workflow', async (importOriginal) => {
     defineSignal: vi.fn((name: string) => name),
     setHandler: vi.fn(),
     startChild: vi.fn(),
+    patched: vi.fn(() => workflowPatch.enabled),
     log: workflowLog,
   };
 });
 
+import { postWorkflowV101 } from './post.workflow.v1.0.1';
+import { postWorkflowV102 } from './post.workflow.v1.0.2';
+import { postWorkflowV103 } from './post.workflow.v1.0.3';
+import { postWorkflowV104 } from './post.workflow.v1.0.4';
 import { postWorkflowV105 } from './post.workflow.v1.0.5';
+
+const workflows = [
+  ['v1.0.1', postWorkflowV101],
+  ['v1.0.2', postWorkflowV102],
+  ['v1.0.3', postWorkflowV103],
+  ['v1.0.4', postWorkflowV104],
+  ['v1.0.5', postWorkflowV105],
+] as const;
 
 describe('VK workflow token refresh', () => {
   beforeEach(() => {
@@ -57,7 +72,86 @@ describe('VK workflow token refresh', () => {
       activity.mockReset();
     }
     workflowLog.error.mockReset();
+    workflowPatch.enabled = true;
   });
+
+  function prepareConfirmedPublication() {
+    const integration = {
+      id: 'integration-1',
+      internalId: 'vk-user-1',
+      organizationId: 'organization-1',
+      providerIdentifier: 'vk',
+      name: 'Personal VK',
+      token: 'token',
+      refreshNeeded: false,
+      disabled: false,
+    };
+    const post = {
+      id: 'post-1',
+      organizationId: 'organization-1',
+      state: 'QUEUE',
+      publishDate: new Date(0),
+      integration,
+      settings: '{}',
+    };
+
+    activities.main.getPost.mockResolvedValue(post);
+    activities.main.getPostsList.mockResolvedValue([post]);
+    activities.main.inAppNotification.mockResolvedValue(undefined);
+    activities.main.updatePost.mockResolvedValue(undefined);
+    activities.main.startPersonalStreakReminders.mockResolvedValue(undefined);
+    activities.main.sendWebhooks.mockResolvedValue(undefined);
+    activities.taskQueue.internalPlugs.mockResolvedValue([]);
+    activities.taskQueue.globalPlugs.mockResolvedValue([]);
+    activities.taskQueue.postSocial.mockResolvedValue([
+      {
+        postId: '77',
+        releaseURL: 'https://vk.com/feed?w=wallvk-user-1_77',
+        status: 'completed',
+      },
+    ]);
+
+    return post;
+  }
+
+  it.each(workflows)(
+    '%s skips the new reminder command while replaying history without the patch marker',
+    async (_version, workflow) => {
+      workflowPatch.enabled = false;
+      const post = prepareConfirmedPublication();
+
+      await workflow({
+        taskQueue: 'vk-personal',
+        postId: post.id,
+        organizationId: post.organizationId,
+        postNow: true,
+      });
+
+      expect(activities.main.updatePost).toHaveBeenCalledTimes(1);
+      expect(
+        activities.main.startPersonalStreakReminders
+      ).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(workflows)(
+    '%s schedules reminders for executions carrying the patch marker',
+    async (_version, workflow) => {
+      workflowPatch.enabled = true;
+      const post = prepareConfirmedPublication();
+
+      await workflow({
+        taskQueue: 'vk-personal',
+        postId: post.id,
+        organizationId: post.organizationId,
+        postNow: true,
+      });
+
+      expect(activities.main.startPersonalStreakReminders).toHaveBeenCalledWith(
+        'organization-1'
+      );
+    }
+  );
 
   it('uses a short single-attempt reminder startup activity', () => {
     expect(proxyOptions).toContainEqual(

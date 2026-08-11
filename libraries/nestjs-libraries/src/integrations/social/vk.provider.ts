@@ -16,7 +16,20 @@ import FormDataNew from 'form-data';
 import mime from 'mime-types';
 import { Integration } from '@prisma/client';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
-import { unwrapVkResponse } from './vk.response';
+import { parseVkPositiveIntegerId, unwrapVkResponse } from './vk.response';
+
+type VkOAuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+};
+
+type VkUserInfo = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  avatar: string;
+};
 
 export class VkProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2; // VK has moderate API limits
@@ -51,61 +64,136 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     return unwrapVkResponse<T>({ response: payload }, method);
   }
 
+  private badResponse(method: string, detail: string): never {
+    throw new BadBody(
+      'vk',
+      '{}',
+      {} as BodyInit,
+      `VK ${method} returned ${detail}`
+    );
+  }
+
+  private parseDeviceBoundValue(value: unknown, field: string) {
+    if (typeof value !== 'string') {
+      this.badResponse('oauth2/auth', `invalid ${field} or device ID`);
+    }
+    const [secret, deviceId] = value.split('&&&&');
+    if (!secret.trim() || !deviceId?.trim()) {
+      this.badResponse('oauth2/auth', `invalid ${field} or device ID`);
+    }
+    return { secret, deviceId };
+  }
+
+  private parseOAuthTokens(payload: unknown): VkOAuthTokens {
+    if (!payload || typeof payload !== 'object') {
+      this.badResponse('oauth2/auth', 'invalid token fields');
+    }
+
+    const value = payload as Record<string, unknown>;
+    if (
+      typeof value.access_token !== 'string' ||
+      !value.access_token.trim() ||
+      typeof value.refresh_token !== 'string' ||
+      !value.refresh_token.trim() ||
+      typeof value.expires_in !== 'number' ||
+      !Number.isFinite(value.expires_in) ||
+      !Number.isInteger(value.expires_in) ||
+      value.expires_in <= 0
+    ) {
+      this.badResponse('oauth2/auth', 'invalid token fields');
+    }
+
+    return {
+      accessToken: value.access_token,
+      refreshToken: value.refresh_token,
+      expiresIn: value.expires_in,
+    };
+  }
+
+  private parseUserInfo(payload: unknown): VkUserInfo {
+    if (!payload || typeof payload !== 'object') {
+      this.badResponse('oauth2/user_info', 'invalid user');
+    }
+
+    const user = (payload as Record<string, unknown>).user;
+    if (!user || typeof user !== 'object') {
+      this.badResponse('oauth2/user_info', 'invalid user');
+    }
+
+    const value = user as Record<string, unknown>;
+    const id = parseVkPositiveIntegerId(
+      value.user_id,
+      'oauth2/user_info',
+      'user ID'
+    );
+    if (
+      typeof value.first_name !== 'string' ||
+      !value.first_name ||
+      typeof value.last_name !== 'string' ||
+      !value.last_name ||
+      (value.avatar !== undefined && typeof value.avatar !== 'string')
+    ) {
+      this.badResponse('oauth2/user_info', 'invalid user');
+    }
+
+    return {
+      id,
+      firstName: value.first_name,
+      lastName: value.last_name,
+      avatar: typeof value.avatar === 'string' ? value.avatar : '',
+    };
+  }
+
   async refreshToken(refresh: string): Promise<AuthTokenDetails> {
-    const [oldRefreshToken, device_id] = refresh.split('&&&&');
+    const { secret: oldRefreshToken, deviceId } = this.parseDeviceBoundValue(
+      refresh,
+      'refresh token'
+    );
     const formData = new FormData();
     formData.append('grant_type', 'refresh_token');
     formData.append('refresh_token', oldRefreshToken);
     formData.append('client_id', process.env.VK_ID!);
-    formData.append('device_id', device_id);
+    formData.append('device_id', deviceId);
     formData.append('state', makeId(32));
     formData.append('scope', this.scopes.join(' '));
 
-    const { access_token, refresh_token, expires_in } = this.unwrapPayload<{
-      access_token: string;
-      refresh_token: string;
-      expires_in: number;
-    }>(
-      await (
-        await this.fetch('https://id.vk.com/oauth2/auth', {
-          method: 'POST',
-          body: formData,
-        })
-      ).json(),
-      'oauth2/auth'
+    const tokens = this.parseOAuthTokens(
+      this.unwrapPayload<unknown>(
+        await (
+          await this.fetch('https://id.vk.com/oauth2/auth', {
+            method: 'POST',
+            body: formData,
+          })
+        ).json(),
+        'oauth2/auth'
+      )
     );
 
     const newFormData = new FormData();
     newFormData.append('client_id', process.env.VK_ID!);
-    newFormData.append('access_token', access_token);
+    newFormData.append('access_token', tokens.accessToken);
 
-    const {
-      user: { user_id, first_name, last_name, avatar },
-    } = this.unwrapPayload<{
-      user: {
-        user_id: string;
-        first_name: string;
-        last_name: string;
-        avatar?: string;
-      };
-    }>(
-      await (
-        await this.fetch('https://id.vk.com/oauth2/user_info', {
-          method: 'POST',
-          body: newFormData,
-        })
-      ).json(),
-      'oauth2/user_info'
+    const user = this.parseUserInfo(
+      this.unwrapPayload<unknown>(
+        await (
+          await this.fetch('https://id.vk.com/oauth2/user_info', {
+            method: 'POST',
+            body: newFormData,
+          })
+        ).json(),
+        'oauth2/user_info'
+      )
     );
 
     return {
-      id: user_id,
-      name: first_name + ' ' + last_name,
-      accessToken: access_token,
-      refreshToken: refresh_token + '&&&&' + device_id,
-      expiresIn: dayjs().add(expires_in, 'seconds').unix() - dayjs().unix(),
-      picture: avatar || '',
-      username: first_name.toLowerCase(),
+      id: user.id,
+      name: user.firstName + ' ' + user.lastName,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken + '&&&&' + deviceId,
+      expiresIn:
+        dayjs().add(tokens.expiresIn, 'seconds').unix() - dayjs().unix(),
+      picture: user.avatar,
+      username: user.firstName.toLowerCase(),
     };
   }
 
@@ -146,13 +234,16 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     codeVerifier: string;
     refresh?: string;
   }) {
-    const [code, device_id] = params.code.split('&&&&');
+    const { secret: code, deviceId } = this.parseDeviceBoundValue(
+      params.code,
+      'authorization code'
+    );
 
     const formData = new FormData();
     formData.append('client_id', process.env.VK_ID!);
     formData.append('grant_type', 'authorization_code');
     formData.append('code_verifier', params.codeVerifier);
-    formData.append('device_id', device_id);
+    formData.append('device_id', deviceId);
     formData.append('code', code);
     formData.append(
       'redirect_uri',
@@ -163,13 +254,8 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       }/integrations/social/${this.identifier}`
     );
 
-    const { access_token, scope, refresh_token, expires_in } =
-      this.unwrapPayload<{
-        access_token: string;
-        scope?: string;
-        refresh_token: string;
-        expires_in: number;
-      }>(
+    const tokens = this.parseOAuthTokens(
+      this.unwrapPayload<unknown>(
         await (
           await this.fetch('https://id.vk.com/oauth2/auth', {
             method: 'POST',
@@ -177,39 +263,34 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
           })
         ).json(),
         'oauth2/auth'
-      );
+      )
+    );
 
     const newFormData = new FormData();
     newFormData.append('client_id', process.env.VK_ID!);
-    newFormData.append('access_token', access_token);
+    newFormData.append('access_token', tokens.accessToken);
 
-    const {
-      user: { user_id, first_name, last_name, avatar },
-    } = this.unwrapPayload<{
-      user: {
-        user_id: string;
-        first_name: string;
-        last_name: string;
-        avatar?: string;
-      };
-    }>(
-      await (
-        await this.fetch('https://id.vk.com/oauth2/user_info', {
-          method: 'POST',
-          body: newFormData,
-        })
-      ).json(),
-      'oauth2/user_info'
+    const user = this.parseUserInfo(
+      this.unwrapPayload<unknown>(
+        await (
+          await this.fetch('https://id.vk.com/oauth2/user_info', {
+            method: 'POST',
+            body: newFormData,
+          })
+        ).json(),
+        'oauth2/user_info'
+      )
     );
 
     return {
-      id: user_id,
-      name: first_name + ' ' + last_name,
-      accessToken: access_token,
-      refreshToken: refresh_token + '&&&&' + device_id,
-      expiresIn: dayjs().add(expires_in, 'seconds').unix() - dayjs().unix(),
-      picture: avatar || '',
-      username: first_name.toLowerCase(),
+      id: user.id,
+      name: user.firstName + ' ' + user.lastName,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken + '&&&&' + deviceId,
+      expiresIn:
+        dayjs().add(tokens.expiresIn, 'seconds').unix() - dayjs().unix(),
+      picture: user.avatar,
+      username: user.firstName.toLowerCase(),
     };
   }
 
@@ -368,15 +449,11 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       ).json(),
       'wall.post'
     );
-    const publishedPostId = String(wallPost.post_id ?? '').trim();
-    if (!publishedPostId) {
-      throw new BadBody(
-        'vk',
-        '{}',
-        {} as BodyInit,
-        'VK wall.post returned no post ID'
-      );
-    }
+    const publishedPostId = parseVkPositiveIntegerId(
+      wallPost.post_id,
+      'wall.post',
+      'post ID'
+    );
 
     return [
       {
@@ -424,15 +501,11 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       ).json(),
       'wall.createComment'
     );
-    const publishedCommentId = String(wallComment.comment_id ?? '').trim();
-    if (!publishedCommentId) {
-      throw new BadBody(
-        'vk',
-        '{}',
-        {} as BodyInit,
-        'VK wall.createComment returned no comment ID'
-      );
-    }
+    const publishedCommentId = parseVkPositiveIntegerId(
+      wallComment.comment_id,
+      'wall.createComment',
+      'comment ID'
+    );
 
     return [
       {

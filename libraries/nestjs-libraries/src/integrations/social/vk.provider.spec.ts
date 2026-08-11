@@ -169,6 +169,34 @@ describe('VkProvider verified publishing', () => {
     ).rejects.toBeInstanceOf(BadBody);
   });
 
+  it.each([
+    [{ malicious: true }, 'object'],
+    [true, 'boolean'],
+    [0, 'zero'],
+    [-1, 'negative'],
+    [1.5, 'fractional'],
+    ['abc', 'nonnumeric'],
+  ])('rejects a %s wall.post ID (%s)', async (postId) => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { post_id: postId } })
+    );
+
+    await expect(
+      provider.post('1', accessToken, [textPost])
+    ).rejects.toBeInstanceOf(BadBody);
+  });
+
+  it('preserves a valid digit-only wall.post ID without numeric conversion', async () => {
+    const postId = '90071992547409931234567890';
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { post_id: postId } })
+    );
+
+    await expect(provider.post('1', accessToken, [textPost])).resolves.toEqual([
+      expect.objectContaining({ postId }),
+    ]);
+  });
+
   it('rejects a wall.createComment response without comment_id', async () => {
     vi.spyOn(provider, 'fetch').mockResolvedValue(response({ response: {} }));
 
@@ -192,5 +220,158 @@ describe('VkProvider verified publishing', () => {
     await expect(
       provider.comment('1', '77', undefined, accessToken, [textPost], {} as any)
     ).rejects.toBeInstanceOf(BadBody);
+  });
+
+  it.each([
+    [{ malicious: true }, 'object'],
+    [false, 'boolean'],
+    [0, 'zero'],
+    [-1, 'negative'],
+    [2.5, 'fractional'],
+    ['not-an-id', 'nonnumeric'],
+  ])('rejects a %s wall.createComment ID (%s)', async (commentId) => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { comment_id: commentId } })
+    );
+
+    await expect(
+      provider.comment('1', '77', undefined, accessToken, [textPost], {} as any)
+    ).rejects.toBeInstanceOf(BadBody);
+  });
+});
+
+describe('VkProvider OAuth response validation', () => {
+  let provider: TestVkProvider;
+
+  beforeEach(() => {
+    provider = new TestVkProvider();
+    vi.clearAllMocks();
+  });
+
+  it('rejects a successful auth response without an access token before user_info', async () => {
+    const fetchMock = vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({
+        response: {
+          refresh_token: 'refresh-secret',
+          expires_in: 3600,
+        },
+      })
+    );
+
+    const request = provider.authenticate({
+      code: 'authorization-code&&&&device-1',
+      codeVerifier: 'verifier',
+    });
+
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, ['refresh-secret']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a successful refresh response without a refresh token', async () => {
+    const fetchMock = vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({
+        response: {
+          access_token: 'new-access-secret',
+          expires_in: 3600,
+        },
+      })
+    );
+
+    const request = provider.refreshToken('old-refresh-secret&&&&device-1');
+
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [
+      'old-refresh-secret',
+      'new-access-secret',
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a successful auth response without expires_in', async () => {
+    const fetchMock = vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({
+        response: {
+          access_token: 'new-access-secret',
+          refresh_token: 'new-refresh-secret',
+        },
+      })
+    );
+
+    const request = provider.authenticate({
+      code: 'authorization-code&&&&device-1',
+      codeVerifier: 'verifier',
+    });
+
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [
+      'new-access-secret',
+      'new-refresh-secret',
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a successful user_info response without a nested user', async () => {
+    vi.spyOn(provider, 'fetch')
+      .mockResolvedValueOnce(
+        response({
+          response: {
+            access_token: 'new-access-secret',
+            refresh_token: 'new-refresh-secret',
+            expires_in: 3600,
+          },
+        })
+      )
+      .mockResolvedValueOnce(response({ response: {} }));
+
+    const request = provider.authenticate({
+      code: 'authorization-code&&&&device-1',
+      codeVerifier: 'verifier',
+    });
+
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [
+      'new-access-secret',
+      'new-refresh-secret',
+    ]);
+  });
+
+  it('rejects a nested user without required profile fields', async () => {
+    vi.spyOn(provider, 'fetch')
+      .mockResolvedValueOnce(
+        response({
+          response: {
+            access_token: 'new-access-secret',
+            refresh_token: 'new-refresh-secret',
+            expires_in: 3600,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        response({ response: { user: { user_id: '123' } } })
+      );
+
+    const request = provider.authenticate({
+      code: 'authorization-code&&&&device-1',
+      codeVerifier: 'verifier',
+    });
+
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [
+      'new-access-secret',
+      'new-refresh-secret',
+    ]);
+  });
+
+  it('rejects an auth code without a device ID before contacting VK', async () => {
+    const fetchMock = vi.spyOn(provider, 'fetch');
+
+    await expect(
+      provider.authenticate({
+        code: 'authorization-code',
+        codeVerifier: 'verifier',
+      })
+    ).rejects.toBeInstanceOf(BadBody);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
