@@ -459,7 +459,7 @@ Expected: all builds exit 0.
 
 - [ ] **Step 3: Run repository-wide tests**
 
-Run: `rtk pnpm test -- --runInBand`
+Run: `rtk pnpm test`
 
 Expected: exit 0 with no test failures.
 

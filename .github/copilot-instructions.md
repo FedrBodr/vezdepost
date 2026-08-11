@@ -2,7 +2,7 @@
 # Copilot Coding Agent Instructions for Postiz
 
 ## Project Architecture
-- Monorepo managed by NX, with apps in `apps/` and shared code in `libraries/`.
+- PNPM monorepo with apps in `apps/` and shared code in `libraries/`.
 - Main services: `frontend` (Next.js), `backend` (NestJS), `cron`, `commands`, `extension`, `sdk`, and `workers`.
 - Data layer uses Prisma ORM (`libraries/nestjs-libraries/src/database/prisma/schema.prisma`) with PostgreSQL as the default database.
 - Redis (BullMQ) is used for queues and caching.
@@ -10,11 +10,11 @@
 - Social login integrations (Instagram, Facebook) and Make.com/N8N integrations.
 
 ## Developer Workflows
-- Use Node.js 20.17.0 and pnpm 8+.
+- Use Node.js 22.20.0 (the repository supports `>=22.12.0 <23.0.0`) and pnpm 10.
 - Install dependencies: `pnpm install`
 - Build all apps: `pnpm run build`
 - Run all apps in dev mode: `pnpm run dev`
-- Test: `pnpm test` (Jest, coverage enabled)
+- Test: `pnpm test` (Vitest, V8 coverage, and JUnit output in `reports/junit.xml`)
 - Individual app scripts are in each app's `package.json` (e.g., `pnpm --filter ./apps/backend run dev`).
 - Prisma DB commands: `pnpm run prisma-generate`, `pnpm run prisma-db-push`, `pnpm run prisma-reset`.
 - Docker: `docker compose -f ./docker-compose.dev.yaml up -d`
@@ -37,7 +37,7 @@
 - `libraries/` — Shared code and modules
 - `docker-compose.dev.yaml` — Local development Docker setup
 - `.env` — Environment configuration
-- `jest.config.ts` — Test configuration
+- `vitest.config.ts` — Test configuration
 - `pnpm-workspace.yaml` — Workspace package management
 - `README.md` — General project overview
 - `libraries/nestjs-libraries/src/database/prisma/schema.prisma` — Database schema
@@ -113,4 +113,3 @@ logger.fatal("Database connection pool exhausted", {
 ---
 
 For questions or unclear conventions, check the main README or ask for clarification in your PR description.
-
