@@ -18,6 +18,7 @@ class TestVkProvider extends VkProvider {
 
 const accessToken = 'vk-personal-secret-token';
 const mediaUrl = 'https://media.example/private-photo.jpg';
+const videoUrl = 'https://media.example/private-video.mp4';
 const uploadUrl = 'https://upload.example/private-upload';
 const response = (body: unknown) => ({ json: async () => body } as Response);
 
@@ -31,6 +32,11 @@ const textPost = {
 const imagePost = {
   ...textPost,
   media: [{ id: 'photo', path: mediaUrl }],
+};
+
+const videoPost = {
+  ...textPost,
+  media: [{ id: 'video', path: videoUrl }],
 };
 
 async function expectSanitizedFailure(
@@ -80,6 +86,87 @@ describe('VkProvider verified publishing', () => {
     await expectSanitizedFailure(request);
   });
 
+  it.each([
+    [{ upload_url: { malicious: true } }, 'object'],
+    [{ upload_url: true }, 'boolean'],
+    [{ upload_url: 123 }, 'number'],
+    [{ upload_url: '' }, 'empty'],
+    [{ upload_url: 'not-a-url' }, 'malformed'],
+    [{ upload_url: 'javascript:alert(1)' }, 'unsafe protocol'],
+  ])('rejects a %s upload URL (%s)', async (uploadResponse) => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: uploadResponse })
+    );
+    vi.mocked(axios.get).mockResolvedValue({ data: 'image-data' });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { photo: 'photo', server: 1, hash: 'hash' },
+    });
+
+    const request = provider.upload('1', accessToken, imagePost);
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [accessToken, mediaUrl]);
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ malicious: true }, 'object'],
+    [true, 'boolean'],
+    [0, 'zero'],
+    [-1, 'negative'],
+    [1.5, 'fractional'],
+    ['', 'empty'],
+    ['not-an-id', 'nonnumeric'],
+  ])('rejects a %s video ID (%s)', async (videoId) => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { upload_url: uploadUrl, video_id: videoId } })
+    );
+    vi.mocked(axios.get).mockResolvedValue({ data: 'video-data' });
+    vi.mocked(axios.post).mockResolvedValue({ data: {} });
+
+    const request = provider.upload('1', accessToken, videoPost);
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [accessToken, videoUrl, uploadUrl]);
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  it('preserves a digit-only video ID without numeric conversion', async () => {
+    const videoId = '90071992547409931234567890';
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ response: { upload_url: uploadUrl, video_id: videoId } })
+    );
+    vi.mocked(axios.get).mockResolvedValue({ data: 'video-data' });
+    vi.mocked(axios.post).mockResolvedValue({ data: {} });
+
+    await expect(provider.upload('1', accessToken, videoPost)).resolves.toEqual(
+      [{ id: videoId, type: 'video' }]
+    );
+  });
+
+  it.each([
+    [{ server: 1, hash: 'hash' }, 'photo'],
+    [{ photo: 'photo', hash: 'hash' }, 'server'],
+    [{ photo: 'photo', server: 1 }, 'hash'],
+    [{ photo: { malicious: true }, server: 1, hash: 'hash' }, 'photo type'],
+    [{ photo: 'photo', server: 0, hash: 'hash' }, 'server value'],
+    [{ photo: 'photo', server: 1, hash: false }, 'hash type'],
+  ])(
+    'rejects a photo upload response with invalid %s (%s)',
+    async (uploadResponse, _field) => {
+      const fetchMock = vi
+        .spyOn(provider, 'fetch')
+        .mockResolvedValueOnce(
+          response({ response: { upload_url: uploadUrl } })
+        );
+      vi.mocked(axios.get).mockResolvedValue({ data: 'image-data' });
+      vi.mocked(axios.post).mockResolvedValue({ data: uploadResponse });
+
+      const request = provider.upload('1', accessToken, imagePost);
+      await expect(request).rejects.toBeInstanceOf(BadBody);
+      await expectSanitizedFailure(request, [accessToken, mediaUrl, uploadUrl]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
   it('rejects a saved photo response without an ID', async () => {
     vi.spyOn(provider, 'fetch')
       .mockResolvedValueOnce(response({ response: { upload_url: uploadUrl } }))
@@ -92,6 +179,43 @@ describe('VkProvider verified publishing', () => {
     const request = provider.upload('1', accessToken, imagePost);
     await expect(request).rejects.toBeInstanceOf(BadBody);
     await expectSanitizedFailure(request, [accessToken, mediaUrl, uploadUrl]);
+  });
+
+  it.each([
+    [{ malicious: true }, 'object'],
+    [false, 'boolean'],
+    [0, 'zero'],
+    [-1, 'negative'],
+    [2.5, 'fractional'],
+    ['', 'empty'],
+    ['not-an-id', 'nonnumeric'],
+  ])('rejects a %s saved photo ID (%s)', async (photoId) => {
+    vi.spyOn(provider, 'fetch')
+      .mockResolvedValueOnce(response({ response: { upload_url: uploadUrl } }))
+      .mockResolvedValueOnce(response({ response: [{ id: photoId }] }));
+    vi.mocked(axios.get).mockResolvedValue({ data: 'image-data' });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { photo: 'photo', server: 1, hash: 'hash' },
+    });
+
+    const request = provider.upload('1', accessToken, imagePost);
+    await expect(request).rejects.toBeInstanceOf(BadBody);
+    await expectSanitizedFailure(request, [accessToken, mediaUrl, uploadUrl]);
+  });
+
+  it('preserves a digit-only saved photo ID without numeric conversion', async () => {
+    const photoId = '90071992547409931234567890';
+    vi.spyOn(provider, 'fetch')
+      .mockResolvedValueOnce(response({ response: { upload_url: uploadUrl } }))
+      .mockResolvedValueOnce(response({ response: [{ id: photoId }] }));
+    vi.mocked(axios.get).mockResolvedValue({ data: 'image-data' });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { photo: 'photo', server: 1, hash: 'hash' },
+    });
+
+    await expect(provider.upload('1', accessToken, imagePost)).resolves.toEqual(
+      [{ id: photoId, type: 'photo' }]
+    );
   });
 
   it('sanitizes an Axios media download failure', async () => {

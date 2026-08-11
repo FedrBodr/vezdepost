@@ -144,6 +144,54 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
+  private parseUploadUrl(value: unknown, method: string): string {
+    if (typeof value !== 'string' || !value.trim()) {
+      this.badResponse(method, 'invalid upload URL');
+    }
+
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      this.badResponse(method, 'invalid upload URL');
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      this.badResponse(method, 'invalid upload URL');
+    }
+
+    return value;
+  }
+
+  private parsePhotoUploadResponse(payload: unknown): {
+    photo: string;
+    server: string;
+    hash: string;
+  } {
+    if (!payload || typeof payload !== 'object') {
+      this.badResponse('photos.getWallUploadServer', 'invalid upload fields');
+    }
+
+    const value = payload as Record<string, unknown>;
+    if (
+      typeof value.photo !== 'string' ||
+      !value.photo.trim() ||
+      typeof value.hash !== 'string' ||
+      !value.hash.trim()
+    ) {
+      this.badResponse('photos.getWallUploadServer', 'invalid upload fields');
+    }
+
+    return {
+      photo: value.photo,
+      server: parseVkPositiveIntegerId(
+        value.server,
+        'photos.getWallUploadServer',
+        'upload server ID'
+      ),
+      hash: value.hash,
+    };
+  }
+
   async refreshToken(refresh: string): Promise<AuthTokenDetails> {
     const { secret: oldRefreshToken, deviceId } = this.parseDeviceBoundValue(
       refresh,
@@ -303,10 +351,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       (post?.media || []).map(async (media) => {
         const isVideo = hasExtension(media.path, 'mp4');
         const method = isVideo ? 'video.save' : 'photos.getWallUploadServer';
-        const upload = unwrapVkResponse<{
-          upload_url?: string;
-          video_id?: string | number;
-        }>(
+        const upload = unwrapVkResponse<unknown>(
           await (
             await this.fetch(
               isVideo
@@ -316,25 +361,21 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
           ).json(),
           method
         );
-        if (!upload.upload_url) {
-          throw new BadBody(
-            'vk',
-            '{}',
-            {} as BodyInit,
-            `VK ${method} returned no upload URL`
-          );
+        if (!upload || typeof upload !== 'object') {
+          this.badResponse(method, 'invalid upload response');
         }
-        if (
-          isVideo &&
-          (upload.video_id === undefined || upload.video_id === null)
-        ) {
-          throw new BadBody(
-            'vk',
-            '{}',
-            {} as BodyInit,
-            'VK video.save returned no video ID'
-          );
-        }
+        const uploadResponse = upload as Record<string, unknown>;
+        const uploadUrl = this.parseUploadUrl(
+          uploadResponse.upload_url,
+          method
+        );
+        const videoId = isVideo
+          ? parseVkPositiveIntegerId(
+              uploadResponse.video_id,
+              'video.save',
+              'video ID'
+            )
+          : undefined;
 
         let data: unknown;
         try {
@@ -357,10 +398,10 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
           filename: slash,
           contentType: mime.lookup(slash!) || '',
         });
-        let value: { photo: string; server: string | number; hash: string };
+        let value: unknown;
         try {
           value = (
-            await axios.post(upload.upload_url, formData, {
+            await axios.post(uploadUrl, formData, {
               headers: {
                 ...formData.getHeaders(),
               },
@@ -375,19 +416,20 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
           );
         }
 
-        if (isVideo) {
+        if (videoId) {
           return {
-            id: String(upload.video_id),
+            id: videoId,
             type: 'video',
           };
         }
 
+        const photoUpload = this.parsePhotoUploadResponse(value);
         const formSend = new FormData();
-        formSend.append('photo', value.photo);
-        formSend.append('server', String(value.server));
-        formSend.append('hash', value.hash);
+        formSend.append('photo', photoUpload.photo);
+        formSend.append('server', photoUpload.server);
+        formSend.append('hash', photoUpload.hash);
 
-        const savedPhoto = unwrapVkResponse<{ id?: string | number }[]>(
+        const savedPhoto = unwrapVkResponse<unknown>(
           await (
             await this.fetch(
               `https://api.vk.com/method/photos.saveWallPhoto?access_token=${accessToken}&v=5.251`,
@@ -399,18 +441,17 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
           ).json(),
           'photos.saveWallPhoto'
         );
-        const id = savedPhoto[0]?.id;
-        if (id === undefined || id === null) {
-          throw new BadBody(
-            'vk',
-            '{}',
-            {} as BodyInit,
-            'VK photos.saveWallPhoto returned no photo ID'
-          );
+        if (!Array.isArray(savedPhoto)) {
+          this.badResponse('photos.saveWallPhoto', 'invalid photo response');
         }
+        const photoId = parseVkPositiveIntegerId(
+          savedPhoto[0]?.id,
+          'photos.saveWallPhoto',
+          'photo ID'
+        );
 
         return {
-          id: String(id),
+          id: photoId,
           type: 'photo',
         };
       })
