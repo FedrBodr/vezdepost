@@ -210,4 +210,31 @@ describe('IntegrationService VK Group persistence', () => {
     );
     expect(repository.updateIntegration).not.toHaveBeenCalled();
   });
+
+  it('retains deleted-channel recovery before finalizing a non-VK provider', async () => {
+    repository.getIntegrationById.mockResolvedValue({
+      ...temporaryVkGroupIntegration(),
+      internalId: 'youtube-oauth:42',
+      providerIdentifier: 'youtube',
+    });
+    provider.fetchPageInformation.mockResolvedValue({
+      ...selectedGroup,
+      id: 'youtube-channel-fixture',
+    });
+
+    await service.saveProviderPage(organizationId, temporaryIntegrationId, {
+      page: 'youtube-channel-fixture',
+    });
+
+    expect(
+      repository.checkForDeletedOnceAndUpdate
+    ).toHaveBeenCalledExactlyOnceWith(
+      organizationId,
+      'youtube-channel-fixture'
+    );
+    expect(repository.updateIntegration).toHaveBeenCalledOnce();
+    expect(
+      repository.checkForDeletedOnceAndUpdate.mock.invocationCallOrder[0]
+    ).toBeLessThan(repository.updateIntegration.mock.invocationCallOrder[0]);
+  });
 });

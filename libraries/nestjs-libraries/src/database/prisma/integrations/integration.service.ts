@@ -309,6 +309,13 @@ export class IntegrationService {
       data
     );
 
+    if (getIntegration.providerIdentifier !== 'vk-group') {
+      await this.checkForDeletedOnceAndUpdate(
+        org,
+        String(getIntegrationInformation.id)
+      );
+    }
+
     await this._integrationRepository.updateIntegration(id, {
       picture: getIntegrationInformation.picture,
       internalId: String(getIntegrationInformation.id),
