@@ -154,9 +154,11 @@ directory as mode-`0600` files. A `finally` cleanup removes that directory on
 normal success or failure. SIGINT/SIGTERM handlers mark the active run for
 cooperative interruption; the main state machine then serially cleans only
 already-proven-owned remote artifacts, verifies absence, and removes the local
-workspace before emitting exactly one final record. Raw responses and other
-ephemeral diagnostics are destroyed before a `GO`, `NO_GO`, or
-`PENDING_CLEANUP` result is emitted.
+workspace before emitting exactly one final record. The handlers remain active
+and idempotent during finalization, so a repeated SIGINT or SIGTERM cannot restore
+the platform's immediate-exit behavior; both listeners are removed when the run
+ends. Raw responses and other ephemeral diagnostics are destroyed before a
+`GO`, `NO_GO`, or `PENDING_CLEANUP` result is emitted.
 
 Stdout is JSON Lines containing only `phase`, `method`, numeric `error_code`
 when VK supplied one, `status`, and safe numeric `post_id` fields. A `post_id`

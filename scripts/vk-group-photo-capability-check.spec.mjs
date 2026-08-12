@@ -1,5 +1,7 @@
+import { spawn } from 'node:child_process';
 import {
   mkdtemp,
+  readFile,
   readdir,
   rm,
   stat,
@@ -898,6 +900,129 @@ describe('VK Group photo capability check', () => {
     ]);
     expect(fixture.output()).not.toContain('private-user-oauth-token');
     expect(fixture.output()).not.toContain(fixture.root);
+  });
+
+  it('handles the same CLI signal twice without bypassing serialized cleanup', async () => {
+    const fixture = await makeFixture();
+    const preloader = join(fixture.root, 'signal-fetch-preloader.mjs');
+    const callsFile = join(fixture.root, 'calls.txt');
+    const listenersFile = join(fixture.root, 'listeners.txt');
+    await writeFile(
+      preloader,
+      `
+        import { appendFileSync, writeFileSync } from 'node:fs';
+
+        const jsonResponse = (payload) =>
+          new Response(JSON.stringify(payload), { status: 200 });
+
+        process.on('exit', () => {
+          writeFileSync(
+            process.env.LISTENERS_FILE,
+            JSON.stringify({
+              sigint: process.listenerCount('SIGINT'),
+              sigterm: process.listenerCount('SIGTERM'),
+            })
+          );
+        });
+
+        globalThis.fetch = async (url, options) => {
+          const method = url.startsWith('https://api.vk.com/method/')
+            ? url.slice('https://api.vk.com/method/'.length)
+            : 'upload';
+          appendFileSync(process.env.CALLS_FILE, method + '\\n');
+
+          if (method !== 'upload') {
+            if (options.body.get('access_token') !== 'private-user-oauth-token') {
+              throw new Error('unexpected token contract');
+            }
+          }
+
+          switch (method) {
+            case 'groups.get':
+              return jsonResponse({ response: { count: 1, items: [{ id: 123 }] } });
+            case 'photos.getWallUploadServer':
+              return jsonResponse({ response: { upload_url: 'https://upload.invalid/private-session' } });
+            case 'upload':
+              return jsonResponse({ photo: 'private-photo', server: 321, hash: 'private-hash' });
+            case 'photos.saveWallPhoto':
+              process.stderr.write('SAVE_READY\\n');
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              return jsonResponse({ response: [{ owner_id: -123, id: 456 }] });
+            case 'photos.delete':
+              return jsonResponse({ response: 1 });
+            case 'photos.getById':
+              return jsonResponse({ response: [] });
+            default:
+              throw new Error('unexpected method ' + method);
+          }
+        };
+      `
+    );
+
+    const child = spawn(
+      process.execPath,
+      [
+        '--import',
+        preloader,
+        join(process.cwd(), 'scripts/vk-group-photo-capability-check.mjs'),
+        '--group-id',
+        '123',
+        '--media-file',
+        fixture.mediaFile,
+      ],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+          VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
+          CALLS_FILE: callsFile,
+          LISTENERS_FILE: listenersFile,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }
+    );
+    let output = '';
+    let errors = '';
+    let signaled = false;
+    child.stdout.on('data', (chunk) => {
+      output += String(chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      errors += String(chunk);
+      if (!signaled && errors.includes('SAVE_READY')) {
+        signaled = true;
+        child.kill('SIGTERM');
+        setTimeout(() => child.kill('SIGTERM'), 50);
+      }
+    });
+
+    const result = await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', (code, signal) => resolve({ code, signal }));
+    });
+
+    expect(signaled).toBe(true);
+    expect(result).toEqual({ code: 143, signal: null });
+    expect(parseRecords(output)).toEqual([
+      { phase: 'signal', status: 'NO_GO' },
+    ]);
+    expect((await readFile(callsFile, 'utf8')).trim().split('\n')).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+      'photos.delete',
+      'photos.getById',
+    ]);
+    expect(JSON.parse(await readFile(listenersFile, 'utf8'))).toEqual({
+      sigint: 0,
+      sigterm: 0,
+    });
+    expect(output).not.toContain('private-user-oauth-token');
+    expect(output).not.toContain(fixture.root);
+    expect(errors).not.toContain('private-user-oauth-token');
+    expect(errors).not.toContain(fixture.root);
   });
 
   it('serializes SIGINT cleanup after exact post ownership proof', async () => {

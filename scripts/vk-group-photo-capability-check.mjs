@@ -781,8 +781,8 @@ if (
 ) {
   const terminateForSigint = () => terminateForSignal({ signal: 'SIGINT' });
   const terminateForSigterm = () => terminateForSignal({ signal: 'SIGTERM' });
-  process.once('SIGINT', terminateForSigint);
-  process.once('SIGTERM', terminateForSigterm);
+  process.on('SIGINT', terminateForSigint);
+  process.on('SIGTERM', terminateForSigterm);
   try {
     process.exitCode = await runCapabilityCheck();
   } finally {
