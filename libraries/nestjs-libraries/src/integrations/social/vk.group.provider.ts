@@ -289,15 +289,23 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     postDetails: PostDetails[]
   ): Promise<PostResponse[]> {
-    const media = postDetails.flatMap((post) => post.media || []);
-    if (media.some((item) => item.type !== 'image')) {
+    const [firstPost, ...comments] = postDetails;
+    const mainMedia = firstPost?.media || [];
+    if (comments.some((comment) => (comment.media || []).length > 0)) {
       throw new Error(UNSUPPORTED_MEDIA);
     }
-    if (media.length > 10) {
+    if (
+      mainMedia.some(
+        (item) =>
+          item.type !== 'image' || isUnsupportedAttachmentPath(item.path)
+      )
+    ) {
+      throw new Error(UNSUPPORTED_MEDIA);
+    }
+    if (mainMedia.length > 10) {
       throw new Error(TOO_MANY_PHOTOS);
     }
 
-    const [firstPost] = postDetails;
     const wallPostResult = await this.callVk('wall.post', accessToken, {
       owner_id: userId,
       from_group: '1',

@@ -370,6 +370,53 @@ describe('VkGroupProvider photo publishing', () => {
     }
   );
 
+  it('rejects an unsupported path even when its normalized type says image', async () => {
+    const fetchMock = vi.spyOn(provider, 'fetch');
+
+    await expect(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Hello VK',
+          settings: {},
+          media: [{ type: 'image', path: 'normalized-video.mp4' }],
+        },
+      ])
+    ).rejects.toThrow(
+      'VK Group supports photographs only. Remove videos and other attachments.'
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects image media on later post details before making a request', async () => {
+    const fetchMock = vi.spyOn(provider, 'fetch');
+
+    await expect(
+      provider.post('-123', token, [
+        {
+          id: 'main-post',
+          message: 'Hello VK',
+          settings: {},
+          media: Array.from({ length: 10 }, (_, index) => ({
+            type: 'image',
+            path: `photo-${index}.jpg`,
+          })),
+        },
+        {
+          id: 'comment',
+          message: 'Reply',
+          settings: {},
+          media: [{ type: 'image', path: 'reply.jpg' }],
+        },
+      ])
+    ).rejects.toThrow(
+      'VK Group supports photographs only. Remove videos and other attachments.'
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('posts text as the community without credentials in the URL', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
