@@ -148,11 +148,14 @@ Raw responses and other ephemeral diagnostics are destroyed before a `GO`,
 `STOP`, or `PENDING_CLEANUP` result is emitted.
 
 Stdout is JSON Lines containing only `phase`, `method`, numeric `error_code`
-when VK supplied one, `status`, and safe numeric `post_id` fields. Exit `0`
-means `GO`; exit `2` means `STOP`; exit `3` means `PENDING_CLEANUP`; exit `4`
-means `PENDING_LOCAL_CLEANUP`. Do not add upstream messages, marker values,
-temporary paths, or raw details. Stdout is transient safe execution evidence,
-not the durable decision record below.
+when VK supplied one, `status`, and safe numeric `post_id` fields. A `post_id`
+may appear only in a success trace after that ID has passed exact community,
+message-marker, and attachment verification; it may never appear in a `STOP`,
+`PENDING_CLEANUP`, or `PENDING_LOCAL_CLEANUP` record. Exit `0` means `GO`; exit
+`2` means `STOP`; exit `3` means `PENDING_CLEANUP`; exit `4` means
+`PENDING_LOCAL_CLEANUP`. Do not add upstream messages, marker values, temporary
+paths, unverified candidate IDs, or raw details. Stdout is transient safe
+execution evidence, not the durable decision record below.
 
 If local workspace deletion fails, the runner suppresses every earlier result,
 including a provisional remote `GO`, and emits only
@@ -270,7 +273,8 @@ decision.
 The durable failure record contains only the failed method name, the numeric VK
 error code when returned, and decision `STOP` or `PENDING_CLEANUP`. When no
 numeric code exists, omit the error-code field entirely. Do not add summaries
-of VK's message, prose substitutes for a code, or raw response.
+of VK's message, prose substitutes for a code, unverified or verified post IDs,
+or raw response.
 
 Current record: **Pending authorized execution**. No VK method has been called,
 no test post ID exists, and no external health result has been observed.

@@ -491,11 +491,15 @@ describe('VK Group photo capability check', () => {
       expect(exitCode).toBe(3);
       expect(methods).not.toContain('wall.delete');
       expect(methods).toContain('photos.delete');
-      expect(parseRecords(fixture.output()).at(-1)).toMatchObject({
-        phase: 'verify-authorship',
-        method: 'wall.getById',
-        status: 'PENDING_CLEANUP',
-      });
+      expect(parseRecords(fixture.output())).toEqual([
+        {
+          phase: 'verify-authorship',
+          method: 'wall.getById',
+          status: 'PENDING_CLEANUP',
+        },
+      ]);
+      expect(fixture.output()).not.toContain('789');
+      expect(fixture.output()).not.toContain('unrelated post');
       expect(parseRecords(fixture.output())).not.toContainEqual(
         expect.objectContaining({ status: 'GO' })
       );
@@ -688,7 +692,7 @@ describe('VK Group photo capability check', () => {
     ]);
   });
 
-  it('keeps a verified wall candidate pending when authorship lookup is rejected', async () => {
+  it('keeps an unverified wall candidate private when authorship lookup is rejected', async () => {
     const fixture = await makeFixture();
     const { fetchImpl, methods } = successfulFetch(fixture, {
       verifyErrorCode: 7,
@@ -714,9 +718,9 @@ describe('VK Group photo capability check', () => {
         method: 'wall.getById',
         error_code: 7,
         status: 'PENDING_CLEANUP',
-        post_id: 789,
       },
     ]);
+    expect(fixture.output()).not.toContain('789');
     expect(fixture.output()).not.toContain('private verification');
   });
 
@@ -781,7 +785,6 @@ describe('VK Group photo capability check', () => {
       method: 'wall.delete',
       error_code: 7,
       status: 'PENDING_CLEANUP',
-      post_id: 789,
     });
     expect(fixture.output()).not.toContain('private cleanup message');
     expect(fixture.output()).not.toContain('private-community-token');
@@ -811,7 +814,6 @@ describe('VK Group photo capability check', () => {
       phase: 'verify-photo-cleanup',
       method: 'photos.getById',
       status: 'PENDING_CLEANUP',
-      post_id: 789,
     });
     expect(parseRecords(fixture.output())).not.toContainEqual(
       expect.objectContaining({ status: 'GO' })
@@ -842,7 +844,6 @@ describe('VK Group photo capability check', () => {
         phase: 'cleanup-post',
         method: 'wall.delete',
         status: 'PENDING_CLEANUP',
-        post_id: 789,
       },
     ]);
   });
@@ -870,7 +871,6 @@ describe('VK Group photo capability check', () => {
         phase: 'cleanup-post',
         method: 'wall.delete',
         status: 'PENDING_CLEANUP',
-        post_id: 789,
       },
     ]);
   });

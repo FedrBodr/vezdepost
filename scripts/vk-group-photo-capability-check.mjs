@@ -45,7 +45,7 @@ function stopRecord(failure) {
   };
 }
 
-function pendingCleanupRecord(failure, postId) {
+function pendingCleanupRecord(failure) {
   return {
     phase: failure.phase,
     method: failure.method,
@@ -53,7 +53,6 @@ function pendingCleanupRecord(failure, postId) {
       ? { error_code: failure.errorCode }
       : {}),
     status: 'PENDING_CLEANUP',
-    ...(postId ? { post_id: Number(postId) } : {}),
   };
 }
 
@@ -635,7 +634,7 @@ export async function runCapabilityCheck({
       events,
     });
     if (cleanupFailure) {
-      outputRecords = [pendingCleanupRecord(cleanupFailure, postId)];
+      outputRecords = [pendingCleanupRecord(cleanupFailure)];
       exitCode = 3;
     } else {
       events.push({
@@ -671,9 +670,7 @@ export async function runCapabilityCheck({
         }
       }
       if (pendingFailure) {
-        outputRecords = [
-          pendingCleanupRecord(pendingFailure, postId || candidatePostId),
-        ];
+        outputRecords = [pendingCleanupRecord(pendingFailure)];
         exitCode = 3;
       } else {
         outputRecords = [stopRecord(failure)];
