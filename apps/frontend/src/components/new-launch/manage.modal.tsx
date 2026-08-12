@@ -260,12 +260,20 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
           delay: value.delay || 0,
           image:
             (value?.media || []).map(
-              ({ id, path, alt, thumbnail, thumbnailTimestamp }: any) => ({
+              ({
                 id,
                 path,
                 alt,
                 thumbnail,
                 thumbnailTimestamp,
+                type,
+              }: any) => ({
+                id,
+                path,
+                alt,
+                thumbnail,
+                thumbnailTimestamp,
+                type,
               })
             ) || [],
         })),
@@ -318,9 +326,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
 
             if (item.errors !== true) {
               toaster.show(
-                `${capitalize(item.identifier.split('-')[0])} (${item.name}): ${
-                  item.errors
-                }`,
+                `${capitalize(item.identifier.split('-')[0])} (${
+                  item.name
+                }): ${t(item.errors, item.errors)}`,
                 'warning'
               );
               focus(item.id, 'preview');

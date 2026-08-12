@@ -19,6 +19,14 @@ const INVALID_TOKEN = 'The VK community token is invalid.';
 const WRONG_GROUP = 'This token belongs to a different VK community.';
 const MISSING_PERMISSIONS =
   'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.';
+const TOO_MANY_PHOTOS = 'VK Group supports up to 10 photographs per post.';
+const UNSUPPORTED_MEDIA =
+  'VK Group supports photographs only. Remove videos and other attachments.';
+
+const isUnsupportedAttachmentPath = (path: string) =>
+  /\.(?:mp4|mov|avi|mkv|webm|m4v|pdf|docx?|xlsx?|pptx?|txt|rtf|csv|zip|rar|7z|tar|gz)(?:[?#].*)?$/i.test(
+    path || ''
+  );
 
 type VkGroup = {
   id: number;
@@ -123,8 +131,18 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   override async checkValidity(
     posts: Array<ValidityMedia[]>
   ): Promise<string | true> {
-    if (posts?.some((post) => post?.length > 0)) {
-      return 'VK Group temporarily supports text-only posts. Remove all media and try again.';
+    const [mainPost = [], ...comments] = posts || [];
+    if (comments.some((comment) => comment.length > 0)) {
+      return UNSUPPORTED_MEDIA;
+    }
+    if (mainPost.some((media) => media.type && media.type !== 'image')) {
+      return UNSUPPORTED_MEDIA;
+    }
+    if (mainPost.some((media) => isUnsupportedAttachmentPath(media.path))) {
+      return UNSUPPORTED_MEDIA;
+    }
+    if (mainPost.length > 10) {
+      return TOO_MANY_PHOTOS;
     }
     return true;
   }
@@ -271,6 +289,14 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     postDetails: PostDetails[]
   ): Promise<PostResponse[]> {
+    const media = postDetails.flatMap((post) => post.media || []);
+    if (media.some((item) => item.type !== 'image')) {
+      throw new Error(UNSUPPORTED_MEDIA);
+    }
+    if (media.length > 10) {
+      throw new Error(TOO_MANY_PHOTOS);
+    }
+
     const [firstPost] = postDetails;
     const wallPostResult = await this.callVk('wall.post', accessToken, {
       owner_id: userId,

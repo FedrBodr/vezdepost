@@ -288,28 +288,87 @@ describe('VkGroupProvider community credentials', () => {
   });
 });
 
-describe('VkGroupProvider text-only publishing', () => {
+describe('VkGroupProvider photo publishing', () => {
   let provider: VkGroupProvider;
 
   beforeEach(() => {
     provider = new VkGroupProvider();
   });
 
-  it('accepts text and rejects every kind of attached media', async () => {
-    const mediaError =
-      'VK Group temporarily supports text-only posts. Remove all media and try again.';
+  it('enforces the complete validity boundary', async () => {
+    const tooMany = 'VK Group supports up to 10 photographs per post.';
+    const unsupported =
+      'VK Group supports photographs only. Remove videos and other attachments.';
+    const images = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        path: `photo-${index}.jpg`,
+        type: 'image',
+      }));
 
     await expect(provider.checkValidity([[]], {}, [])).resolves.toBe(true);
     await expect(
-      provider.checkValidity([[{ path: 'photo.jpg' }]], {}, [])
-    ).resolves.toBe(mediaError);
+      provider.checkValidity([[{ path: 'one.jpg', type: 'image' }]], {}, [])
+    ).resolves.toBe(true);
     await expect(
-      provider.checkValidity([[{ path: 'video.mp4' }]], {}, [])
-    ).resolves.toBe(mediaError);
+      provider.checkValidity([[{ path: 'legacy.jpg' }]], {}, [])
+    ).resolves.toBe(true);
+    await expect(provider.checkValidity([images(10)], {}, [])).resolves.toBe(
+      true
+    );
+    await expect(provider.checkValidity([images(11)], {}, [])).resolves.toBe(
+      tooMany
+    );
     await expect(
-      provider.checkValidity([[], [{ path: 'comment.jpg' }]], {}, [])
-    ).resolves.toBe(mediaError);
+      provider.checkValidity([[{ path: 'clip.mp4', type: 'video' }]], {}, [])
+    ).resolves.toBe(unsupported);
+    await expect(
+      provider.checkValidity([[{ path: 'file.pdf', type: 'document' }]], {}, [])
+    ).resolves.toBe(unsupported);
+    await expect(
+      provider.checkValidity([[{ path: 'legacy-video.mp4' }]], {}, [])
+    ).resolves.toBe(unsupported);
+    await expect(
+      provider.checkValidity(
+        [[{ path: 'legacy-document.PDF?download=1' }]],
+        {},
+        []
+      )
+    ).resolves.toBe(unsupported);
+    await expect(
+      provider.checkValidity(
+        [[], [{ path: 'reply.jpg', type: 'image' }]],
+        {},
+        []
+      )
+    ).resolves.toBe(unsupported);
   });
+
+  it.each([
+    [
+      Array.from({ length: 11 }, (_, index) => ({
+        type: 'image' as const,
+        path: `photo-${index}.jpg`,
+      })),
+      'VK Group supports up to 10 photographs per post.',
+    ],
+    [
+      [{ type: 'video' as const, path: 'clip.mp4' }],
+      'VK Group supports photographs only. Remove videos and other attachments.',
+    ],
+  ])(
+    'rejects forbidden media before making a network request',
+    async (media, error) => {
+      const fetchMock = vi.spyOn(provider, 'fetch');
+
+      await expect(
+        provider.post('-123', token, [
+          { id: 'postiz-post', message: 'Hello VK', settings: {}, media },
+        ])
+      ).rejects.toThrow(error);
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
 
   it('posts text as the community without credentials in the URL', async () => {
     const fetchMock = vi

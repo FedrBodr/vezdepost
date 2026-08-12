@@ -773,7 +773,11 @@ export class PostsService {
       integration: { id: string };
       value: Array<{
         content?: string;
-        image?: Array<{ path: string; thumbnail?: string }>;
+        image?: Array<{
+          path: string;
+          thumbnail?: string;
+          type?: 'image' | 'video' | string;
+        }>;
       }>;
       settings?: any;
     }>
