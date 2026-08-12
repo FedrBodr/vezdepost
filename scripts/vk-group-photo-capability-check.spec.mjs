@@ -92,7 +92,9 @@ function successfulFetch(
     wallDeleteHttpStatus = 200,
     wallDeleteMalformed,
     wallPostTransport = false,
+    wallPostError,
     saveMalformed = false,
+    saveError,
     uploadErrorCode,
     removeMediaAfterUploadServer = false,
     photoRemains = false,
@@ -105,6 +107,8 @@ function successfulFetch(
     verifiedMessage,
     verifiedAttachments,
     verifiedExtraPost = false,
+    onSaveResponse,
+    onVerifiedPostResponse,
   } = {}
 ) {
   let wallGetCount = 0;
@@ -178,14 +182,17 @@ function successfulFetch(
         expect(options.body.get('photo')).toBe('private-upload-photo');
         expect(options.body.get('server')).toBe('321');
         expect(options.body.get('hash')).toBe('private-upload-hash');
-        return jsonResponse({
-          response: saveMalformed
-            ? []
-            : [
-                { owner_id: savedOwnerId, id: 456 },
-                ...(saveExtraPhoto ? [{ owner_id: -123, id: 457 }] : []),
-              ],
-        });
+        onSaveResponse?.();
+        return jsonResponse(
+          saveError ?? {
+            response: saveMalformed
+              ? []
+              : [
+                  { owner_id: savedOwnerId, id: 456 },
+                  ...(saveExtraPhoto ? [{ owner_id: -123, id: 457 }] : []),
+                ],
+          }
+        );
       case 'wall.post':
         expect(options.body.get('owner_id')).toBe('-123');
         expect(options.body.get('from_group')).toBe('1');
@@ -196,6 +203,9 @@ function successfulFetch(
         );
         if (wallPostTransport) {
           throw new Error('lost wall.post response with private details');
+        }
+        if (wallPostError) {
+          return jsonResponse(wallPostError);
         }
         return jsonResponse({ response: { post_id: 789 } });
       case 'wall.getById':
@@ -209,42 +219,45 @@ function successfulFetch(
             },
           });
         }
-        return wallGetCount === 1
-          ? jsonResponse({
-              response: {
-                items: [
-                  {
-                    id: verifiedPostId,
-                    owner_id: verifiedOwnerId,
-                    from_id: verifiedFromId,
-                    text: verifiedMessage ?? publishedMessage,
-                    attachments: verifiedAttachments ?? [
+        if (wallGetCount === 1) {
+          const response = jsonResponse({
+            response: {
+              items: [
+                {
+                  id: verifiedPostId,
+                  owner_id: verifiedOwnerId,
+                  from_id: verifiedFromId,
+                  text: verifiedMessage ?? publishedMessage,
+                  attachments: verifiedAttachments ?? [
+                    {
+                      type: 'photo',
+                      photo: { owner_id: -123, id: 456 },
+                    },
+                  ],
+                },
+                ...(verifiedExtraPost
+                  ? [
                       {
-                        type: 'photo',
-                        photo: { owner_id: -123, id: 456 },
+                        id: 789,
+                        owner_id: -123,
+                        from_id: -123,
+                        text: publishedMessage,
+                        attachments: [
+                          {
+                            type: 'photo',
+                            photo: { owner_id: -123, id: 456 },
+                          },
+                        ],
                       },
-                    ],
-                  },
-                  ...(verifiedExtraPost
-                    ? [
-                        {
-                          id: 789,
-                          owner_id: -123,
-                          from_id: -123,
-                          text: publishedMessage,
-                          attachments: [
-                            {
-                              type: 'photo',
-                              photo: { owner_id: -123, id: 456 },
-                            },
-                          ],
-                        },
-                      ]
-                    : []),
-                ],
-              },
-            })
-          : jsonResponse({ response: { items: [] } });
+                    ]
+                  : []),
+              ],
+            },
+          });
+          onVerifiedPostResponse?.();
+          return response;
+        }
+        return jsonResponse({ response: { items: [] } });
       case 'wall.delete':
         expect(options.body.get('owner_id')).toBe('-123');
         expect(options.body.get('post_id')).toBe('789');
@@ -356,6 +369,31 @@ describe('VK Group photo capability check', () => {
     expect(parseRecords(fixture.output())).toEqual([
       { phase: 'preflight', status: 'NO_GO' },
     ]);
+    expect(fixture.output()).not.toContain('private-legacy-community-token');
+  });
+
+  it('rejects a legacy token present alongside the user OAuth token', async () => {
+    const fixture = await makeFixture();
+    const fetchImpl = vi.fn();
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-legacy-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(2);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(parseRecords(fixture.output())).toEqual([
+      { phase: 'preflight', status: 'NO_GO' },
+    ]);
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
     expect(fixture.output()).not.toContain('private-legacy-community-token');
   });
 
@@ -817,14 +855,23 @@ describe('VK Group photo capability check', () => {
     expect(fixture.output()).not.toContain('private setup');
   });
 
-  it('reports signal cleanup failure safely without a path or raw exception', async () => {
+  it('serializes SIGTERM cleanup after saved-photo ownership proof', async () => {
     const fixture = await makeFixture();
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({
-        error: { error_code: 15, error_msg: 'private upstream response' },
-      })
-    );
-    await runCapabilityCheck({
+    const signalExit = vi.fn();
+    let signalOutput = '';
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      onSaveResponse: () =>
+        terminateForSignal({
+          signal: 'SIGTERM',
+          exitImpl: signalExit,
+          removeWorkspaceSyncImpl: vi.fn(),
+          writeSyncImpl: vi.fn((_fd, chunk) => {
+            signalOutput += String(chunk);
+          }),
+        }),
+    });
+
+    const exitCode = await runCapabilityCheck({
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
@@ -833,80 +880,155 @@ describe('VK Group photo capability check', () => {
       fetchImpl,
       stdout: fixture.stdout,
       tempRoot: fixture.root,
-      removeWorkspaceImpl: vi.fn().mockRejectedValue(new Error('private path')),
-    });
-    let signalOutput = '';
-    const exitImpl = vi.fn();
-
-    terminateForSignal({
-      signal: 'SIGTERM',
-      exitImpl,
-      writeSyncImpl: vi.fn((_fd, chunk) => {
-        signalOutput += String(chunk);
-      }),
-      removeWorkspaceSyncImpl: vi.fn(() => {
-        throw new Error('private signal cleanup path');
-      }),
     });
 
-    expect(exitImpl).toHaveBeenCalledWith(4);
-    expect(parseRecords(signalOutput)).toEqual([
-      { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
-    ]);
-    expect(signalOutput).not.toContain(fixture.root);
-    expect(signalOutput).not.toContain('private signal');
-  });
-
-  it('uses the conventional signal exit after all private workspaces are removed', () => {
-    let signalOutput = '';
-    const exitImpl = vi.fn();
-    const writeSyncImpl = vi.fn((_fd, chunk) => {
-      signalOutput += String(chunk);
-    });
-
-    terminateForSignal({
-      signal: 'SIGINT',
-      exitImpl,
-      writeSyncImpl,
-      removeWorkspaceSyncImpl: vi.fn(),
-    });
-
-    expect(exitImpl).toHaveBeenCalledWith(130);
-    expect(writeSyncImpl).not.toHaveBeenCalled();
+    expect(exitCode).toBe(143);
+    expect(signalExit).not.toHaveBeenCalled();
     expect(signalOutput).toBe('');
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+      'photos.delete',
+      'photos.getById',
+    ]);
+    expect(parseRecords(fixture.output())).toEqual([
+      { phase: 'signal', status: 'NO_GO' },
+    ]);
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
+    expect(fixture.output()).not.toContain(fixture.root);
   });
 
-  it('exits safely when signal cleanup and the fixed stdout write both fail', async () => {
+  it('serializes SIGINT cleanup after exact post ownership proof', async () => {
     const fixture = await makeFixture();
-    await runCapabilityCheck({
+    const signalExit = vi.fn();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      onVerifiedPostResponse: () =>
+        terminateForSignal({
+          signal: 'SIGINT',
+          exitImpl: signalExit,
+          removeWorkspaceSyncImpl: vi.fn(),
+          writeSyncImpl: vi.fn(),
+        }),
+    });
+
+    const exitCode = await runCapabilityCheck({
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
         VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
-      fetchImpl: vi
-        .fn()
-        .mockResolvedValue(jsonResponse({ error: { error_code: 15 } })),
+      fetchImpl,
       stdout: fixture.stdout,
       tempRoot: fixture.root,
-      removeWorkspaceImpl: vi.fn().mockRejectedValue(new Error('private path')),
     });
-    const exitImpl = vi.fn();
 
-    expect(() =>
-      terminateForSignal({
-        signal: 'SIGTERM',
-        exitImpl,
-        removeWorkspaceSyncImpl: vi.fn(() => {
-          throw new Error('private cleanup path');
-        }),
-        writeSyncImpl: vi.fn(() => {
-          throw new Error('private broken stdout');
-        }),
-      })
-    ).not.toThrow();
+    expect(exitCode).toBe(130);
+    expect(signalExit).not.toHaveBeenCalled();
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+      'wall.post',
+      'wall.getById',
+      'wall.delete',
+      'photos.delete',
+      'wall.getById',
+      'photos.getById',
+    ]);
+    expect(parseRecords(fixture.output())).toEqual([
+      { phase: 'signal', status: 'NO_GO' },
+    ]);
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
+    expect(fixture.output()).not.toContain(fixture.root);
+  });
 
-    expect(exitImpl).toHaveBeenCalledWith(4);
+  it('keeps a signaled run pending when remote absence cannot be proven', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      photoRemains: true,
+      onSaveResponse: () =>
+        terminateForSignal({
+          signal: 'SIGTERM',
+          exitImpl: vi.fn(),
+          removeWorkspaceSyncImpl: vi.fn(),
+          writeSyncImpl: vi.fn(),
+        }),
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(3);
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+      'photos.delete',
+      'photos.getById',
+    ]);
+    expect(parseRecords(fixture.output())).toEqual([
+      {
+        phase: 'verify-photo-cleanup',
+        method: 'photos.getById',
+        status: 'PENDING_CLEANUP',
+      },
+    ]);
+  });
+
+  it('prioritizes pending local cleanup after serialized remote signal cleanup', async () => {
+    const fixture = await makeFixture();
+    const signalExit = vi.fn();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      onSaveResponse: () =>
+        terminateForSignal({
+          signal: 'SIGTERM',
+          exitImpl: signalExit,
+          removeWorkspaceSyncImpl: vi.fn(),
+          writeSyncImpl: vi.fn(),
+        }),
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+      removeWorkspaceImpl: vi
+        .fn()
+        .mockRejectedValue(new Error('private local path')),
+    });
+
+    expect(exitCode).toBe(4);
+    expect(signalExit).not.toHaveBeenCalled();
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+      'photos.delete',
+      'photos.getById',
+    ]);
+    expect(parseRecords(fixture.output())).toEqual([
+      { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
+    ]);
+    expect(fixture.output()).not.toContain(fixture.root);
+    expect(fixture.output()).not.toContain('private local');
   });
 
   it('never stores or deletes a saved photo owned by another target', async () => {
@@ -1257,5 +1379,85 @@ describe('VK Group photo capability check', () => {
       },
     ]);
     expect(await readdir(fixture.root)).toEqual(['synthetic.png']);
+  });
+
+  it('keeps a nonnumeric save error envelope pending and redacted', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      saveError: {
+        error: {
+          error_code: '15',
+          error_msg: 'private save envelope private-user-oauth-token',
+        },
+      },
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(3);
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+    ]);
+    expect(parseRecords(fixture.output())).toEqual([
+      {
+        phase: 'save-photo',
+        method: 'photos.saveWallPhoto',
+        status: 'PENDING_CLEANUP',
+      },
+    ]);
+    expect(fixture.output()).not.toContain('NO_GO');
+    expect(fixture.output()).not.toContain('private save');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
+  });
+
+  it('keeps a malformed wall.post error envelope pending after photo cleanup', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      wallPostError: { error: 'private malformed wall envelope' },
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(3);
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+      'wall.post',
+      'photos.delete',
+      'photos.getById',
+    ]);
+    expect(parseRecords(fixture.output())).toEqual([
+      {
+        phase: 'publish',
+        method: 'wall.post',
+        status: 'PENDING_CLEANUP',
+      },
+    ]);
+    expect(fixture.output()).not.toContain('NO_GO');
+    expect(fixture.output()).not.toContain('private malformed');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
   });
 });

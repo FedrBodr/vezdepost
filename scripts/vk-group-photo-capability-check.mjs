@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { rmSync, writeSync } from 'node:fs';
+import { writeSync } from 'node:fs';
 import {
   chmod,
   mkdtemp,
@@ -16,7 +16,7 @@ const API_ROOT = 'https://api.vk.com/method/';
 const API_VERSION = '5.251';
 const REQUEST_TIMEOUT_MS = 30_000;
 const MESSAGE_PREFIX = 'Vezdepost VK Group photo capability check';
-const activeWorkspaces = new Set();
+const activeSignalStates = new Set();
 
 class SafeFailure extends Error {
   constructor(phase, method, errorCode, creationUncertain = false) {
@@ -78,6 +78,7 @@ function parseArgs(args) {
 async function validateInputs(args, env) {
   if (
     env.VK_GROUP_CAPABILITY_AUTHORIZED !== '1' ||
+    'VK_GROUP_CAPABILITY_TOKEN' in env ||
     typeof env.VK_GROUP_CAPABILITY_USER_TOKEN !== 'string' ||
     env.VK_GROUP_CAPABILITY_USER_TOKEN.length < 10
   ) {
@@ -117,7 +118,6 @@ async function createPrivateWorkspace(
   const directory = await mkdtemp(
     join(tempRoot || tmpdir(), 'vk-group-photo-capability-')
   );
-  activeWorkspaces.add(directory);
   try {
     await chmodWorkspaceImpl(directory, 0o700);
   } catch {
@@ -153,45 +153,45 @@ async function removeWorkspace(workspace, removeWorkspaceImpl) {
       recursive: true,
       force: true,
     });
-    activeWorkspaces.delete(workspace.directory);
     return true;
   } catch {
     return false;
   }
 }
 
-function removeActiveWorkspacesSync(removeWorkspaceSyncImpl = rmSync) {
-  let removed = true;
-  for (const directory of activeWorkspaces) {
-    try {
-      removeWorkspaceSyncImpl(directory, { recursive: true, force: true });
-      activeWorkspaces.delete(directory);
-    } catch {
-      removed = false;
-    }
+function signalExitCode(signal) {
+  return signal === 'SIGINT' ? 130 : 143;
+}
+
+function throwIfSignalRequested(signalState, creationUncertain = false) {
+  if (signalState.signal) {
+    throw new SafeFailure('signal', undefined, undefined, creationUncertain);
   }
-  return removed;
 }
 
 export function terminateForSignal({
   signal,
   exitImpl = process.exit,
-  removeWorkspaceSyncImpl = rmSync,
   writeSyncImpl = writeSync,
 } = {}) {
-  if (!removeActiveWorkspacesSync(removeWorkspaceSyncImpl)) {
-    try {
-      writeSyncImpl(
-        process.stdout.fd,
-        '{"phase":"local-cleanup","status":"PENDING_LOCAL_CLEANUP"}\n'
-      );
-    } catch {
-      // A broken stdout cannot carry the safe record; exit still remains non-GO.
+  if (activeSignalStates.size > 0) {
+    for (const signalState of activeSignalStates) {
+      signalState.signal ||= signal;
     }
-    exitImpl(4);
     return;
   }
-  exitImpl(signal === 'SIGINT' ? 130 : 143);
+
+  try {
+    writeSyncImpl(process.stdout.fd, '{"phase":"signal","status":"NO_GO"}\n');
+  } catch {
+    // A broken stdout cannot carry the safe record; the exit remains non-GO.
+  } finally {
+    try {
+      exitImpl(signalExitCode(signal));
+    } catch {
+      // There is no safe fallback if the injected exit implementation fails.
+    }
+  }
 }
 
 async function readJsonResponse(
@@ -219,12 +219,15 @@ async function readJsonResponse(
 function unwrapVk(payload, phase, method, creationUncertain = false) {
   if (payload?.error !== undefined && payload?.error !== null) {
     const rawCode = payload?.error?.error_code;
+    const errorCode =
+      typeof rawCode === 'number' && Number.isInteger(rawCode)
+        ? rawCode
+        : undefined;
     throw new SafeFailure(
       phase,
       method,
-      typeof rawCode === 'number' && Number.isInteger(rawCode)
-        ? rawCode
-        : undefined
+      errorCode,
+      creationUncertain && errorCode === undefined
     );
   }
   if (payload?.response === undefined || payload?.response === null) {
@@ -512,10 +515,13 @@ export async function runCapabilityCheck({
   chmodWorkspaceImpl = chmod,
   markerFactory = randomUUID,
 } = {}) {
+  const signalState = { signal: undefined };
+  activeSignalStates.add(signalState);
   let inputs;
   try {
     inputs = await validateInputs(args, env);
   } catch {
+    activeSignalStates.delete(signalState);
     stdout.write(
       `${JSON.stringify({ phase: 'preflight', status: 'NO_GO' })}\n`
     );
@@ -535,6 +541,7 @@ export async function runCapabilityCheck({
       chmodWorkspaceImpl,
       removeWorkspaceImpl
     );
+    throwIfSignalRequested(signalState);
     await authorizeUserTarget({
       fetchImpl,
       workspace,
@@ -542,6 +549,7 @@ export async function runCapabilityCheck({
       groupId: inputs.groupId,
       events,
     });
+    throwIfSignalRequested(signalState);
     const uploadServer = await callVk({
       fetchImpl,
       workspace,
@@ -559,6 +567,7 @@ export async function runCapabilityCheck({
       method: 'photos.getWallUploadServer',
       status: 'PASS',
     });
+    throwIfSignalRequested(signalState);
 
     const upload = await uploadPhoto({
       fetchImpl,
@@ -567,6 +576,7 @@ export async function runCapabilityCheck({
       mediaFile: inputs.mediaFile,
     });
     events.push({ phase: 'upload', method: 'upload', status: 'PASS' });
+    throwIfSignalRequested(signalState);
 
     const saved = await callVk({
       fetchImpl,
@@ -604,6 +614,7 @@ export async function runCapabilityCheck({
       method: 'photos.saveWallPhoto',
       status: 'PASS',
     });
+    throwIfSignalRequested(signalState);
 
     const markerMessage = `${MESSAGE_PREFIX} ${markerFactory()}`;
     const published = await callVk({
@@ -634,6 +645,7 @@ export async function runCapabilityCheck({
       status: 'PASS',
       post_id: Number(candidatePostId),
     });
+    throwIfSignalRequested(signalState, true);
 
     let wallPost;
     try {
@@ -678,7 +690,9 @@ export async function runCapabilityCheck({
       status: 'PASS',
       post_id: Number(postId),
     });
+    throwIfSignalRequested(signalState);
 
+    const completedPostId = postId;
     const cleanupFailure = await cleanupArtifacts({
       fetchImpl,
       workspace,
@@ -692,10 +706,13 @@ export async function runCapabilityCheck({
       outputRecords = [pendingCleanupRecord(cleanupFailure)];
       exitCode = 3;
     } else {
+      postId = undefined;
+      photo = undefined;
+      throwIfSignalRequested(signalState);
       events.push({
         phase: 'complete',
         status: 'GO',
-        post_id: Number(postId),
+        post_id: Number(completedPostId),
       });
       outputRecords = events;
       exitCode = 0;
@@ -722,22 +739,33 @@ export async function runCapabilityCheck({
         });
         if (cleanupFailure) {
           pendingFailure ||= cleanupFailure;
+        } else {
+          postId = undefined;
+          photo = undefined;
         }
       }
       if (pendingFailure) {
         outputRecords = [pendingCleanupRecord(pendingFailure)];
         exitCode = 3;
       } else {
-        outputRecords = [noGoRecord(failure)];
+        const finalFailure = signalState.signal
+          ? new SafeFailure('signal')
+          : failure;
+        outputRecords = [noGoRecord(finalFailure)];
+        exitCode = signalState.signal ? signalExitCode(signalState.signal) : 2;
       }
     }
   } finally {
     const removed = await removeWorkspace(workspace, removeWorkspaceImpl);
+    activeSignalStates.delete(signalState);
     if (!removed) {
       outputRecords = [
         { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
       ];
       exitCode = 4;
+    } else if (signalState.signal && ![3, 4].includes(exitCode)) {
+      outputRecords = [noGoRecord(new SafeFailure('signal'))];
+      exitCode = signalExitCode(signalState.signal);
     }
   }
 
@@ -751,10 +779,14 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  const terminate = (signal) => {
-    terminateForSignal({ signal });
-  };
-  process.once('SIGINT', () => terminate('SIGINT'));
-  process.once('SIGTERM', () => terminate('SIGTERM'));
-  process.exitCode = await runCapabilityCheck();
+  const terminateForSigint = () => terminateForSignal({ signal: 'SIGINT' });
+  const terminateForSigterm = () => terminateForSignal({ signal: 'SIGTERM' });
+  process.once('SIGINT', terminateForSigint);
+  process.once('SIGTERM', terminateForSigterm);
+  try {
+    process.exitCode = await runCapabilityCheck();
+  } finally {
+    process.removeListener('SIGINT', terminateForSigint);
+    process.removeListener('SIGTERM', terminateForSigterm);
+  }
 }

@@ -142,6 +142,8 @@ verification, and cleanup sequence is authorized. The runner rejects missing
 authorization, a missing injected token, unknown arguments (including a token
 argument), non-positive/non-numeric group IDs, URLs, empty files, and media
 outside `.jpg`, `.jpeg`, `.png`, and `.webp` before network access.
+It also rejects any presence of the legacy `VK_GROUP_CAPABILITY_TOKEN`
+environment variable, even when the new user-token variable is valid.
 
 The runner sends the token only inside VK POST bodies. It performs the upload
 inside the Node process, so the discovered upload URL never enters a child
@@ -149,9 +151,12 @@ process argument. Requests have a 30-second abort timeout and reject redirects,
 so a redirect cannot forward a VK POST body to a different origin. Raw response
 files exist only in a mode-`0700` temporary
 directory as mode-`0600` files. A `finally` cleanup removes that directory on
-normal success or failure; SIGINT/SIGTERM handlers attempt removal before exit.
-Raw responses and other ephemeral diagnostics are destroyed before a `GO`,
-`NO_GO`, or `PENDING_CLEANUP` result is emitted.
+normal success or failure. SIGINT/SIGTERM handlers mark the active run for
+cooperative interruption; the main state machine then serially cleans only
+already-proven-owned remote artifacts, verifies absence, and removes the local
+workspace before emitting exactly one final record. Raw responses and other
+ephemeral diagnostics are destroyed before a `GO`, `NO_GO`, or
+`PENDING_CLEANUP` result is emitted.
 
 Stdout is JSON Lines containing only `phase`, `method`, numeric `error_code`
 when VK supplied one, `status`, and safe numeric `post_id` fields. A `post_id`
@@ -186,6 +191,11 @@ runner-verified numeric post ID:
 Any non-success run emits one final safe record only, ending in `NO_GO`,
 `PENDING_CLEANUP`, or `PENDING_LOCAL_CLEANUP`. Never treat an intermediate
 `PASS`, conversational approval, or successful OAuth redirect as a final result.
+An interrupted run whose remote and local cleanup completes emits
+`{"phase":"signal","status":"NO_GO"}` and returns conventional exit `130` for
+SIGINT or `143` for SIGTERM. Uncertain or unverified remote cleanup instead
+returns exit `3` with `PENDING_CLEANUP`; failed local workspace removal returns
+exit `4` with `PENDING_LOCAL_CLEANUP`.
 
 If local workspace deletion fails, the runner suppresses every earlier result,
 including a provisional remote `GO`, and emits only
