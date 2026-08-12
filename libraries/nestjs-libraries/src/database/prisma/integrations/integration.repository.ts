@@ -7,6 +7,23 @@ import { IntegrationTimeDto } from '@gitroom/nestjs-libraries/dtos/integrations/
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { PlugDto } from '@gitroom/nestjs-libraries/dtos/plugs/plug.dto';
 
+export class IntegrationProviderConflictError extends Error {
+  readonly code = 'INTEGRATION_PROVIDER_CONFLICT';
+
+  constructor() {
+    super('Integration identifier belongs to another provider');
+    this.name = 'IntegrationProviderConflictError';
+  }
+}
+
+export const isIntegrationProviderConflictError = (
+  error: unknown
+): error is IntegrationProviderConflictError =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  error.code === 'INTEGRATION_PROVIDER_CONFLICT';
+
 @Injectable()
 export class IntegrationRepository {
   private storage = UploadFactory.createStorage();
@@ -143,14 +160,6 @@ export class IntegrationRepository {
   }
 
   async updateIntegration(id: string, params: Partial<Integration>) {
-    if (
-      params.picture &&
-      (params.picture.indexOf(process.env.CLOUDFLARE_BUCKET_URL!) === -1 ||
-        params.picture.indexOf(process.env.FRONTEND_URL!) === -1)
-    ) {
-      params.picture = await this.storage.uploadSimple(params.picture);
-    }
-
     const existing = await this._integration.model.integration.findUnique({
       where: {
         organizationId_internalId: {
@@ -159,6 +168,22 @@ export class IntegrationRepository {
         },
       },
     });
+
+    if (
+      existing &&
+      params.providerIdentifier &&
+      existing.providerIdentifier !== params.providerIdentifier
+    ) {
+      throw new IntegrationProviderConflictError();
+    }
+
+    if (
+      params.picture &&
+      (params.picture.indexOf(process.env.CLOUDFLARE_BUCKET_URL!) === -1 ||
+        params.picture.indexOf(process.env.FRONTEND_URL!) === -1)
+    ) {
+      params.picture = await this.storage.uploadSimple(params.picture);
+    }
 
     if (existing) {
       await this._posts.model.post.updateMany({
@@ -379,6 +404,23 @@ export class IntegrationRepository {
       where: {
         organizationId: org,
         id,
+      },
+    });
+  }
+
+  getIntegrationByRootInternalId(
+    org: string,
+    rootInternalId: string,
+    providerIdentifier: string,
+    internalId: string
+  ) {
+    return this._integration.model.integration.findFirst({
+      where: {
+        organizationId: org,
+        rootInternalId,
+        providerIdentifier,
+        internalId,
+        deletedAt: null,
       },
     });
   }

@@ -21,17 +21,15 @@ import {
   refreshVkUser,
 } from './vk.oauth';
 import type { VkIdentifier } from './vk.oauth';
+import {
+  VK_GROUP_LEGACY_TOKEN_RECONNECT,
+  VK_GROUP_PHOTO_ACCESS_MISSING,
+  VK_GROUP_SELECTED_COMMUNITY_NOT_MANAGED,
+} from './vk.group.errors';
 
 const TOO_MANY_PHOTOS = 'VK Group supports up to 10 photographs per post.';
 const UNSUPPORTED_MEDIA =
   'VK Group supports photographs only. Remove videos and other attachments.';
-const PHOTO_ACCESS_MISSING =
-  'VK Group photo access is missing. Recreate the community key with photographs access and reconnect VK Group.';
-const LEGACY_GROUP_TOKEN_RECONNECT =
-  'Reconnect VK Group through VK authorization to publish photographs.';
-const SELECTED_GROUP_NOT_MANAGED =
-  'The selected VK community is not managed by this account.';
-
 const isUnsupportedAttachmentPath = (path: string) =>
   /\.(?:mp4|mov|avi|mkv|webm|m4v|pdf|docx?|xlsx?|pptx?|txt|rtf|csv|zip|rar|7z|tar|gz)(?:[?#].*)?$/i.test(
     path || ''
@@ -159,10 +157,10 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         );
       }
       if (code === 27 && method.startsWith('photos.')) {
-        this.badGroupResponse(LEGACY_GROUP_TOKEN_RECONNECT, code);
+        this.badGroupResponse(VK_GROUP_LEGACY_TOKEN_RECONNECT, code);
       }
       if (code === 15 && method.startsWith('photos.')) {
-        this.badGroupResponse(PHOTO_ACCESS_MISSING, code);
+        this.badGroupResponse(VK_GROUP_PHOTO_ACCESS_MISSING, code);
       }
       this.badGroupResponse(message, code);
     }
@@ -451,14 +449,14 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     data: { page: string }
   ): Promise<FetchPageInformationResult> {
     if (typeof data?.page !== 'string' || !/^[1-9]\d*$/.test(data.page)) {
-      this.badGroupResponse(SELECTED_GROUP_NOT_MANAGED);
+      this.badGroupResponse(VK_GROUP_SELECTED_COMMUNITY_NOT_MANAGED);
     }
 
     const group = (await this.pages(accessToken)).find(
       ({ id }) => id === data.page
     );
     if (!group) {
-      this.badGroupResponse(SELECTED_GROUP_NOT_MANAGED);
+      this.badGroupResponse(VK_GROUP_SELECTED_COMMUNITY_NOT_MANAGED);
     }
 
     const uploadServer = await this.callPhotoVk<unknown>(
@@ -515,11 +513,10 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       'wall.post',
       'community ID'
     );
-    const photos = await Promise.all(
-      mainMedia.map((media) =>
-        this.uploadPhoto(positiveGroupId, accessToken, media)
-      )
-    );
+    const photos: Array<{ ownerId: string; id: string }> = [];
+    for (const media of mainMedia) {
+      photos.push(await this.uploadPhoto(positiveGroupId, accessToken, media));
+    }
 
     let wallPostPayload: unknown;
     try {

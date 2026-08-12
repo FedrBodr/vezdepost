@@ -5,10 +5,14 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
-import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
+import {
+  IntegrationRepository,
+  isIntegrationProviderConflictError,
+} from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import {
   AnalyticsData,
+  FetchPageInformationResult,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { Integration, Organization } from '@prisma/client';
@@ -25,8 +29,18 @@ import utc from 'dayjs/plugin/utc';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { TemporalService } from 'nestjs-temporal-core';
+import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  getSafeVkGroupSelectionError,
+  VK_GROUP_SELECTION_RECONNECT,
+} from '@gitroom/nestjs-libraries/integrations/social/vk.group.errors';
 
 dayjs.extend(utc);
+
+const getVkGroupSelectionInternalId = (data: unknown) => {
+  const page = String((data as { page?: unknown } | undefined)?.page ?? '');
+  return /^[1-9]\d*$/.test(page) ? `-${page}` : undefined;
+};
 
 @Injectable()
 export class IntegrationService {
@@ -289,13 +303,44 @@ export class IntegrationService {
     if (!getIntegration) {
       throw new HttpException('Integration not found', HttpStatus.NOT_FOUND);
     }
-    if (!getIntegration.inBetweenSteps) {
-      throw new HttpException('Invalid request', HttpStatus.BAD_REQUEST);
-    }
 
     const provider = this._integrationManager.getSocialIntegration(
       getIntegration.providerIdentifier
     );
+
+    if (
+      !getIntegration.inBetweenSteps ||
+      (getIntegration.providerIdentifier === 'vk-group' &&
+        getIntegration.deletedAt)
+    ) {
+      const selectedInternalId = getVkGroupSelectionInternalId(data);
+      const finalizedIntegration = getIntegration.deletedAt
+        ? getIntegration.rootInternalId?.startsWith('vk-group-oauth:') &&
+          selectedInternalId
+          ? await this._integrationRepository.getIntegrationByRootInternalId(
+              org,
+              getIntegration.rootInternalId,
+              'vk-group',
+              selectedInternalId
+            )
+          : null
+        : getIntegration;
+
+      if (
+        getIntegration.providerIdentifier === 'vk-group' &&
+        finalizedIntegration &&
+        finalizedIntegration.internalId === selectedInternalId
+      ) {
+        await this._refreshIntegrationService.startRefreshWorkflow(
+          org,
+          finalizedIntegration.id,
+          provider
+        );
+        return { success: true };
+      }
+
+      throw new HttpException('Invalid request', HttpStatus.BAD_REQUEST);
+    }
 
     if (!provider.fetchPageInformation) {
       throw new HttpException(
@@ -304,10 +349,33 @@ export class IntegrationService {
       );
     }
 
-    const getIntegrationInformation = await provider.fetchPageInformation(
-      getIntegration.token,
-      data
-    );
+    let getIntegrationInformation: FetchPageInformationResult;
+    try {
+      getIntegrationInformation = await provider.fetchPageInformation(
+        getIntegration.token,
+        data
+      );
+    } catch (error) {
+      if (
+        getIntegration.providerIdentifier === 'vk-group' &&
+        error instanceof BadBody
+      ) {
+        throw new HttpException(
+          getSafeVkGroupSelectionError(error.message),
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      if (
+        getIntegration.providerIdentifier === 'vk-group' &&
+        error instanceof RefreshToken
+      ) {
+        throw new HttpException(
+          VK_GROUP_SELECTION_RECONNECT,
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      throw error;
+    }
 
     if (getIntegration.providerIdentifier !== 'vk-group') {
       await this.checkForDeletedOnceAndUpdate(
@@ -316,17 +384,42 @@ export class IntegrationService {
       );
     }
 
-    await this._integrationRepository.updateIntegration(id, {
-      picture: getIntegrationInformation.picture,
-      internalId: String(getIntegrationInformation.id),
-      organizationId: org,
-      name: getIntegrationInformation.name,
-      inBetweenSteps: false,
-      token: getIntegrationInformation.access_token,
-      refreshToken: getIntegration.refreshToken,
-      tokenExpiration: getIntegration.tokenExpiration,
-      profile: getIntegrationInformation.username,
-    });
+    let finalizedIntegration: Integration;
+    try {
+      finalizedIntegration =
+        await this._integrationRepository.updateIntegration(id, {
+          picture: getIntegrationInformation.picture,
+          internalId: String(getIntegrationInformation.id),
+          organizationId: org,
+          name: getIntegrationInformation.name,
+          inBetweenSteps: false,
+          token: getIntegrationInformation.access_token,
+          refreshToken: getIntegration.refreshToken,
+          tokenExpiration: getIntegration.tokenExpiration,
+          profile: getIntegrationInformation.username,
+          ...(getIntegration.providerIdentifier === 'vk-group'
+            ? {
+                rootInternalId:
+                  getIntegration.rootInternalId || getIntegration.internalId,
+                providerIdentifier: 'vk-group',
+              }
+            : {}),
+        });
+    } catch (error) {
+      if (isIntegrationProviderConflictError(error)) {
+        throw new HttpException(
+          'Could not save this channel because its identifier is already used by another provider.',
+          HttpStatus.CONFLICT
+        );
+      }
+      throw error;
+    }
+
+    await this._refreshIntegrationService.startRefreshWorkflow(
+      org,
+      finalizedIntegration.id,
+      provider
+    );
 
     return { success: true };
   }

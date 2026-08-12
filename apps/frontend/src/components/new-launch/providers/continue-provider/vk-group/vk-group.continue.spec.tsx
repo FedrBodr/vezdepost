@@ -11,6 +11,10 @@ import {
 } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const translationState = vi.hoisted(() => ({
+  values: {} as Record<string, string>,
+}));
+
 vi.mock(
   '@gitroom/frontend/components/launches/helpers/use.custom.provider.function',
   () => ({
@@ -19,7 +23,8 @@ vi.mock(
 );
 
 vi.mock('@gitroom/react/translation/get.transation.service.client', () => ({
-  useT: () => (_key: string, fallback: string) => fallback,
+  useT: () => (key: string, fallback: string) =>
+    translationState.values[key] || fallback,
 }));
 
 const componentPath = resolve(
@@ -37,6 +42,7 @@ const loadComponent = async () => {
 describe('VkGroupContinue', () => {
   beforeEach(() => {
     cleanup();
+    translationState.values = {};
     vi.stubGlobal('React', React);
   });
 
@@ -189,4 +195,69 @@ describe('VkGroupContinue', () => {
       expect(russian[key], key).toBe(russianValue);
     }
   });
+
+  it.each([
+    [
+      'en',
+      [
+        'How VK Group authorization works',
+        'Authorize with VK. Postiz requests basic account information plus only the communities, wall, and photos permissions needed for this integration.',
+        'Choose one community where this VK account is an administrator.',
+        'Posts are published on behalf of the selected community.',
+        'VK Group supports up to 10 photographs per post.',
+        'VK Group does not support video posts.',
+      ],
+    ],
+    [
+      'ru',
+      [
+        'Как работает авторизация VK Group',
+        'Авторизуйтесь через VK. Postiz запросит основные данные аккаунта и только права на сообщества, стену и фотографии, необходимые для этой интеграции.',
+        'Выберите одно сообщество, в котором этот аккаунт VK является администратором.',
+        'Публикации размещаются от имени выбранного сообщества.',
+        'VK Group поддерживает не более 10 фотографий в одной публикации.',
+        'VK Group не поддерживает публикации с видео.',
+      ],
+    ],
+  ] as const)(
+    'renders the complete collapsible OAuth guide in %s',
+    async (locale, expectedCopy) => {
+      translationState.values = JSON.parse(
+        readFileSync(
+          resolve(
+            `libraries/react-shared-libraries/src/translation/locales/${locale}/translation.json`
+          ),
+          'utf8'
+        )
+      );
+      const { VkGroupContinue } = await loadComponent();
+
+      render(
+        <VkGroupContinue
+          existingId={[]}
+          initialData={[
+            {
+              id: '321',
+              page: '-321',
+              username: 'vk_builders',
+              name: 'VK Builders',
+              picture: 'https://example.com/vk-builders.jpg',
+            },
+          ]}
+          onSave={vi.fn()}
+        />
+      );
+
+      const [title, ...details] = expectedCopy;
+      const summary = screen.getByText(title);
+      const guide = summary.closest('details') as HTMLDetailsElement;
+      expect(guide).not.toBeNull();
+      expect(guide.open).toBe(false);
+      fireEvent.click(summary);
+      expect(guide.open).toBe(true);
+      for (const line of details) {
+        expect(screen.getByText(line)).not.toBeNull();
+      }
+    }
+  );
 });

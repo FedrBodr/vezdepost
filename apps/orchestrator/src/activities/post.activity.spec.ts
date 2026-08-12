@@ -1,6 +1,14 @@
 import axios from 'axios';
-import { Readable, Writable } from 'stream';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Readable } from 'stream';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type MockInstance,
+  vi,
+} from 'vitest';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { VkGroupProvider } from '@gitroom/nestjs-libraries/integrations/social/vk.group.provider';
 import { PostActivity } from './post.activity';
@@ -23,29 +31,6 @@ const integration = {
 
 const response = (body: unknown) =>
   Promise.resolve({ json: async () => body } as Response);
-
-const readMultipartBody = (formData: NodeJS.ReadableStream) =>
-  new Promise<string>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    const sink = new Writable({
-      write(chunk, _encoding, callback) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        callback();
-      },
-    });
-    sink.on('finish', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    sink.on('error', reject);
-    formData.on('error', reject);
-    formData.pipe(sink);
-  });
-
-const deferred = <T>() => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-};
 
 const storedPost = (id: string, mediaIds: string[]) =>
   ({
@@ -158,7 +143,7 @@ function createHarness({
 
 async function expectNoWallPost(
   request: Promise<unknown>,
-  fetchMock: ReturnType<typeof vi.spyOn>,
+  fetchMock: MockInstance<VkGroupProvider['fetch']>,
   message: string
 ) {
   await expect(request).rejects.toThrow(message);
@@ -234,12 +219,7 @@ describe('PostActivity VK Group OAuth publishing', () => {
     expect(wallBody.get('attachments')).toBe('photo-123_456');
   });
 
-  it('preserves stored-media order when uploads complete out of order', async () => {
-    const uploads = [0, 1].map(() =>
-      deferred<{
-        data: { photo: string; server: number; hash: string };
-      }>()
-    );
+  it('runs each stored photograph through the exact serial VK sequence', async () => {
     const storedMedia = Object.fromEntries(
       [0, 1].map((index) => [
         `stored-photo-${index}`,
@@ -250,41 +230,25 @@ describe('PostActivity VK Group OAuth publishing', () => {
         },
       ])
     );
-    const { activity, fetchMock, repository } = createHarness({ storedMedia });
-    vi.mocked(axios.get).mockImplementation(async (path) => ({
-      data: Readable.from([`stored-image-${path}`]),
-    }));
-    vi.mocked(axios.post).mockImplementation(async (_url, formData) => {
-      const multipartBody = await readMultipartBody(
-        formData as NodeJS.ReadableStream
-      );
-      const mediaIndex = Number(
-        multipartBody.match(/stored-photo-(\d+)\.jpg/)?.[1]
-      );
-      return uploads[mediaIndex].promise;
+    const { activity, events, fetchMock, repository } = createHarness({
+      storedMedia,
     });
 
-    const request = activity.postSocial(integration, [
-      storedPost('post-1', ['stored-photo-0', 'stored-photo-1']),
-    ]);
-    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2));
-    uploads[1].resolve({
-      data: {
-        photo: 'uploaded-photo-1',
-        server: 322,
-        hash: 'upload-hash-1',
-      },
-    });
-    uploads[0].resolve({
-      data: {
-        photo: 'uploaded-photo-0',
-        server: 321,
-        hash: 'upload-hash-0',
-      },
-    });
-
-    await expect(request).resolves.toEqual([
+    await expect(
+      activity.postSocial(integration, [
+        storedPost('post-1', ['stored-photo-0', 'stored-photo-1']),
+      ])
+    ).resolves.toEqual([
       expect.objectContaining({ releaseURL: 'https://vk.com/wall-123_789' }),
+    ]);
+    expect(events).toEqual([
+      'photos.getWallUploadServer',
+      'multipart upload',
+      'photos.saveWallPhoto',
+      'photos.getWallUploadServer',
+      'multipart upload',
+      'photos.saveWallPhoto',
+      'wall.post',
     ]);
     expect(axios.get).toHaveBeenNthCalledWith(
       1,
@@ -376,23 +340,32 @@ describe('PostActivity VK Group OAuth publishing', () => {
     );
   });
 
-  it('does not call wall.post after a multipart upload failure', async () => {
-    const media = {
-      id: 'stored-photo',
-      path: 'https://media.example/stored-photo.jpg',
-      type: 'image',
-    };
+  it('does not touch sibling media or wall.post after a multipart upload failure', async () => {
+    const storedMedia = Object.fromEntries(
+      [0, 1].map((index) => [
+        `stored-photo-${index}`,
+        {
+          id: `stored-photo-${index}`,
+          path: `https://media.example/stored-photo-${index}.jpg`,
+          type: 'image',
+        },
+      ])
+    );
     const { activity, events, fetchMock } = createHarness({
-      storedMedia: { [media.id]: media },
+      storedMedia,
       uploadFailure: true,
     });
 
     await expectNoWallPost(
-      activity.postSocial(integration, [storedPost('post-1', [media.id])]),
+      activity.postSocial(integration, [
+        storedPost('post-1', ['stored-photo-0', 'stored-photo-1']),
+      ]),
       fetchMock,
       'VK Group photo upload failed'
     );
     expect(events).toEqual(['photos.getWallUploadServer', 'multipart upload']);
+    expect(axios.get).toHaveBeenCalledOnce();
+    expect(axios.post).toHaveBeenCalledOnce();
   });
 
   it('does not call wall.post after photos.saveWallPhoto fails', async () => {

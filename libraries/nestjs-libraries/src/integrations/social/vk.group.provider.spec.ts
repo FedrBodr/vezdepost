@@ -22,16 +22,6 @@ const postText = 'private VK post text';
 const response = (body: unknown) =>
   Promise.resolve({ json: async () => body } as Response);
 
-const deferred = <T>() => {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-};
-
 const readMultipartBody = (formData: NodeJS.ReadableStream) =>
   new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -641,16 +631,15 @@ describe('VkGroupProvider photo publishing', () => {
     expect(multipartBody).toContain('image-data');
   });
 
-  it('preserves photo attachment ordering when concurrent uploads resolve out of order', async () => {
-    const uploads = Array.from({ length: 10 }, () =>
-      deferred<{ data: { photo: string; server: number; hash: string } }>()
-    );
+  it('uploads and saves photographs serially in original media order', async () => {
+    const events: string[] = [];
     let uploadServerIndex = 0;
     const fetchMock = vi
       .spyOn(provider, 'fetch')
       .mockImplementation((url, options) => {
         if (url.endsWith('/method/photos.getWallUploadServer')) {
           const index = uploadServerIndex++;
+          events.push(`get-upload-server:${index}`);
           return response({
             response: {
               upload_url: `https://upload.example/private-upload-${index}`,
@@ -660,6 +649,7 @@ describe('VkGroupProvider photo publishing', () => {
         if (url.endsWith('/method/photos.saveWallPhoto')) {
           const body = options?.body as FormData;
           const index = Number(String(body.get('photo')).split('-').at(-1));
+          events.push(`save-photo:${index}`);
           expect(body.get('server')).toBe(String(3000 + index));
           expect(body.get('hash')).toBe(`upload-hash-${index}`);
           return response({
@@ -672,12 +662,14 @@ describe('VkGroupProvider photo publishing', () => {
           });
         }
         if (url.endsWith('/method/wall.post')) {
+          events.push('wall-post');
           return response({ response: { post_id: 789 } });
         }
         throw new Error('unexpected VK method');
       });
     vi.mocked(axios.get).mockImplementation(async (path) => {
       const index = Number(String(path).match(/photo-(\d+)\.jpg$/)?.[1]);
+      events.push(`download:${index}`);
       return { data: Readable.from([`image-from-media-${index}`]) };
     });
     vi.mocked(axios.post).mockImplementation(async (url, formData) => {
@@ -685,37 +677,45 @@ describe('VkGroupProvider photo publishing', () => {
         formData as NodeJS.ReadableStream
       );
       const index = Number(multipartBody.match(/image-from-media-(\d+)/)?.[1]);
+      events.push(`multipart-upload:${index}`);
       expect(url).toBe(`https://upload.example/private-upload-${index}`);
       expect(multipartBody).toContain('name="photo"');
       expect(multipartBody).toContain(`filename="private-photo-${index}.jpg"`);
-      return uploads[index].promise;
+      return {
+        data: {
+          photo: `uploaded-photo-${index}`,
+          server: 3000 + index,
+          hash: `upload-hash-${index}`,
+        },
+      };
     });
 
-    const request = provider.post('-123', token, [
+    await provider.post('-123', token, [
       {
         id: 'postiz-post',
-        message: 'Ten photos',
+        message: 'Ordered photos',
         settings: {},
-        media: Array.from({ length: 10 }, (_, index) => ({
+        media: Array.from({ length: 3 }, (_, index) => ({
           type: 'image' as const,
           path: `https://media.example/private-photo-${index}.jpg`,
         })),
       },
     ]);
 
-    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(10));
-    for (let index = 9; index >= 0; index -= 1) {
-      uploads[index].resolve({
-        data: {
-          photo: `uploaded-photo-${index}`,
-          server: 3000 + index,
-          hash: `upload-hash-${index}`,
-        },
-      });
-    }
-
-    await expect(request).resolves.toEqual([
-      expect.objectContaining({ postId: '789', status: 'completed' }),
+    expect(events).toEqual([
+      'get-upload-server:0',
+      'download:0',
+      'multipart-upload:0',
+      'save-photo:0',
+      'get-upload-server:1',
+      'download:1',
+      'multipart-upload:1',
+      'save-photo:1',
+      'get-upload-server:2',
+      'download:2',
+      'multipart-upload:2',
+      'save-photo:2',
+      'wall-post',
     ]);
 
     const wallCall = fetchMock.mock.calls.find(([url]) =>
@@ -723,10 +723,9 @@ describe('VkGroupProvider photo publishing', () => {
     );
     const wallBody = wallCall?.[1]?.body as FormData;
     expect(wallBody.get('attachments')).toBe(
-      Array.from(
-        { length: 10 },
-        (_, index) => `photo-123_${2000 + index}`
-      ).join(',')
+      Array.from({ length: 3 }, (_, index) => `photo-123_${2000 + index}`).join(
+        ','
+      )
     );
   });
 
@@ -963,7 +962,7 @@ describe('VkGroupProvider photo publishing', () => {
         fetchMock,
         {
           message:
-            'VK Group photo access is missing. Recreate the community key with photographs access and reconnect VK Group.',
+            'VK Group photo access is missing. Reconnect VK Group through VK authorization and grant photo access.',
         }
       );
     }
@@ -1429,23 +1428,23 @@ describe('VkGroupProvider photo publishing', () => {
     );
   });
 
-  it('does not publish a partial post when one concurrent photo upload fails', async () => {
-    const firstUpload = deferred<{
-      data: { photo: string; server: number; hash: string };
-    }>();
-    const secondUpload = deferred<never>();
+  it('stops before touching a sibling photograph after an upload failure', async () => {
+    const events: string[] = [];
     let uploadServerIndex = 0;
     const fetchMock = vi
       .spyOn(provider, 'fetch')
       .mockImplementation((url, options) => {
         if (url.endsWith('/method/photos.getWallUploadServer')) {
+          const index = uploadServerIndex++;
+          events.push(`get-upload-server:${index}`);
           return response({
             response: {
-              upload_url: `https://upload.example/partial-${uploadServerIndex++}`,
+              upload_url: `https://upload.example/partial-${index}`,
             },
           });
         }
         if (url.endsWith('/method/photos.saveWallPhoto')) {
+          events.push('save-photo');
           expect((options?.body as FormData).get('photo')).toBe(
             'partial-photo-0'
           );
@@ -1456,48 +1455,45 @@ describe('VkGroupProvider photo publishing', () => {
         }
         throw new Error('unexpected VK method');
       });
-    vi.mocked(axios.get).mockImplementation(async () => ({
-      data: Readable.from(['image-data']),
-    }));
-    vi.mocked(axios.post)
-      .mockImplementationOnce(() => firstUpload.promise)
-      .mockImplementationOnce(() => secondUpload.promise);
+    vi.mocked(axios.get).mockImplementation(async () => {
+      events.push('download');
+      return { data: Readable.from(['image-data']) };
+    });
+    vi.mocked(axios.post).mockImplementation(async () => {
+      events.push('multipart-upload');
+      throw new Error(`axios-private-message ${uploadUrl}`);
+    });
 
-    const request = provider.post('-123', token, [
+    await expectSanitizedPhotoFailure(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Partial failure',
+          settings: {},
+          media: [
+            { type: 'image', path: 'https://media.example/partial-0.jpg' },
+            { type: 'image', path: 'https://media.example/partial-1.jpg' },
+          ],
+        },
+      ]),
+      fetchMock,
       {
-        id: 'postiz-post',
-        message: 'Partial failure',
-        settings: {},
-        media: [
-          { type: 'image', path: 'https://media.example/partial-0.jpg' },
-          { type: 'image', path: 'https://media.example/partial-1.jpg' },
+        message: 'VK Group photo upload failed',
+        secrets: [
+          'https://media.example/partial-0.jpg',
+          'https://media.example/partial-1.jpg',
+          'https://upload.example/partial-0',
+          'https://upload.example/partial-1',
         ],
-      },
-    ]);
-    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2));
-    firstUpload.resolve({
-      data: { photo: 'partial-photo-0', server: 321, hash: 'partial-hash-0' },
-    });
-    await vi.waitFor(() =>
-      expect(
-        fetchMock.mock.calls.filter(([url]) =>
-          url.endsWith('/method/photos.saveWallPhoto')
-        )
-      ).toHaveLength(1)
+      }
     );
-    secondUpload.reject(new Error(`axios-private-message ${uploadUrl}`));
-
-    await expectSanitizedPhotoFailure(request, fetchMock, {
-      message: 'VK Group photo upload failed',
-      secrets: [
-        'https://media.example/partial-0.jpg',
-        'https://media.example/partial-1.jpg',
-        'https://upload.example/partial-0',
-        'https://upload.example/partial-1',
-        'partial-photo-0',
-        'partial-hash-0',
-      ],
-    });
+    expect(events).toEqual([
+      'get-upload-server:0',
+      'download',
+      'multipart-upload',
+    ]);
+    expect(axios.get).toHaveBeenCalledOnce();
+    expect(axios.post).toHaveBeenCalledOnce();
   });
 
   it.each([

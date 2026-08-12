@@ -1,6 +1,11 @@
 'use client';
 
-import { withContinueProvider } from '../with-continue-provider';
+import { FC } from 'react';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  ContinueProviderProps,
+  withContinueProvider,
+} from '../with-continue-provider';
 
 interface VkGroupItem {
   id: string;
@@ -10,7 +15,7 @@ interface VkGroupItem {
   picture: string;
 }
 
-export const VkGroupContinue = withContinueProvider<VkGroupItem, string>({
+const VkGroupSelector = withContinueProvider<VkGroupItem, string>({
   endpoint: 'pages',
   swrKey: 'load-vk-group-communities',
   titleKey: 'vk_group_select_community',
@@ -51,3 +56,54 @@ export const VkGroupContinue = withContinueProvider<VkGroupItem, string>({
     </>
   ),
 });
+
+export const VkGroupOAuthGuide: FC = () => {
+  const t = useT();
+
+  return (
+    <details className="rounded-[8px] border border-newTableBorder bg-newBgLineColor px-[16px] py-[12px] text-[14px]">
+      <summary className="cursor-pointer font-medium">
+        {t('vk_group_oauth_guide_title', 'How VK Group authorization works')}
+      </summary>
+      <ul className="mt-[12px] list-disc space-y-[8px] ps-[20px] text-textItemBlur">
+        <li>
+          {t(
+            'vk_group_oauth_minimal_permissions',
+            'Authorize with VK. Postiz requests basic account information plus only the communities, wall, and photos permissions needed for this integration.'
+          )}
+        </li>
+        <li>
+          {t(
+            'vk_group_oauth_admin_selection',
+            'Choose one community where this VK account is an administrator.'
+          )}
+        </li>
+        <li>
+          {t(
+            'vk_group_community_authorship',
+            'Posts are published on behalf of the selected community.'
+          )}
+        </li>
+        <li>
+          {t(
+            'vk_group_photo_limit',
+            'VK Group supports up to 10 photographs per post.'
+          )}
+        </li>
+        <li>
+          {t(
+            'vk_group_video_unsupported',
+            'VK Group does not support video posts.'
+          )}
+        </li>
+      </ul>
+    </details>
+  );
+};
+
+export const VkGroupContinue: FC<ContinueProviderProps> = (props) => (
+  <div className="flex flex-col gap-[20px]">
+    <VkGroupOAuthGuide />
+    <VkGroupSelector {...props} />
+  </div>
+);
