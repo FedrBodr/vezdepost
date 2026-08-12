@@ -19,11 +19,12 @@ import {
   generateVkAuthUrl,
   refreshVkUser,
 } from './vk.oauth';
+import type { VkIdentifier } from './vk.oauth';
 
 export class VkProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2; // VK has moderate API limits
   refreshCron = true;
-  identifier = 'vk';
+  identifier: VkIdentifier = 'vk';
   name = 'VK';
   isBetweenSteps = false;
   scopes = [

@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'crypto';
 import { BadBody } from '../social.abstract';
 import { parseVkPositiveIntegerId, unwrapVkResponse } from './vk.response';
 
-type VkIdentifier = 'vk' | 'vk-group';
+export type VkIdentifier = 'vk' | 'vk-group';
 
 type VkFetcher = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -57,11 +57,11 @@ const unwrapPayload = <T>(payload: unknown, method: string): T => {
 
 const parseDeviceBoundValue = (value: unknown, field: string) => {
   if (typeof value !== 'string') {
-    badResponse('oauth2/auth', `invalid ${field} or device ID`);
+    return badResponse('oauth2/auth', `invalid ${field} or device ID`);
   }
   const [secret, deviceId] = value.split('&&&&');
-  if (!secret.trim() || !deviceId?.trim()) {
-    badResponse('oauth2/auth', `invalid ${field} or device ID`);
+  if (!secret.trim() || !deviceId || !deviceId.trim()) {
+    return badResponse('oauth2/auth', `invalid ${field} or device ID`);
   }
   return { secret, deviceId };
 };
@@ -72,23 +72,26 @@ const parseOAuthTokens = (payload: unknown): VkOAuthTokens => {
   }
 
   const value = payload as Record<string, unknown>;
+  const accessToken = value.access_token;
+  const refreshToken = value.refresh_token;
+  const expiresIn = value.expires_in;
   if (
-    typeof value.access_token !== 'string' ||
-    !value.access_token.trim() ||
-    typeof value.refresh_token !== 'string' ||
-    !value.refresh_token.trim() ||
-    typeof value.expires_in !== 'number' ||
-    !Number.isFinite(value.expires_in) ||
-    !Number.isInteger(value.expires_in) ||
-    value.expires_in <= 0
+    typeof accessToken !== 'string' ||
+    !accessToken.trim() ||
+    typeof refreshToken !== 'string' ||
+    !refreshToken.trim() ||
+    typeof expiresIn !== 'number' ||
+    !Number.isFinite(expiresIn) ||
+    !Number.isInteger(expiresIn) ||
+    expiresIn <= 0
   ) {
-    badResponse('oauth2/auth', 'invalid token fields');
+    return badResponse('oauth2/auth', 'invalid token fields');
   }
 
   return {
-    accessToken: value.access_token,
-    refreshToken: value.refresh_token,
-    expiresIn: value.expires_in,
+    accessToken,
+    refreshToken,
+    expiresIn,
   };
 };
 
@@ -103,26 +106,29 @@ const parseUserInfo = (payload: unknown): VkUserInfo => {
   }
 
   const value = user as Record<string, unknown>;
+  const firstName = value.first_name;
+  const lastName = value.last_name;
+  const avatar = value.avatar;
   const id = parseVkPositiveIntegerId(
     value.user_id,
     'oauth2/user_info',
     'user ID'
   );
   if (
-    typeof value.first_name !== 'string' ||
-    !value.first_name ||
-    typeof value.last_name !== 'string' ||
-    !value.last_name ||
-    (value.avatar !== undefined && typeof value.avatar !== 'string')
+    typeof firstName !== 'string' ||
+    !firstName ||
+    typeof lastName !== 'string' ||
+    !lastName ||
+    (avatar !== undefined && typeof avatar !== 'string')
   ) {
-    badResponse('oauth2/user_info', 'invalid user');
+    return badResponse('oauth2/user_info', 'invalid user');
   }
 
   return {
     id,
-    firstName: value.first_name,
-    lastName: value.last_name,
-    avatar: typeof value.avatar === 'string' ? value.avatar : '',
+    firstName,
+    lastName,
+    avatar: typeof avatar === 'string' ? avatar : '',
   };
 };
 
