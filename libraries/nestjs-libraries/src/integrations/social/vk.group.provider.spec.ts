@@ -665,7 +665,7 @@ describe('VkGroupProvider photo publishing', () => {
           return response({
             response: [
               {
-                owner_id: String(-(1000 + index)),
+                owner_id: '-123',
                 id: String(2000 + index),
               },
             ],
@@ -725,7 +725,7 @@ describe('VkGroupProvider photo publishing', () => {
     expect(wallBody.get('attachments')).toBe(
       Array.from(
         { length: 10 },
-        (_, index) => `photo-${1000 + index}_${2000 + index}`
+        (_, index) => `photo-123_${2000 + index}`
       ).join(',')
     );
   });
@@ -734,7 +734,7 @@ describe('VkGroupProvider photo publishing', () => {
     const workerOwnerId = '-90071992547409931111111111';
     const positiveGroupId = '90071992547409931111111111';
     const uploadServerId = '90071992547409932222222222';
-    const ownerId = '-90071992547409931234567890';
+    const ownerId = workerOwnerId;
     const photoId = '90071992547409939876543210';
     const fetchMock = vi
       .spyOn(provider, 'fetch')
@@ -1352,6 +1352,40 @@ describe('VkGroupProvider photo publishing', () => {
       fetchMock,
       { message: 'VK photos.saveWallPhoto returned invalid owner ID' }
     );
+  });
+
+  it('rejects a saved photo owned by another community before wall.post', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({ response: { upload_url: uploadUrl } })
+      )
+      .mockImplementationOnce(() =>
+        response({ response: [{ owner_id: -999, id: 456 }] })
+      )
+      .mockImplementationOnce(() => response({ response: { post_id: 789 } }));
+    vi.mocked(axios.get).mockResolvedValue({
+      data: Readable.from(['image-data']),
+    });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { photo: uploadedPhoto, server: 321, hash: uploadHash },
+    });
+
+    await expect(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Photo',
+          settings: {},
+          media: [{ type: 'image', path: mediaUrl }],
+        },
+      ])
+    ).rejects.toThrow(
+      'VK photos.saveWallPhoto returned an unexpected owner ID'
+    );
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url.endsWith('/method/wall.post'))
+    ).toHaveLength(0);
   });
 
   it.each([
