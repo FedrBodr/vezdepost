@@ -26,6 +26,12 @@ The project uses tailwind 3, before writing any component look at:
 
 All the --color-custom* are deprecated, don't use them.
 
+For every new git worktree, bootstrap dependencies with
+`pnpm install --frozen-lockfile`, then run `pnpm run verify:workspace` before
+the first test or build. Never use `--ignore-scripts`: the install lifecycle
+creates the native bcrypt binding and generated Prisma Client required by the
+test suites and production builds.
+
 And check other components in the system before to get the right design.
 
 When working on the backend we need to pass the 3 layers:

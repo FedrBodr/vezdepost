@@ -36,7 +36,7 @@ equal to `path.resolve(frontendDirectory, '../..')`.
 
 - [ ] **Step 2: Run the focused test to verify RED**
 
-Run: `pnpm exec node --test apps/frontend/package.spec.mjs`
+Run: `pnpm --use-node-version=22.20.0 exec vitest run apps/frontend/package.spec.mjs --coverage.enabled=false`
 
 Expected: FAIL because the scripts contain `--webpack` and the configuration
 does not expose `turbopack.root`.
@@ -53,7 +53,7 @@ the monorepo root with `resolve(frontendDirectory, '../..')`, and assign it to
 Run:
 
 ```bash
-pnpm exec node --test apps/frontend/package.spec.mjs
+pnpm --use-node-version=22.20.0 exec vitest run apps/frontend/package.spec.mjs --coverage.enabled=false
 pnpm exec prettier --check apps/frontend/package.json apps/frontend/next.config.js apps/frontend/package.spec.mjs
 git diff --check
 ```

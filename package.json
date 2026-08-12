@@ -37,7 +37,8 @@
     "docker-build": "./var/docker/docker-build.sh",
     "docker-create": "./var/docker/docker-create.sh",
     "postinstall": "pnpm run prisma-generate",
-    "test": "vitest run --coverage --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml"
+    "test": "vitest run --coverage --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml",
+    "verify:workspace": "node scripts/verify-workspace-bootstrap.mjs"
   },
   "dependencies": {
     "@ag-ui/mastra": "^1.0.1",
