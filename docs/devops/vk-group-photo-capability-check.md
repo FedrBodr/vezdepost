@@ -25,9 +25,10 @@ command, prompt, committed file, screenshot, or message.
 Raw API responses and the one-use upload URL may exist only inside the approved
 secret-aware runner's private, mode-`0700` temporary workspace, with each raw
 file explicitly created mode `0600`. They must not be printed or attached to a
-job log, and the workspace must be removed on success, failure, interruption,
-and timeout. Runner stdout must be restricted to the safe fields defined in
-this document.
+job log. The runner attempts workspace removal on success, failure,
+interruption, and timeout; a removal failure is a separate blocking result and
+can never be `GO`. Runner stdout must be restricted to the safe fields defined
+in this document.
 
 ## Prerequisites and authorization
 
@@ -75,16 +76,20 @@ rtk pnpm --use-node-version=22.20.0 exec node scripts/vk-group-photo-release-hyg
 
 Zero test failures and successful application builds are required. Repository
 hygiene must show no whitespace errors, no tracked `.tmp/` content, no
-credentials, and no new/changed binary or image content. The hygiene runner computes the exact
-`git diff --name-only prod...HEAD` set, reports that filename list for scope
-review, reads committed `HEAD` blobs rather than maskable working-tree content,
-and never prints matched file content. It accepts only the literal `prod...HEAD`
-range and fails closed when a changed `HEAD` blob cannot be read.
+credentials, and no new/changed binary or image content. The hygiene runner
+computes the exact `git diff --name-only prod...HEAD` set and reports that
+filename list for scope review. It also enumerates every commit in `prod..HEAD`
+and scans every blob added, modified, renamed, or copied by those commits,
+including blobs later replaced or deleted. A diff status of `D` is the only
+case treated as a true deletion with no destination blob to read; any history,
+status-parse, or blob-read failure stops the check. It never reads maskable
+working-tree replacements or prints matched content. It accepts only the
+literal `prod...HEAD` range.
 
-The binary/image check combines Git's content-based binary classification with
-PNG, JPEG, GIF, WebP, BMP, and TIFF magic-byte detection, so it does not depend
-on filenames or extensions. The secret check scans the current content of every
-existing changed file for these explicitly bounded signatures:
+The binary/image check combines NUL-byte binary detection with PNG, JPEG, GIF,
+WebP, BMP, and TIFF magic-byte detection, so it does not depend on filenames or
+extensions. The secret check scans every introduced branch-history blob for
+these explicitly bounded signatures:
 
 - VK `vk1.` tokens with at least 40 token characters;
 - three-segment JWT-shaped values;
@@ -138,15 +143,26 @@ process argument. Requests have a 30-second abort timeout and reject redirects,
 so a redirect cannot forward a VK POST body to a different origin. Raw response
 files exist only in a mode-`0700` temporary
 directory as mode-`0600` files. A `finally` cleanup removes that directory on
-normal success or failure; SIGINT/SIGTERM handlers remove it before exit. Raw
-responses and other ephemeral diagnostics are destroyed before durable JSON
-Lines are emitted.
+normal success or failure; SIGINT/SIGTERM handlers attempt removal before exit.
+Raw responses and other ephemeral diagnostics are destroyed before a `GO`,
+`STOP`, or `PENDING_CLEANUP` result is emitted.
 
 Stdout is JSON Lines containing only `phase`, `method`, numeric `error_code`
 when VK supplied one, `status`, and safe numeric `post_id` fields. Exit `0`
-means `GO`; exit `2` means `STOP`; exit `3` means `PENDING_CLEANUP`. Do not
-add upstream messages or raw details. Stdout is transient safe execution
-evidence, not the durable decision record below.
+means `GO`; exit `2` means `STOP`; exit `3` means `PENDING_CLEANUP`; exit `4`
+means `PENDING_LOCAL_CLEANUP`. Do not add upstream messages, marker values,
+temporary paths, or raw details. Stdout is transient safe execution evidence,
+not the durable decision record below.
+
+If local workspace deletion fails, the runner suppresses every earlier result,
+including a provisional remote `GO`, and emits only
+`{"phase":"local-cleanup","status":"PENDING_LOCAL_CLEANUP"}`. The
+random workspace path is never emitted. Keep rollout stopped. On the authorized
+host, resolve Node's `os.tmpdir()` locally, use approved host cleanup tooling to
+remove only its direct child directories whose basename starts exactly
+`vk-group-photo-capability-`, and verify that no such directory remains. Do not
+print directory contents or copy paths into durable logs. Do not rerun the
+capability check or create a decision record until that verification succeeds.
 
 For every response, the runner first extracts a numeric VK error code from a VK
 error envelope, then requires an HTTP 2xx status for any success payload. A
@@ -170,20 +186,28 @@ URL.
    response.
 3. **Wall-photo save** — POST `photos.saveWallPhoto` with the positive
    `group_id` and the upload response's `photo`, `server`, and `hash`. Validate
-   a non-empty saved-photo result with nonzero owner and photo IDs.
+   exactly one saved-photo result whose `owner_id` equals the negative selected
+   community ID and whose photo ID is positive. Until that exact ownership is
+   proven, its ID is ambiguous and must not be used as a deletion target.
 4. **Publication** — only after phases 1–3 succeed, POST one `wall.post` with
    the negative community `owner_id`, `from_group=1`, the saved attachment in
-   `photo<owner_id>_<photo_id>` form, and neutral non-identifying test text.
-   Never call `wall.post` after an upload-server, upload, or save failure.
+   `photo<owner_id>_<photo_id>` form, and neutral non-identifying test text that
+   includes a cryptographically unique per-run UUID marker. The marker remains
+   internal and is not emitted as evidence. Never call `wall.post` after an
+   upload-server, upload, or save failure.
 5. **Authorship verification** — call `wall.getById` for the numeric post ID.
-   The post must exist with both `owner_id` and `from_id` equal to the negative
-   dedicated community ID.
+   Exactly one post must exist with the returned post ID, both `owner_id` and
+   `from_id` equal to the negative dedicated community ID, text exactly equal
+   to the unique message sent by this run, and exactly one normalized photo
+   attachment whose owner/photo identity equals the saved photo. Only then may
+   the candidate post ID become an owned cleanup target.
 6. **Cleanup** — call `wall.delete` and `photos.delete`, then verify absence with
    `wall.getById` and `photos.getById`. Cleanup is complete only when both
    delete calls succeed and both absence checks return no artifact.
 7. **Completion** — remove the private runner workspace, revoke the one-use
    token through the approved secret procedure, and retain only the safe JSON
-   result. `GO` is possible only after phases 1–6 all succeed.
+   result. `GO` is possible only after phases 1–6 and private-workspace removal
+   all succeed.
 
 At the first rejection or invalid response, stop immediately. Do not retry with
 more permissions, a personal token, another community, or `wall.post`. If VK
@@ -205,6 +229,13 @@ cleanup produces `PENDING_CLEANUP`, exit `3`, and never `GO`. Complete the
 approved operator cleanup and verify absence before starting a new controlled
 run; the previous run remains non-GO.
 
+An owner mismatch, multiple saved-photo results, a stale/wrong post ID, a
+message mismatch, an attachment mismatch, or an authorship lookup failure makes
+the returned artifact identity ambiguous. The runner never calls a delete
+method for an ambiguous ID. It may still delete and verify a different artifact
+whose exact ownership was already proven. The result remains `PENDING_CLEANUP`
+because the ambiguous artifact cannot be claimed absent.
+
 ## Decision and evidence record
 
 Use this decision table exactly:
@@ -213,8 +244,10 @@ Use this decision table exactly:
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Upload-server request, upload, wall-photo save, controlled `wall.post`, community-authorship verification, both delete calls, and both absence checks succeed | Record date, VK API version `5.251`, method names, safe test post ID, cleanup `completed`, and `GO` for later rollout approval.                                                          |
 | Upload-server, upload, or wall-photo save fails                                                                                                               | Record only method name and numeric VK error code when supplied, otherwise method name only; mark `STOP`; do not broaden permissions, use a personal token, call `wall.post`, or deploy. |
-| Publication or authorship verification fails and cleanup is completed and verified                                                                            | Record only the failed method and numeric VK error code when supplied, otherwise method name only; mark `STOP` and do not deploy.                                                        |
+| `wall.post` returns a definite numeric VK rejection and every previously proven artifact is absent                                                            | Record `wall.post` and its numeric VK error code; mark `STOP` and do not deploy.                                                                                                         |
+| `wall.post` is uncertain, or candidate-post authorship/message/attachment verification fails                                                                  | Do not delete the ambiguous post ID; clean only separately proven artifacts; mark `PENDING_CLEANUP`, never `GO`, and do not deploy.                                                      |
 | Cleanup fails or absence cannot be verified                                                                                                                   | Record only the cleanup/verification method and numeric VK error code when supplied, otherwise method name only; mark `PENDING_CLEANUP`, never `GO`, and do not deploy.                  |
+| Local private-workspace deletion fails                                                                                                                        | Retain only `PENDING_LOCAL_CLEANUP`; remove and verify the exact temporary-prefix residue using approved local tooling; never `GO`, rerun, or deploy while residue remains.              |
 
 The durable success record contains only:
 

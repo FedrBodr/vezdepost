@@ -19,17 +19,6 @@ function git(cwd, args, encoding = 'utf8') {
   });
 }
 
-function headBlob(cwd, path) {
-  const exists = git(cwd, ['cat-file', '-e', `HEAD:${path}`]);
-  if (exists.status !== 0) {
-    return { missing: true };
-  }
-  const result = git(cwd, ['show', `HEAD:${path}`], null);
-  return result.status === 0 && !result.error
-    ? { buffer: result.stdout }
-    : { error: true };
-}
-
 function nulList(value) {
   return value.split('\0').filter(Boolean).sort();
 }
@@ -55,19 +44,116 @@ function isKnownImage(buffer) {
   );
 }
 
-function binaryNumstatFiles(cwd, range) {
-  const result = git(cwd, ['diff', '--numstat', '--no-renames', '-z', range]);
-  if (result.status !== 0) {
-    return undefined;
-  }
-  const files = [];
-  for (const entry of result.stdout.split('\0').filter(Boolean)) {
-    const [added, deleted, ...pathParts] = entry.split('\t');
-    if (added === '-' || deleted === '-') {
-      files.push(pathParts.join('\t'));
+export function parseRawDiff(raw) {
+  const tokens = raw.split('\0');
+  const entries = [];
+  let index = 0;
+  while (index < tokens.length - 1) {
+    if (!tokens[index]) {
+      return { error: true, entries: [] };
+    }
+    const header = tokens[index++];
+    const match = header.match(
+      /^:\d{6} \d{6} [0-9a-f]+ ([0-9a-f]+) ([A-Z])\d*$/
+    );
+    if (!match) {
+      return { error: true, entries: [] };
+    }
+    const [, blobId, status] = match;
+    const firstPath = tokens[index++];
+    const destinationPath = ['R', 'C'].includes(status)
+      ? tokens[index++]
+      : firstPath;
+    if (!destinationPath) {
+      return { error: true, entries: [] };
+    }
+    if (status !== 'D') {
+      entries.push({ path: destinationPath, blobId });
     }
   }
-  return files;
+  if (index !== tokens.length - 1 || tokens[index] !== '') {
+    return { error: true, entries: [] };
+  }
+  return { error: false, entries };
+}
+
+function changedBlobEntries(cwd, commit, parent) {
+  const result = git(
+    cwd,
+    [
+      'diff-tree',
+      '--no-commit-id',
+      '--raw',
+      '-r',
+      '-z',
+      '-M',
+      '-C',
+      parent,
+      commit,
+    ],
+    'utf8'
+  );
+  if (result.status !== 0 || result.error) {
+    return { error: true, entries: [] };
+  }
+  return parseRawDiff(result.stdout);
+}
+
+function branchHistoryBlobs(cwd, base) {
+  const commitsResult = git(cwd, ['rev-list', '--reverse', `${base}..HEAD`]);
+  if (commitsResult.status !== 0 || commitsResult.error) {
+    return { error: true, blobs: [] };
+  }
+
+  const emptyTree = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+  const entries = [];
+  for (const commit of commitsResult.stdout.split('\n').filter(Boolean)) {
+    const parentsResult = git(cwd, [
+      'rev-list',
+      '--parents',
+      '-n',
+      '1',
+      commit,
+    ]);
+    if (parentsResult.status !== 0 || parentsResult.error) {
+      return { error: true, blobs: [] };
+    }
+    const [, firstParent] = parentsResult.stdout.trim().split(/\s+/);
+    const changed = changedBlobEntries(cwd, commit, firstParent || emptyTree);
+    if (changed.error) {
+      return { error: true, blobs: [] };
+    }
+    entries.push(...changed.entries);
+  }
+
+  const blobCache = new Map();
+  const blobs = entries.map(({ path, blobId }) => {
+    if (!blobCache.has(blobId)) {
+      const result = git(cwd, ['cat-file', 'blob', blobId], null);
+      blobCache.set(
+        blobId,
+        result.status === 0 && !result.error
+          ? { buffer: result.stdout }
+          : { error: true }
+      );
+    }
+    return { path, ...blobCache.get(blobId) };
+  });
+  return { error: false, blobs };
+}
+
+function unsafeBlobFiles(history, predicate) {
+  if (history.error) {
+    return { error: true, files: [] };
+  }
+  return {
+    error: false,
+    files: uniqueSorted(
+      history.blobs
+        .filter(({ buffer, error }) => error || predicate(buffer))
+        .map(({ path }) => path)
+    ),
+  };
 }
 
 function writeRecord(stdout, record) {
@@ -91,9 +177,7 @@ export function runHygieneChecks({
     return 2;
   }
   const changedFiles = nulList(changedResult.stdout);
-  const headBlobs = new Map(
-    changedFiles.map((path) => [path, headBlob(cwd, path)])
-  );
+  const history = branchHistoryBlobs(cwd, base);
   writeRecord(stdout, {
     check: 'changed-files',
     status: 'PASS',
@@ -116,11 +200,13 @@ export function runHygieneChecks({
     files: whitespaceFiles,
   });
 
-  const trackedTmpResult = git(cwd, ['ls-files', '-z', '--', ':(glob).tmp/**']);
-  const trackedTmp =
-    trackedTmpResult.status === 0 ? nulList(trackedTmpResult.stdout) : [];
+  const trackedTmp = uniqueSorted(
+    history.blobs
+      .map(({ path }) => path)
+      .filter((path) => path === '.tmp' || path.startsWith('.tmp/'))
+  );
   const trackedTmpStatus =
-    trackedTmpResult.status === 0 && trackedTmp.length === 0 ? 'PASS' : 'STOP';
+    !history.error && trackedTmp.length === 0 ? 'PASS' : 'STOP';
   failed ||= trackedTmpStatus === 'STOP';
   writeRecord(stdout, {
     check: 'tracked-tmp',
@@ -128,48 +214,30 @@ export function runHygieneChecks({
     files: trackedTmp,
   });
 
-  const numstatBinary = binaryNumstatFiles(cwd, range);
-  const contentBinary = changedFiles.filter((path) => {
-    const blob = headBlobs.get(path);
-    if (blob.error) {
-      return true;
-    }
-    if (!blob.buffer) {
-      return false;
-    }
-    const buffer = blob.buffer;
-    return buffer.subarray(0, 8192).includes(0) || isKnownImage(buffer);
-  });
-  const binaryFiles = uniqueSorted([
-    ...(numstatBinary || []),
-    ...contentBinary,
-  ]);
+  const binary = unsafeBlobFiles(
+    history,
+    (buffer) => buffer.includes(0) || isKnownImage(buffer)
+  );
   const binaryStatus =
-    numstatBinary !== undefined && binaryFiles.length === 0 ? 'PASS' : 'STOP';
+    !binary.error && binary.files.length === 0 ? 'PASS' : 'STOP';
   failed ||= binaryStatus === 'STOP';
   writeRecord(stdout, {
     check: 'binary-or-image-files',
     status: binaryStatus,
-    files: binaryFiles,
+    files: binary.files,
   });
 
-  const secretFiles = changedFiles.filter((path) => {
-    const blob = headBlobs.get(path);
-    if (blob.error) {
-      return true;
-    }
-    if (!blob.buffer) {
-      return false;
-    }
-    const content = blob.buffer.toString('utf8');
+  const secrets = unsafeBlobFiles(history, (buffer) => {
+    const content = buffer.toString('utf8');
     return SECRET_SIGNATURES.some((pattern) => pattern.test(content));
   });
-  const secretStatus = secretFiles.length === 0 ? 'PASS' : 'STOP';
+  const secretStatus =
+    !secrets.error && secrets.files.length === 0 ? 'PASS' : 'STOP';
   failed ||= secretStatus === 'STOP';
   writeRecord(stdout, {
     check: 'secret-signatures',
     status: secretStatus,
-    files: uniqueSorted(secretFiles),
+    files: secrets.files,
   });
 
   return failed ? 2 : 0;

@@ -9,7 +9,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runCapabilityCheck } from './vk-group-photo-capability-check.mjs';
+import {
+  runCapabilityCheck,
+  terminateForSignal,
+} from './vk-group-photo-capability-check.mjs';
 
 const roots = [];
 
@@ -59,9 +62,16 @@ function successfulFetch(
     uploadErrorCode,
     removeMediaAfterUploadServer = false,
     photoRemains = false,
+    savedOwnerId = -123,
+    saveExtraPhoto = false,
+    verifyErrorCode,
+    verifiedPostId = 789,
+    verifiedMessage,
+    verifiedAttachments,
   } = {}
 ) {
   let wallGetCount = 0;
+  let publishedMessage;
   const methods = [];
   const fetchImpl = vi.fn(async (url, options) => {
     expect(url).not.toContain('private-community-token');
@@ -122,12 +132,21 @@ function successfulFetch(
         expect(options.body.get('server')).toBe('321');
         expect(options.body.get('hash')).toBe('private-upload-hash');
         return jsonResponse({
-          response: saveMalformed ? [] : [{ owner_id: -123, id: 456 }],
+          response: saveMalformed
+            ? []
+            : [
+                { owner_id: savedOwnerId, id: 456 },
+                ...(saveExtraPhoto ? [{ owner_id: -123, id: 457 }] : []),
+              ],
         });
       case 'wall.post':
         expect(options.body.get('owner_id')).toBe('-123');
         expect(options.body.get('from_group')).toBe('1');
         expect(options.body.get('attachments')).toBe('photo-123_456');
+        publishedMessage = options.body.get('message');
+        expect(publishedMessage).toMatch(
+          /^Vezdepost VK Group photo capability check [0-9a-f-]{36}$/
+        );
         if (wallPostTransport) {
           throw new Error('lost wall.post response with private details');
         }
@@ -135,10 +154,31 @@ function successfulFetch(
       case 'wall.getById':
         wallGetCount += 1;
         expect(options.body.get('posts')).toBe('-123_789');
+        if (wallGetCount === 1 && verifyErrorCode) {
+          return jsonResponse({
+            error: {
+              error_code: verifyErrorCode,
+              error_msg: 'private verification response',
+            },
+          });
+        }
         return wallGetCount === 1
           ? jsonResponse({
               response: {
-                items: [{ id: 789, owner_id: -123, from_id: -123 }],
+                items: [
+                  {
+                    id: verifiedPostId,
+                    owner_id: -123,
+                    from_id: -123,
+                    text: verifiedMessage ?? publishedMessage,
+                    attachments: verifiedAttachments ?? [
+                      {
+                        type: 'photo',
+                        photo: { owner_id: -123, id: 456 },
+                      },
+                    ],
+                  },
+                ],
               },
             })
           : jsonResponse({ response: { items: [] } });
@@ -407,6 +447,315 @@ describe('VK Group photo capability check', () => {
     expect(fixture.output()).not.toContain('private-upload');
     expect(await readdir(fixture.root)).toEqual(['synthetic.png']);
   });
+
+  it.each([
+    ['a stale post id', { verifiedPostId: 788 }],
+    ['a wrong marker message', { verifiedMessage: 'unrelated post' }],
+    [
+      'a wrong photo attachment',
+      {
+        verifiedAttachments: [
+          { type: 'photo', photo: { owner_id: -123, id: 999 } },
+        ],
+      },
+    ],
+    [
+      'an extra attachment',
+      {
+        verifiedAttachments: [
+          { type: 'photo', photo: { owner_id: -123, id: 456 } },
+          { type: 'photo', photo: { owner_id: -123, id: 999 } },
+        ],
+      },
+    ],
+  ])(
+    'never deletes an ambiguous post with %s',
+    async (_description, verificationOverride) => {
+      const fixture = await makeFixture();
+      const { fetchImpl, methods } = successfulFetch(
+        fixture,
+        verificationOverride
+      );
+
+      const exitCode = await runCapabilityCheck({
+        args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+        env: {
+          VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+          VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        },
+        fetchImpl,
+        stdout: fixture.stdout,
+        tempRoot: fixture.root,
+      });
+
+      expect(exitCode).toBe(3);
+      expect(methods).not.toContain('wall.delete');
+      expect(methods).toContain('photos.delete');
+      expect(parseRecords(fixture.output()).at(-1)).toMatchObject({
+        phase: 'verify-authorship',
+        method: 'wall.getById',
+        status: 'PENDING_CLEANUP',
+      });
+      expect(parseRecords(fixture.output())).not.toContainEqual(
+        expect.objectContaining({ status: 'GO' })
+      );
+    }
+  );
+
+  it('treats failed setup-directory removal as pending local cleanup', async () => {
+    const fixture = await makeFixture();
+    const fetchImpl = vi.fn();
+    const removeWorkspaceImpl = vi
+      .fn()
+      .mockRejectedValue(new Error('private setup directory'));
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+      chmodWorkspaceImpl: vi.fn().mockRejectedValue(new Error('private mode')),
+      removeWorkspaceImpl,
+    });
+
+    expect(exitCode).toBe(4);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(removeWorkspaceImpl).toHaveBeenCalledOnce();
+    expect(parseRecords(fixture.output())).toEqual([
+      { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
+    ]);
+    expect(fixture.output()).not.toContain(fixture.root);
+    expect(fixture.output()).not.toContain('private setup');
+  });
+
+  it('reports signal cleanup failure safely without a path or raw exception', async () => {
+    const fixture = await makeFixture();
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        error: { error_code: 15, error_msg: 'private upstream response' },
+      })
+    );
+    await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+      removeWorkspaceImpl: vi.fn().mockRejectedValue(new Error('private path')),
+    });
+    let signalOutput = '';
+    const exitImpl = vi.fn();
+
+    terminateForSignal({
+      signal: 'SIGTERM',
+      exitImpl,
+      writeSyncImpl: vi.fn((_fd, chunk) => {
+        signalOutput += String(chunk);
+      }),
+      removeWorkspaceSyncImpl: vi.fn(() => {
+        throw new Error('private signal cleanup path');
+      }),
+    });
+
+    expect(exitImpl).toHaveBeenCalledWith(4);
+    expect(parseRecords(signalOutput)).toEqual([
+      { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
+    ]);
+    expect(signalOutput).not.toContain(fixture.root);
+    expect(signalOutput).not.toContain('private signal');
+  });
+
+  it('uses the conventional signal exit after all private workspaces are removed', () => {
+    let signalOutput = '';
+    const exitImpl = vi.fn();
+    const writeSyncImpl = vi.fn((_fd, chunk) => {
+      signalOutput += String(chunk);
+    });
+
+    terminateForSignal({
+      signal: 'SIGINT',
+      exitImpl,
+      writeSyncImpl,
+      removeWorkspaceSyncImpl: vi.fn(),
+    });
+
+    expect(exitImpl).toHaveBeenCalledWith(130);
+    expect(writeSyncImpl).not.toHaveBeenCalled();
+    expect(signalOutput).toBe('');
+  });
+
+  it('exits safely when signal cleanup and the fixed stdout write both fail', async () => {
+    const fixture = await makeFixture();
+    await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+      },
+      fetchImpl: vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: { error_code: 15 } })),
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+      removeWorkspaceImpl: vi.fn().mockRejectedValue(new Error('private path')),
+    });
+    const exitImpl = vi.fn();
+
+    expect(() =>
+      terminateForSignal({
+        signal: 'SIGTERM',
+        exitImpl,
+        removeWorkspaceSyncImpl: vi.fn(() => {
+          throw new Error('private cleanup path');
+        }),
+        writeSyncImpl: vi.fn(() => {
+          throw new Error('private broken stdout');
+        }),
+      })
+    ).not.toThrow();
+
+    expect(exitImpl).toHaveBeenCalledWith(4);
+  });
+
+  it('never stores or deletes a saved photo owned by another target', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      savedOwnerId: -999,
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(3);
+    expect(methods).toEqual([
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+    ]);
+    expect(parseRecords(fixture.output())).toEqual([
+      {
+        phase: 'save-photo',
+        method: 'photos.saveWallPhoto',
+        status: 'PENDING_CLEANUP',
+      },
+    ]);
+  });
+
+  it('never selects a cleanup target from an ambiguous multi-photo save', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      saveExtraPhoto: true,
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(3);
+    expect(methods).toEqual([
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+    ]);
+    expect(parseRecords(fixture.output())).toEqual([
+      {
+        phase: 'save-photo',
+        method: 'photos.saveWallPhoto',
+        status: 'PENDING_CLEANUP',
+      },
+    ]);
+  });
+
+  it('keeps a verified wall candidate pending when authorship lookup is rejected', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      verifyErrorCode: 7,
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(3);
+    expect(methods).not.toContain('wall.delete');
+    expect(methods).toContain('photos.delete');
+    expect(parseRecords(fixture.output())).toEqual([
+      {
+        phase: 'verify-authorship',
+        method: 'wall.getById',
+        error_code: 7,
+        status: 'PENDING_CLEANUP',
+        post_id: 789,
+      },
+    ]);
+    expect(fixture.output()).not.toContain('private verification');
+  });
+
+  it.each([
+    ['a successful remote run', {}],
+    ['a failed remote run', { uploadErrorCode: 15 }],
+  ])(
+    'forces safe local-cleanup pending output when removal fails after %s',
+    async (_description, fetchOptions) => {
+      const fixture = await makeFixture();
+      const { fetchImpl } = successfulFetch(fixture, fetchOptions);
+      const removeWorkspaceImpl = vi
+        .fn()
+        .mockRejectedValue(new Error('private workspace path and response'));
+
+      const exitCode = await runCapabilityCheck({
+        args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+        env: {
+          VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+          VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        },
+        fetchImpl,
+        stdout: fixture.stdout,
+        tempRoot: fixture.root,
+        removeWorkspaceImpl,
+      });
+
+      expect(exitCode).toBe(4);
+      expect(removeWorkspaceImpl).toHaveBeenCalledOnce();
+      expect(parseRecords(fixture.output())).toEqual([
+        { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
+      ]);
+      expect(fixture.output()).not.toContain(fixture.root);
+      expect(fixture.output()).not.toContain('private workspace');
+      expect(parseRecords(fixture.output())).not.toContainEqual(
+        expect.objectContaining({ status: 'GO' })
+      );
+    }
+  );
 
   it('keeps status pending and attempts remaining cleanup when cleanup fails', async () => {
     const fixture = await makeFixture();

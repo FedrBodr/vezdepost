@@ -1,4 +1,5 @@
-import { rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { rmSync, writeSync } from 'node:fs';
 import {
   chmod,
   mkdtemp,
@@ -14,6 +15,7 @@ import { pathToFileURL } from 'node:url';
 const API_ROOT = 'https://api.vk.com/method/';
 const API_VERSION = '5.251';
 const REQUEST_TIMEOUT_MS = 30_000;
+const MESSAGE_PREFIX = 'Vezdepost VK Group photo capability check';
 const activeWorkspaces = new Set();
 
 class SafeFailure extends Error {
@@ -23,6 +25,12 @@ class SafeFailure extends Error {
     this.method = method;
     this.errorCode = errorCode;
     this.creationUncertain = creationUncertain;
+  }
+}
+
+class LocalCleanupFailure extends Error {
+  constructor() {
+    super('Local workspace cleanup failed');
   }
 }
 
@@ -102,12 +110,24 @@ async function validateInputs(args, env) {
   };
 }
 
-async function createPrivateWorkspace(tempRoot) {
+async function createPrivateWorkspace(
+  tempRoot,
+  chmodWorkspaceImpl,
+  removeWorkspaceImpl
+) {
   const directory = await mkdtemp(
     join(tempRoot || tmpdir(), 'vk-group-photo-capability-')
   );
-  await chmod(directory, 0o700);
   activeWorkspaces.add(directory);
+  try {
+    await chmodWorkspaceImpl(directory, 0o700);
+  } catch {
+    const removed = await removeWorkspace({ directory }, removeWorkspaceImpl);
+    if (!removed) {
+      throw new LocalCleanupFailure();
+    }
+    throw new SafeFailure('preflight');
+  }
   let sequence = 0;
 
   return {
@@ -125,23 +145,54 @@ async function createPrivateWorkspace(tempRoot) {
   };
 }
 
-async function removeWorkspace(workspace) {
+async function removeWorkspace(workspace, removeWorkspaceImpl) {
   if (!workspace) {
-    return;
+    return true;
   }
-  await rm(workspace.directory, { recursive: true, force: true });
-  activeWorkspaces.delete(workspace.directory);
+  try {
+    await removeWorkspaceImpl(workspace.directory, {
+      recursive: true,
+      force: true,
+    });
+    activeWorkspaces.delete(workspace.directory);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function removeActiveWorkspacesSync() {
+function removeActiveWorkspacesSync(removeWorkspaceSyncImpl = rmSync) {
+  let removed = true;
   for (const directory of activeWorkspaces) {
     try {
-      rmSync(directory, { recursive: true, force: true });
+      removeWorkspaceSyncImpl(directory, { recursive: true, force: true });
+      activeWorkspaces.delete(directory);
     } catch {
-      // The process is exiting; the private workspace remains mode 0700.
+      removed = false;
     }
-    activeWorkspaces.delete(directory);
   }
+  return removed;
+}
+
+export function terminateForSignal({
+  signal,
+  exitImpl = process.exit,
+  removeWorkspaceSyncImpl = rmSync,
+  writeSyncImpl = writeSync,
+} = {}) {
+  if (!removeActiveWorkspacesSync(removeWorkspaceSyncImpl)) {
+    try {
+      writeSyncImpl(
+        process.stdout.fd,
+        '{"phase":"local-cleanup","status":"PENDING_LOCAL_CLEANUP"}\n'
+      );
+    } catch {
+      // A broken stdout cannot carry the safe record; exit still remains non-GO.
+    }
+    exitImpl(4);
+    return;
+  }
+  exitImpl(signal === 'SIGINT' ? 130 : 143);
 }
 
 async function readJsonResponse(
@@ -245,6 +296,19 @@ function responseItems(response) {
     return response;
   }
   return Array.isArray(response?.items) ? response.items : undefined;
+}
+
+function isExpectedPhotoAttachment(attachments, photo) {
+  if (!Array.isArray(attachments) || attachments.length !== 1) {
+    return false;
+  }
+  const attachment = attachments[0];
+  return (
+    attachment?.type === 'photo' &&
+    integerString(attachment?.photo?.owner_id, { signed: true }) ===
+      photo.ownerId &&
+    integerString(attachment?.photo?.id) === photo.id
+  );
 }
 
 function uploadUrlFrom(response) {
@@ -399,6 +463,9 @@ export async function runCapabilityCheck({
   fetchImpl = globalThis.fetch,
   stdout = process.stdout,
   tempRoot,
+  removeWorkspaceImpl = rm,
+  chmodWorkspaceImpl = chmod,
+  markerFactory = randomUUID,
 } = {}) {
   let inputs;
   try {
@@ -413,9 +480,14 @@ export async function runCapabilityCheck({
   let exitCode = 2;
   let photo;
   let postId;
+  let candidatePostId;
   const events = [];
   try {
-    workspace = await createPrivateWorkspace(tempRoot);
+    workspace = await createPrivateWorkspace(
+      tempRoot,
+      chmodWorkspaceImpl,
+      removeWorkspaceImpl
+    );
     const uploadServer = await callVk({
       fetchImpl,
       workspace,
@@ -456,10 +528,15 @@ export async function runCapabilityCheck({
       },
       creationUncertain: true,
     });
-    const savedPhoto = responseItems(saved)?.[0];
+    const savedItems = responseItems(saved);
+    const savedPhoto = savedItems?.[0];
     const ownerId = integerString(savedPhoto?.owner_id, { signed: true });
     const photoId = integerString(savedPhoto?.id);
-    if (!ownerId || !photoId) {
+    if (
+      savedItems?.length !== 1 ||
+      ownerId !== `-${inputs.groupId}` ||
+      !photoId
+    ) {
       throw new SafeFailure(
         'save-photo',
         'photos.saveWallPhoto',
@@ -474,6 +551,7 @@ export async function runCapabilityCheck({
       status: 'PASS',
     });
 
+    const markerMessage = `${MESSAGE_PREFIX} ${markerFactory()}`;
     const published = await callVk({
       fetchImpl,
       workspace,
@@ -484,38 +562,62 @@ export async function runCapabilityCheck({
         owner_id: `-${inputs.groupId}`,
         from_group: '1',
         attachments: `photo${photo.ownerId}_${photo.id}`,
-        message: 'Vezdepost VK Group photo capability check',
+        message: markerMessage,
       },
       creationUncertain: true,
     });
-    postId = integerString(published?.post_id);
-    if (!postId || !Number.isSafeInteger(Number(postId))) {
+    const rawCandidatePostId = integerString(published?.post_id);
+    if (
+      !rawCandidatePostId ||
+      !Number.isSafeInteger(Number(rawCandidatePostId))
+    ) {
       throw new SafeFailure('publish', 'wall.post', undefined, true);
     }
+    candidatePostId = rawCandidatePostId;
     events.push({
       phase: 'publish',
       method: 'wall.post',
       status: 'PASS',
-      post_id: Number(postId),
+      post_id: Number(candidatePostId),
     });
 
-    const wallPost = await callVk({
-      fetchImpl,
-      workspace,
-      accessToken: inputs.accessToken,
-      phase: 'verify-authorship',
-      method: 'wall.getById',
-      params: { posts: `-${inputs.groupId}_${postId}` },
-    });
-    const item = responseItems(wallPost)?.[0];
+    let wallPost;
+    try {
+      wallPost = await callVk({
+        fetchImpl,
+        workspace,
+        accessToken: inputs.accessToken,
+        phase: 'verify-authorship',
+        method: 'wall.getById',
+        params: { posts: `-${inputs.groupId}_${candidatePostId}` },
+      });
+    } catch (error) {
+      throw new SafeFailure(
+        'verify-authorship',
+        'wall.getById',
+        error instanceof SafeFailure ? error.errorCode : undefined,
+        true
+      );
+    }
+    const wallItems = responseItems(wallPost);
+    const item = wallItems?.[0];
     if (
-      integerString(item?.id) !== postId ||
+      wallItems?.length !== 1 ||
+      integerString(item?.id) !== candidatePostId ||
       integerString(item?.owner_id, { signed: true }) !==
         `-${inputs.groupId}` ||
-      integerString(item?.from_id, { signed: true }) !== `-${inputs.groupId}`
+      integerString(item?.from_id, { signed: true }) !== `-${inputs.groupId}` ||
+      item?.text !== markerMessage ||
+      !isExpectedPhotoAttachment(item?.attachments, photo)
     ) {
-      throw new SafeFailure('verify-authorship', 'wall.getById');
+      throw new SafeFailure(
+        'verify-authorship',
+        'wall.getById',
+        undefined,
+        true
+      );
     }
+    postId = candidatePostId;
     events.push({
       phase: 'verify-authorship',
       method: 'wall.getById',
@@ -545,31 +647,46 @@ export async function runCapabilityCheck({
       exitCode = 0;
     }
   } catch (error) {
-    const failure =
-      error instanceof SafeFailure ? error : new SafeFailure('preflight');
-    let pendingFailure = failure.creationUncertain ? failure : undefined;
-    if (workspace && (postId || photo)) {
-      const cleanupFailure = await cleanupArtifacts({
-        fetchImpl,
-        workspace,
-        accessToken: inputs.accessToken,
-        groupId: inputs.groupId,
-        postId,
-        photo,
-        events: [],
-      });
-      if (cleanupFailure) {
-        pendingFailure ||= cleanupFailure;
+    if (error instanceof LocalCleanupFailure) {
+      outputRecords = [
+        { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
+      ];
+      exitCode = 4;
+    } else {
+      const failure =
+        error instanceof SafeFailure ? error : new SafeFailure('preflight');
+      let pendingFailure = failure.creationUncertain ? failure : undefined;
+      if (workspace && (postId || photo)) {
+        const cleanupFailure = await cleanupArtifacts({
+          fetchImpl,
+          workspace,
+          accessToken: inputs.accessToken,
+          groupId: inputs.groupId,
+          postId,
+          photo,
+          events: [],
+        });
+        if (cleanupFailure) {
+          pendingFailure ||= cleanupFailure;
+        }
+      }
+      if (pendingFailure) {
+        outputRecords = [
+          pendingCleanupRecord(pendingFailure, postId || candidatePostId),
+        ];
+        exitCode = 3;
+      } else {
+        outputRecords = [stopRecord(failure)];
       }
     }
-    if (pendingFailure) {
-      outputRecords = [pendingCleanupRecord(pendingFailure, postId)];
-      exitCode = 3;
-    } else {
-      outputRecords = [stopRecord(failure)];
-    }
   } finally {
-    await removeWorkspace(workspace);
+    const removed = await removeWorkspace(workspace, removeWorkspaceImpl);
+    if (!removed) {
+      outputRecords = [
+        { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
+      ];
+      exitCode = 4;
+    }
   }
 
   for (const record of outputRecords) {
@@ -583,8 +700,7 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   const terminate = (signal) => {
-    removeActiveWorkspacesSync();
-    process.exit(signal === 'SIGINT' ? 130 : 143);
+    terminateForSignal({ signal });
   };
   process.once('SIGINT', () => terminate('SIGINT'));
   process.once('SIGTERM', () => terminate('SIGTERM'));
