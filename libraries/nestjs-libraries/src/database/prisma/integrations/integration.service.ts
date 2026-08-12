@@ -309,10 +309,6 @@ export class IntegrationService {
       data
     );
 
-    await this.checkForDeletedOnceAndUpdate(
-      org,
-      String(getIntegrationInformation.id)
-    );
     await this._integrationRepository.updateIntegration(id, {
       picture: getIntegrationInformation.picture,
       internalId: String(getIntegrationInformation.id),
@@ -320,6 +316,8 @@ export class IntegrationService {
       name: getIntegrationInformation.name,
       inBetweenSteps: false,
       token: getIntegrationInformation.access_token,
+      refreshToken: getIntegration.refreshToken,
+      tokenExpiration: getIntegration.tokenExpiration,
       profile: getIntegrationInformation.username,
     });
 
