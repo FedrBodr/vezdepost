@@ -88,16 +88,16 @@ describe('VK Group calendar publication errors', () => {
     expect(displayed).not.toContain('raw-token-fixture');
   });
 
-  it('does not interpret VK messages for another provider', () => {
+  it('preserves a Telegram publishing error unchanged', () => {
     const stable =
       'Reconnect VK Group through VK authorization to publish photographs.';
 
     expect(
       getLocalizedPostPublishingError(
         'telegram',
-        JSON.stringify({ message: stable }),
+        stable,
         (_key, fallback) => fallback
       )
-    ).toBe('An error occurred while publishing this post');
+    ).toBe(stable);
   });
 });

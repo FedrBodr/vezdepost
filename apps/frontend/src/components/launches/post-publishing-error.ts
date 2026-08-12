@@ -52,11 +52,17 @@ export const getLocalizedPostPublishingError = (
   error: unknown,
   t: (key: string, fallback: string) => string
 ) => {
-  if (providerIdentifier === 'vk-group') {
-    const message = findSafeVkGroupMessage(error);
-    if (message) {
-      return t(message, message);
+  if (providerIdentifier !== 'vk-group') {
+    if (typeof error === 'string' && error.trim()) {
+      return error;
     }
+
+    return t(GENERIC_PUBLICATION_ERROR, GENERIC_PUBLICATION_ERROR);
+  }
+
+  const message = findSafeVkGroupMessage(error);
+  if (message) {
+    return t(message, message);
   }
 
   return t(GENERIC_PUBLICATION_ERROR, GENERIC_PUBLICATION_ERROR);
