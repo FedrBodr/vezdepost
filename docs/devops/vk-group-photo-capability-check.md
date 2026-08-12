@@ -23,11 +23,11 @@ output, request recording, or response recording. Do not paste a token into a
 command, prompt, committed file, screenshot, or message.
 
 Raw API responses and the one-use upload URL may exist only inside the approved
-secret-aware runner's private, mode-`0700` temporary workspace, with files
-created under `umask 077`. They must not be printed or attached to a job log,
-and the workspace must be removed on success, failure, interruption, and
-timeout. The runner's durable output must be restricted to the safe result
-fields defined in this document.
+secret-aware runner's private, mode-`0700` temporary workspace, with each raw
+file explicitly created mode `0600`. They must not be printed or attached to a
+job log, and the workspace must be removed on success, failure, interruption,
+and timeout. Runner stdout must be restricted to the safe fields defined in
+this document.
 
 ## Prerequisites and authorization
 
@@ -60,29 +60,105 @@ the currently supported repository runtime without changing the system Node:
 ```bash
 rtk pnpm --use-node-version=22.20.0 run verify:workspace
 rtk pnpm --use-node-version=22.20.0 exec vitest run libraries/nestjs-libraries/src/integrations/social/vk.group.provider.spec.ts libraries/nestjs-libraries/src/integrations/social/vk.provider.spec.ts libraries/nestjs-libraries/src/integrations/social/vk.response.spec.ts apps/frontend/src/components/launches/custom-fields-instructions.spec.tsx apps/frontend/src/components/launches/add.provider.analytics.spec.tsx
+rtk pnpm --use-node-version=22.20.0 exec vitest run scripts/vk-group-photo-capability-check.spec.mjs scripts/vk-group-photo-release-hygiene.spec.mjs
 rtk pnpm --use-node-version=22.20.0 test
 rtk pnpm --use-node-version=22.20.0 run build:backend
 rtk pnpm --use-node-version=22.20.0 run build:orchestrator
 rtk pnpm --use-node-version=22.20.0 run build:frontend
 rtk git status --short
+rtk git diff --name-only prod...HEAD
 rtk git diff --check prod...HEAD
 rtk git diff --stat prod...HEAD
-rtk git ls-files | rtk rg -i 'vk.*\.(png|jpe?g|webp)$'
+rtk git ls-files '.tmp/**'
+rtk pnpm --use-node-version=22.20.0 exec node scripts/vk-group-photo-release-hygiene.mjs --base prod
 ```
 
 Zero test failures and successful application builds are required. Repository
-hygiene must show no whitespace errors, tracked `.tmp/` content, credentials,
-or original/reference VK screenshots. Existing product icons are allowed when
-inspection confirms that they are normal UI assets rather than captured VK
-content.
+hygiene must show no whitespace errors, no tracked `.tmp/` content, no
+credentials, and no new/changed binary or image content. The hygiene runner computes the exact
+`git diff --name-only prod...HEAD` set, reports that filename list for scope
+review, reads committed `HEAD` blobs rather than maskable working-tree content,
+and never prints matched file content. It accepts only the literal `prod...HEAD`
+range and fails closed when a changed `HEAD` blob cannot be read.
+
+The binary/image check combines Git's content-based binary classification with
+PNG, JPEG, GIF, WebP, BMP, and TIFF magic-byte detection, so it does not depend
+on filenames or extensions. The secret check scans the current content of every
+existing changed file for these explicitly bounded signatures:
+
+- VK `vk1.` tokens with at least 40 token characters;
+- three-segment JWT-shaped values;
+- GitHub `ghp_`, `gho_`, `ghu_`, `ghs_`, and `ghr_` tokens;
+- AWS `AKIA` access-key IDs;
+- private-key PEM headers;
+- values of at least 32 token characters assigned to
+  `VK_GROUP_CAPABILITY_TOKEN`, `access_token`, `api_key`, or `client_secret`
+  spellings.
+
+The scan deliberately avoids generic high-entropy matching so harmless test
+fixtures are not flagged. A failure emits only the check name, `STOP`, and
+matched filenames; it never emits the matched value or line. Inspect every file
+in the `changed-files` record against the planned Task 1–5 scope.
+
+The exact regular expressions are:
+
+```text
+\bvk1\.[A-Za-z0-9._-]{40,}\b
+\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b
+\bgh[pousr]_[A-Za-z0-9]{36,}\b
+\bAKIA[0-9A-Z]{16}\b
+-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----
+\b(?:VK_GROUP_CAPABILITY_TOKEN|access[_-]?token|api[_-]?key|client[_-]?secret)\b\s*[:=]\s*["']?[A-Za-z0-9._-]{32,}
+```
+
+## Controlled runner invocation
+
+Use the repository runner at
+`scripts/vk-group-photo-capability-check.mjs`. It never accepts a token argument.
+The approved secret injector must expose the token directly to the child process
+as `VK_GROUP_CAPABILITY_TOKEN`; do not export it interactively or prefix the
+command with its value. Keep shell tracing disabled. Set the non-secret numeric
+community ID and local synthetic-image path using the operator's approved
+environment procedure, then run:
+
+```bash
+rtk env VK_GROUP_CAPABILITY_AUTHORIZED=1 pnpm --use-node-version=22.20.0 exec node scripts/vk-group-photo-capability-check.mjs --group-id "$VK_GROUP_ID" --media-file "$VK_TEST_MEDIA"
+```
+
+`VK_GROUP_CAPABILITY_AUTHORIZED=1` attests that the named community is the
+approved dedicated non-production-impact community and that the full publish,
+verification, and cleanup sequence is authorized. The runner rejects missing
+authorization, a missing injected token, unknown arguments (including a token
+argument), non-positive/non-numeric group IDs, URLs, empty files, and media
+outside `.jpg`, `.jpeg`, `.png`, and `.webp` before network access.
+
+The runner sends the token only inside VK POST bodies. It performs the upload
+inside the Node process, so the discovered upload URL never enters a child
+process argument. Requests have a 30-second abort timeout and reject redirects,
+so a redirect cannot forward a VK POST body to a different origin. Raw response
+files exist only in a mode-`0700` temporary
+directory as mode-`0600` files. A `finally` cleanup removes that directory on
+normal success or failure; SIGINT/SIGTERM handlers remove it before exit. Raw
+responses and other ephemeral diagnostics are destroyed before durable JSON
+Lines are emitted.
+
+Stdout is JSON Lines containing only `phase`, `method`, numeric `error_code`
+when VK supplied one, `status`, and safe numeric `post_id` fields. Exit `0`
+means `GO`; exit `2` means `STOP`; exit `3` means `PENDING_CLEANUP`. Do not
+add upstream messages or raw details. Stdout is transient safe execution
+evidence, not the durable decision record below.
+
+For every response, the runner first extracts a numeric VK error code from a VK
+error envelope, then requires an HTTP 2xx status for any success payload. A
+shape-valid non-2xx response is never accepted as success. Cleanup delete
+responses must be the numeric value `1`; boolean or string lookalikes do not
+complete cleanup.
 
 ## Controlled API phases
 
-Run these phases only in the approved secret-aware runner. Use VK API version
+Run these phases only through the approved runner invocation. Use VK API version
 `5.251` for every VK method. Send the access token in the POST body, never in a
-URL. Keep raw inputs and responses inside the private temporary workspace; the
-phase descriptions below are the request contract, not commands into which a
-secret should be pasted.
+URL.
 
 1. **Upload-server request** — POST
    `photos.getWallUploadServer` with the positive dedicated community ID as
@@ -99,39 +175,46 @@ secret should be pasted.
    the negative community `owner_id`, `from_group=1`, the saved attachment in
    `photo<owner_id>_<photo_id>` form, and neutral non-identifying test text.
    Never call `wall.post` after an upload-server, upload, or save failure.
-5. **Verification** — inspect the selected community wall. The one-photo post
-   must appear on that wall and be authored by the community. The numeric test
-   post ID is safe to record only after this verification.
-6. **Cleanup** — delete the temporary post and photo with the already approved
-   community procedure where permitted. If API cleanup is unavailable, the
-   authorized operator removes the artifacts through the community UI. Remove
-   the private runner workspace and revoke the one-use token after the result
-   is recorded.
+5. **Authorship verification** — call `wall.getById` for the numeric post ID.
+   The post must exist with both `owner_id` and `from_id` equal to the negative
+   dedicated community ID.
+6. **Cleanup** — call `wall.delete` and `photos.delete`, then verify absence with
+   `wall.getById` and `photos.getById`. Cleanup is complete only when both
+   delete calls succeed and both absence checks return no artifact.
+7. **Completion** — remove the private runner workspace, revoke the one-use
+   token through the approved secret procedure, and retain only the safe JSON
+   result. `GO` is possible only after phases 1–6 all succeed.
 
 At the first rejection or invalid response, stop immediately. Do not retry with
 more permissions, a personal token, another community, or `wall.post`. If VK
 returns an error envelope, retain only the method name and numeric
 `error_code`; discard the error text and complete payload. If a transport,
-parse, or malformed-response failure contains no numeric VK code, record the
-method name and the literal classification `no numeric VK error code returned`
-rather than inventing a code or retaining raw details.
+parse, or malformed-response failure contains no numeric VK code, retain only
+the method name and `STOP`; omit `error_code`. Destroy all raw responses and
+ephemeral diagnostics.
+
+A transport, parse, or malformed-response failure from
+`photos.saveWallPhoto` or `wall.post` leaves artifact creation uncertain and is
+therefore `PENDING_CLEANUP`, even after all known artifacts were deleted. A VK
+error envelope with a numeric code is a definite rejection and may be `STOP`
+after cleanup of previously known artifacts succeeds.
+
+If a saved photo or published post exists when a later phase fails, the runner
+attempts all applicable cleanup and absence checks. Any failed or unverified
+cleanup produces `PENDING_CLEANUP`, exit `3`, and never `GO`. Complete the
+approved operator cleanup and verify absence before starting a new controlled
+run; the previous run remains non-GO.
 
 ## Decision and evidence record
 
 Use this decision table exactly:
 
-| Result                                                 | Action                                                                                                                                                               |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Upload-server request and wall-photo save both succeed | Record date, VK API version `5.251`, method names, safe test post ID, and `GO` for later rollout approval.                                                           |
-| Either method fails                                    | Record only method name and VK numeric error code, mark `STOP`, do not broaden permissions, do not use a personal token, do not call `wall.post`, and do not deploy. |
-
-The first row becomes `GO` only after the permitted `wall.post` is visible on
-the selected community wall, is authored by the community, and its numeric post
-ID is available for the safe record. Any publication or authorship verification
-failure is `STOP`; retain only `wall.post` and its numeric VK error code when VK
-provided one. Cleanup status may be recorded as `completed` or
-`operator cleanup required`, without owner names, URLs, screenshots, personal
-data, or upstream responses.
+| Result                                                                                                                                                        | Action                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upload-server request, upload, wall-photo save, controlled `wall.post`, community-authorship verification, both delete calls, and both absence checks succeed | Record date, VK API version `5.251`, method names, safe test post ID, cleanup `completed`, and `GO` for later rollout approval.                                                          |
+| Upload-server, upload, or wall-photo save fails                                                                                                               | Record only method name and numeric VK error code when supplied, otherwise method name only; mark `STOP`; do not broaden permissions, use a personal token, call `wall.post`, or deploy. |
+| Publication or authorship verification fails and cleanup is completed and verified                                                                            | Record only the failed method and numeric VK error code when supplied, otherwise method name only; mark `STOP` and do not deploy.                                                        |
+| Cleanup fails or absence cannot be verified                                                                                                                   | Record only the cleanup/verification method and numeric VK error code when supplied, otherwise method name only; mark `PENDING_CLEANUP`, never `GO`, and do not deploy.                  |
 
 The durable success record contains only:
 
@@ -140,12 +223,21 @@ The durable success record contains only:
 - method names `photos.getWallUploadServer`, `photos.saveWallPhoto`, and
   `wall.post`;
 - the verified numeric test post ID;
-- cleanup status;
+- cleanup status `completed` after both absence checks;
 - decision `GO` for a separately approved rollout.
 
+After the runner exits, the authorized operator creates this separate durable
+record from the safe JSON Lines plus the known execution date and the runner's
+fixed API version `5.251`. Record the three required capability method names
+`photos.getWallUploadServer`, `photos.saveWallPhoto`, and `wall.post` only after
+the emitted cleanup/absence phases culminate in `GO`. Do not copy raw temporary
+files or add upstream messages. Revoke the one-use token after recording the
+decision.
+
 The durable failure record contains only the failed method name, the numeric VK
-error code when returned (otherwise `no numeric VK error code returned`), and
-decision `STOP`. Do not add summaries of VK's message or raw response.
+error code when returned, and decision `STOP` or `PENDING_CLEANUP`. When no
+numeric code exists, omit the error-code field entirely. Do not add summaries
+of VK's message, prose substitutes for a code, or raw response.
 
 Current record: **Pending authorized execution**. No VK method has been called,
 no test post ID exists, and no external health result has been observed.
