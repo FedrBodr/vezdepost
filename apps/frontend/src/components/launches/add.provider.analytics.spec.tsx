@@ -102,6 +102,33 @@ describe('provider connection analytics', () => {
     expect(onRedirect).toHaveBeenCalledWith('/done');
   });
 
+  it('propagates a safe string connection failure message', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(
+        response(false, { msg: 'The VK community token is invalid.' })
+      );
+    const onFailed = vi.fn();
+    const onCompleted = vi.fn();
+    const onRedirect = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'vk-group',
+      data: { accessToken: 'credential-value' },
+      onFailed,
+      onCompleted,
+      onRedirect,
+    });
+
+    expect(onFailed).toHaveBeenCalledWith(
+      'The VK community token is invalid.'
+    );
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(onRedirect).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['non-OK response', vi.fn().mockResolvedValue(response(false, {}))],
     ['malformed start response', vi.fn().mockResolvedValue(response(true, {}))],

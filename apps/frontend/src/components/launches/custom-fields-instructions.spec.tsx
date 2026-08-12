@@ -1,10 +1,61 @@
+// @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
+import i18next from '@gitroom/react/translation/i18next';
 import { CustomFieldsInstructions } from './custom-fields-instructions';
 
 describe('CustomFieldsInstructions', () => {
+  beforeEach(async () => {
+    await i18next.changeLanguage('en');
+  });
+
+  it('starts a collapsible VK community guide closed and reveals its translated content', () => {
+    const instructions = {
+      collapsible: true,
+      summary: 'Where to get the link and key',
+      title: 'Connect a VK community',
+      items: [
+        'Open the community in the desktop VK website and select Management.',
+        'Open More → API usage → Access keys.',
+        'Select Create key.',
+        'Grant only community management, community wall, and photographs access.',
+        'Copy the generated community access key into Vezdepost.',
+        'Copy the public community address, for example https://vk.ru/fedrbodr_pro, into the first field.',
+      ],
+      notRequired: 'Callback API and Long Poll API are not required.',
+      warning:
+        'The access key is secret. Do not send it to support, put it in screenshots, or share it with third parties.',
+    };
+
+    expect(
+      renderToStaticMarkup(
+        <CustomFieldsInstructions instructions={instructions} />
+      )
+    ).toContain('aria-expanded="false"');
+
+    render(<CustomFieldsInstructions instructions={instructions} />);
+
+    const disclosure = screen.getByRole('button', {
+      name: instructions.summary,
+    });
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText(instructions.title)).toBeNull();
+
+    fireEvent.click(disclosure);
+
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText(instructions.title)).not.toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(6);
+    instructions.items.forEach((item) => {
+      expect(screen.getByText(item)).not.toBeNull();
+    });
+    expect(screen.getByText(instructions.notRequired)).not.toBeNull();
+    expect(screen.getByText(instructions.warning)).not.toBeNull();
+  });
+
   it('renders the VK community-key permission guide', () => {
     const html = renderToStaticMarkup(
       <CustomFieldsInstructions

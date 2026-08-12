@@ -135,6 +135,30 @@ export type FetchPageInformationResult = {
   username: string;
 };
 
+export type CustomFieldDefinition = {
+  key: string;
+  label: string;
+  translationKey?: string;
+  placeholder?: string;
+  placeholderTranslationKey?: string;
+  validation: string;
+  validationMessage?: string;
+  validationMessageTranslationKey?: string;
+  type: 'text' | 'password';
+  defaultValue?: string;
+  hint?: string;
+};
+
+export type CustomFieldsInstructionsDefinition = {
+  title: string;
+  items: string[];
+  note?: string;
+  collapsible?: boolean;
+  summary?: string;
+  notRequired?: string;
+  warning?: string;
+};
+
 export interface SocialProvider
   extends IAuthenticator,
     ISocialMediaIntegration {
@@ -154,21 +178,8 @@ export interface SocialProvider
   isChromeExtension?: boolean;
   extensionCookies?: { name: string; domain: string }[];
   editor: 'none' | 'normal' | 'markdown' | 'html';
-  customFields?: () => Promise<
-    {
-      key: string;
-      label: string;
-      defaultValue?: string;
-      validation: string;
-      type: 'text' | 'password';
-      hint?: string;
-    }[]
-  >;
-  customFieldsInstructions?: {
-    title: string;
-    items: string[];
-    note?: string;
-  };
+  customFields?: () => Promise<CustomFieldDefinition[]>;
+  customFieldsInstructions?: CustomFieldsInstructionsDefinition;
   name: string;
   toolTip?: string;
   oneTimeToken?: boolean;
