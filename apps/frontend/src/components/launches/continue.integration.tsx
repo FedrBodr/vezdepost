@@ -98,7 +98,7 @@ export const ContinueIntegration: FC<{
       };
     }
 
-    if (provider === 'vk') {
+    if (provider === 'vk' || provider === 'vk-group') {
       return {
         ...searchParams,
         state: searchParams.state || '',

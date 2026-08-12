@@ -9,6 +9,10 @@ const source = readFileSync(
   new URL('./continue.integration.tsx', import.meta.url),
   'utf8'
 );
+const modifiedParamsBlock = source.slice(
+  source.indexOf('const modifiedParams = useMemo'),
+  source.indexOf('useEffect(() => {')
+);
 
 const callbackEffect = source.slice(
   source.indexOf('useEffect(() => {'),
@@ -24,6 +28,15 @@ const errorRender = source.slice(
 );
 
 describe('continued provider connection analytics', () => {
+  it('normalizes VK ID code and device ID for personal and group callbacks', () => {
+    expect(modifiedParamsBlock).toContain(
+      "provider === 'vk' || provider === 'vk-group'"
+    );
+    expect(modifiedParamsBlock).toContain(
+      "code: searchParams.code + '&&&&' + searchParams.device_id"
+    );
+  });
+
   it('accepts only parsed string messages for analytics', () => {
     expect(
       getSafeErrorMessage({ message: 'Callback rejected' }, 'fallback')
