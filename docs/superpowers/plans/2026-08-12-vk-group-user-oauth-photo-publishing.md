@@ -568,10 +568,15 @@ token with admin access. Expected final machine-readable status: exactly `GO`,
 including verified post cleanup and absence. Do not expose the token in shell
 history, process arguments, logs, plan evidence, or chat.
 
-- [ ] **Step 5: Request final code review**
+- [x] **Step 5: Request final code review**
 
 Review the complete `prod...HEAD` diff against the approved spec. Resolve every
 Critical and Important finding with a new RED/GREEN cycle; rerun affected tests.
+
+Final independent review on 2026-08-13 found no Critical, Important, or Minor
+issues after the provider-scoped publishing-error regression fix. The branch is
+code-ready; rollout remains pending on the separately authorized live VK
+capability gate in Step 4.
 
 - [x] **Step 6: Commit verification evidence**
 
