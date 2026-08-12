@@ -36,16 +36,21 @@ export function normalizeVkGroupIdentifier(value: string): string | null {
     return null;
   }
 
+  const explicitScheme = input.match(/^([a-z][a-z\d+.-]*):\/\//i)?.[1];
+  if (explicitScheme && explicitScheme.toLowerCase() !== 'https') {
+    return null;
+  }
+
   let candidate = input;
   const hostPattern = /^(?:www\.)?vk\.(?:com|ru)$/i;
   const looksLikeVkUrl =
-    /^https?:\/\//i.test(input) ||
+    /^https:\/\//i.test(input) ||
     /^(?:www\.)?vk\.(?:com|ru)(?::\d+)?(?:\/|$)/i.test(input);
 
   if (looksLikeVkUrl) {
     try {
-      const urlInput = /^https?:\/\//i.test(input) ? input : `https://${input}`;
-      const rawAuthority = urlInput.match(/^https?:\/\/([^/?#]+)/i)?.[1];
+      const urlInput = /^https:\/\//i.test(input) ? input : `https://${input}`;
+      const rawAuthority = urlInput.match(/^https:\/\/([^/?#]+)/i)?.[1];
       if (!rawAuthority || /[@:]/.test(rawAuthority)) {
         return null;
       }
@@ -63,7 +68,7 @@ export function normalizeVkGroupIdentifier(value: string): string | null {
     } catch {
       return null;
     }
-  } else if (/^https?:\/\//i.test(input) || input.includes('/')) {
+  } else if (/^https:\/\//i.test(input) || input.includes('/')) {
     return null;
   }
 
