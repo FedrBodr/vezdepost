@@ -130,6 +130,87 @@ describe('provider connection analytics', () => {
   });
 
   it.each([
+    'Enter a valid VK community link or short name.',
+    'The VK community token is invalid.',
+    'This token belongs to a different VK community.',
+    'The VK community token must allow community management and wall access.',
+    'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.',
+  ])('propagates the known VK Group authentication error %s', async (msg) => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(response(false, { msg }));
+    const onFailed = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'vk-group',
+      data: { accessToken: 'credential-value' },
+      onFailed,
+      onCompleted: vi.fn(),
+      onRedirect: vi.fn(),
+    });
+
+    expect(onFailed).toHaveBeenCalledWith(msg);
+  });
+
+  it.each([
+    ['token', 'vk1.a.secret-community-access-token'],
+    ['upload URL', 'https://up.vk.com/upload.php?act=do_upload'],
+    ['media URL', 'https://sun9-22.userapi.com/private-photo.jpg'],
+    [
+      'multipart form body',
+      '------WebKitFormBoundary\r\nContent-Disposition: form-data; name="photo"',
+    ],
+    [
+      'upstream payload',
+      '{"error":{"error_code":15,"error_msg":"Access denied"}}',
+    ],
+  ])('keeps a VK Group %s out of the UI and analytics', async (_name, msg) => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(response(false, { msg }));
+    const onFailed = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'vk-group',
+      data: { accessToken: 'credential-value' },
+      onFailed,
+      onCompleted: vi.fn(),
+      onRedirect: vi.fn(),
+    });
+
+    expect(onFailed).toHaveBeenCalledWith(undefined);
+  });
+
+  it('keeps VK Group detail strings generic for other providers', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(
+        response(false, { msg: 'The VK community token is invalid.' })
+      );
+    const onFailed = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'listmonk',
+      data: { token: 'credential-value' },
+      onFailed,
+      onCompleted: vi.fn(),
+      onRedirect: vi.fn(),
+    });
+
+    expect(onFailed).toHaveBeenCalledWith(undefined);
+  });
+
+  it('rebuilds localized custom-field validation when the translator changes', () => {
+    expect(source).toMatch(/\}, \[t, variables\]\);/);
+  });
+
+  it.each([
     ['non-OK response', vi.fn().mockResolvedValue(response(false, {}))],
     ['malformed start response', vi.fn().mockResolvedValue(response(true, {}))],
     ['rejected fetch', vi.fn().mockRejectedValue(new Error('offline'))],

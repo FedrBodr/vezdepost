@@ -52,6 +52,24 @@ export const getConnectionType = ({
 export const isUsableStartUrl = (url: unknown): url is string =>
   typeof url === 'string' && url.trim().length > 0;
 
+export const VK_GROUP_SAFE_CONNECTION_MESSAGES = new Set([
+  'Enter a valid VK community link or short name.',
+  'The VK community token is invalid.',
+  'This token belongs to a different VK community.',
+  'The VK community token must allow community management and wall access.',
+  'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.',
+]);
+
+const getSafeCustomFieldConnectionFailureMessage = (
+  identifier: string,
+  message: unknown
+) =>
+  identifier === 'vk-group' &&
+  typeof message === 'string' &&
+  VK_GROUP_SAFE_CONNECTION_MESSAGES.has(message)
+    ? message
+    : undefined;
+
 export const runAnalyticsSafely = (capture: () => void) => {
   try {
     capture();
@@ -106,7 +124,10 @@ export const submitCustomFieldConnection = async ({
     const connectResult = await connectResponse.json().catch(() => ({}));
     if (!connectResponse.ok) {
       onFailed(
-        typeof connectResult.msg === 'string' ? connectResult.msg : undefined
+        getSafeCustomFieldConnectionFailureMessage(
+          identifier,
+          connectResult.msg
+        )
       );
       return;
     }
@@ -307,7 +328,7 @@ export const CustomVariables: FC<{
         };
       }, {}),
     });
-  }, [variables]);
+  }, [t, variables]);
   const methods = useForm({
     mode: 'onChange',
     resolver: yupResolver(schema),
