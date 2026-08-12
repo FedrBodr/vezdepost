@@ -6,13 +6,16 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import {
   BadBody,
+  RefreshToken,
   SocialAbstract,
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { Integration } from '@prisma/client';
+import axios from 'axios';
 import dayjs from 'dayjs';
-import { parseVkPositiveIntegerId } from './vk.response';
+import FormDataNew from 'form-data';
+import mime from 'mime-types';
 
 const INVALID_GROUP = 'Enter a valid VK community link or short name.';
 const INVALID_TOKEN = 'The VK community token is invalid.';
@@ -22,6 +25,8 @@ const MISSING_PERMISSIONS =
 const TOO_MANY_PHOTOS = 'VK Group supports up to 10 photographs per post.';
 const UNSUPPORTED_MEDIA =
   'VK Group supports photographs only. Remove videos and other attachments.';
+const PHOTO_ACCESS_MISSING =
+  'VK Group photo access is missing. Recreate the community key with photographs access and reconnect VK Group.';
 
 const isUnsupportedAttachmentPath = (path: string) =>
   /\.(?:mp4|mov|avi|mkv|webm|m4v|pdf|docx?|xlsx?|pptx?|txt|rtf|csv|zip|rar|7z|tar|gz)(?:[?#].*)?$/i.test(
@@ -202,6 +207,245 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     ).json();
   }
 
+  private badGroupResponse(message: string, code?: number): never {
+    throw new BadBody(
+      this.identifier,
+      code === undefined ? '{}' : JSON.stringify({ code }),
+      {} as BodyInit,
+      message
+    );
+  }
+
+  private unwrapGroupResponse<T>(payload: unknown, method: string): T {
+    const envelope =
+      payload && typeof payload === 'object'
+        ? (payload as {
+            response?: T;
+            error?: { error_code?: unknown } | unknown;
+          })
+        : {};
+
+    if (envelope.error !== undefined && envelope.error !== null) {
+      const rawCode =
+        typeof envelope.error === 'object'
+          ? (envelope.error as { error_code?: unknown }).error_code
+          : undefined;
+      const parsedCode = Number(rawCode);
+      const code =
+        Number.isFinite(parsedCode) && Number.isInteger(parsedCode)
+          ? parsedCode
+          : 0;
+      const message = `VK ${method} failed with error ${code}`;
+
+      if (code === 5) {
+        throw new RefreshToken(
+          this.identifier,
+          JSON.stringify({ code }),
+          {} as BodyInit,
+          message
+        );
+      }
+      if (code === 15 && method.startsWith('photos.')) {
+        this.badGroupResponse(PHOTO_ACCESS_MISSING, code);
+      }
+      this.badGroupResponse(message, code);
+    }
+
+    if (envelope.response === undefined || envelope.response === null) {
+      this.badGroupResponse(`VK ${method} returned no response`);
+    }
+    return envelope.response;
+  }
+
+  private parsePositiveId(
+    value: unknown,
+    method: string,
+    field: string
+  ): string {
+    if (
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      Number.isInteger(value) &&
+      value > 0
+    ) {
+      return String(value);
+    }
+    if (
+      typeof value === 'string' &&
+      /^\d+$/.test(value) &&
+      /[1-9]/.test(value)
+    ) {
+      return value;
+    }
+    this.badGroupResponse(`VK ${method} returned invalid ${field}`);
+  }
+
+  private parseSignedId(value: unknown, method: string, field: string): string {
+    if (
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      Number.isInteger(value) &&
+      value !== 0
+    ) {
+      return String(value);
+    }
+    if (
+      typeof value === 'string' &&
+      /^-?\d+$/.test(value) &&
+      /[1-9]/.test(value)
+    ) {
+      return value;
+    }
+    this.badGroupResponse(`VK ${method} returned invalid ${field}`);
+  }
+
+  private parseHttpsUploadUrl(value: unknown): string {
+    if (typeof value !== 'string' || !value.trim()) {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
+      );
+    }
+
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
+      );
+    }
+    if (url.protocol !== 'https:' || url.username || url.password) {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
+      );
+    }
+    return value;
+  }
+
+  private async callPhotoVk<T>(
+    method: 'photos.getWallUploadServer' | 'photos.saveWallPhoto',
+    accessToken: string,
+    params: Record<string, string>
+  ): Promise<T> {
+    let payload: unknown;
+    try {
+      payload = await this.callVk(method, accessToken, params);
+    } catch {
+      this.badGroupResponse(`VK ${method} request failed`);
+    }
+    return this.unwrapGroupResponse<T>(payload, method);
+  }
+
+  private parsePhotoUploadFields(payload: unknown): {
+    photo: string;
+    server: string;
+    hash: string;
+  } {
+    if (!payload || typeof payload !== 'object') {
+      this.badGroupResponse('VK Group photo upload returned invalid fields');
+    }
+    const value = payload as Record<string, unknown>;
+    if (
+      typeof value.photo !== 'string' ||
+      !value.photo.trim() ||
+      typeof value.hash !== 'string' ||
+      !value.hash.trim()
+    ) {
+      this.badGroupResponse('VK Group photo upload returned invalid fields');
+    }
+
+    let server: string;
+    try {
+      server = this.parsePositiveId(
+        value.server,
+        'photos.getWallUploadServer',
+        'upload server ID'
+      );
+    } catch {
+      this.badGroupResponse('VK Group photo upload returned invalid fields');
+    }
+    return { photo: value.photo, server, hash: value.hash };
+  }
+
+  private async uploadPhoto(
+    positiveGroupId: string,
+    accessToken: string,
+    media: NonNullable<PostDetails['media']>[number]
+  ): Promise<{ ownerId: string; id: string }> {
+    const uploadServer = await this.callPhotoVk<unknown>(
+      'photos.getWallUploadServer',
+      accessToken,
+      { group_id: positiveGroupId }
+    );
+    if (!uploadServer || typeof uploadServer !== 'object') {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid response'
+      );
+    }
+    const uploadUrl = this.parseHttpsUploadUrl(
+      (uploadServer as Record<string, unknown>).upload_url
+    );
+
+    let mediaStream: unknown;
+    try {
+      ({ data: mediaStream } = await axios.get(media.path, {
+        responseType: 'stream',
+      }));
+    } catch {
+      this.badGroupResponse('VK Group media download failed');
+    }
+
+    let formData: FormDataNew;
+    let uploadPayload: unknown;
+    try {
+      const pathTail = media.path.split('/').at(-1) || 'photo';
+      const filename = pathTail.split(/[?#]/)[0] || 'photo';
+      formData = new FormDataNew();
+      formData.append('photo', mediaStream, {
+        filename,
+        contentType: mime.lookup(filename) || '',
+      });
+      uploadPayload = (
+        await axios.post(uploadUrl, formData, {
+          headers: formData.getHeaders(),
+        })
+      ).data;
+    } catch {
+      this.badGroupResponse('VK Group photo upload failed');
+    }
+
+    const uploaded = this.parsePhotoUploadFields(uploadPayload);
+    const saved = await this.callPhotoVk<unknown>(
+      'photos.saveWallPhoto',
+      accessToken,
+      {
+        group_id: positiveGroupId,
+        photo: uploaded.photo,
+        server: uploaded.server,
+        hash: uploaded.hash,
+      }
+    );
+    if (!Array.isArray(saved) || !saved[0] || typeof saved[0] !== 'object') {
+      this.badGroupResponse(
+        'VK photos.saveWallPhoto returned an invalid photo response'
+      );
+    }
+
+    const savedPhoto = saved[0] as Record<string, unknown>;
+    return {
+      ownerId: this.parseSignedId(
+        savedPhoto.owner_id,
+        'photos.saveWallPhoto',
+        'owner ID'
+      ),
+      id: this.parsePositiveId(
+        savedPhoto.id,
+        'photos.saveWallPhoto',
+        'photo ID'
+      ),
+    };
+  }
+
   async authenticate(params: {
     code: string;
     codeVerifier: string;
@@ -306,16 +550,40 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       throw new Error(TOO_MANY_PHOTOS);
     }
 
+    const ownerId = this.parseSignedId(userId, 'wall.post', 'owner ID');
+    if (!ownerId.startsWith('-')) {
+      this.badGroupResponse('VK wall.post returned invalid community owner ID');
+    }
+    const positiveGroupId = this.parsePositiveId(
+      ownerId.slice(1),
+      'wall.post',
+      'community ID'
+    );
+    const photos = await Promise.all(
+      mainMedia.map((media) =>
+        this.uploadPhoto(positiveGroupId, accessToken, media)
+      )
+    );
+
     const wallPostResult = await this.callVk('wall.post', accessToken, {
-      owner_id: userId,
+      owner_id: ownerId,
       from_group: '1',
       message: firstPost.message,
+      ...(photos.length
+        ? {
+            attachments: photos
+              .map(
+                ({ ownerId: photoOwnerId, id }) => `photo${photoOwnerId}_${id}`
+              )
+              .join(','),
+          }
+        : {}),
     });
 
     if (wallPostResult?.error || !wallPostResult?.response) {
       throw new BadBody(this.identifier, '{}', '{}', 'VK post failed');
     }
-    const publishedPostId = parseVkPositiveIntegerId(
+    const publishedPostId = this.parsePositiveId(
       wallPostResult.response.post_id,
       'wall.post',
       'post ID'
@@ -325,7 +593,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       {
         id: firstPost.id,
         postId: publishedPostId,
-        releaseURL: `https://vk.com/wall${userId}_${publishedPostId}`,
+        releaseURL: `https://vk.com/wall${ownerId}_${publishedPostId}`,
         status: 'completed',
       },
     ];
@@ -354,7 +622,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     if (wallCommentResult?.error || !wallCommentResult?.response) {
       throw new BadBody(this.identifier, '{}', '{}', 'VK comment failed');
     }
-    const publishedCommentId = parseVkPositiveIntegerId(
+    const publishedCommentId = this.parsePositiveId(
       wallCommentResult.response.comment_id,
       'wall.createComment',
       'comment ID'
