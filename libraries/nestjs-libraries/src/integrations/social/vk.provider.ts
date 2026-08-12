@@ -4,32 +4,21 @@ import {
   PostResponse,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
-import dayjs from 'dayjs';
 import {
   BadBody,
   SocialAbstract,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
-import { createHash, randomBytes } from 'crypto';
 import axios from 'axios';
 import FormDataNew from 'form-data';
 import mime from 'mime-types';
 import { Integration } from '@prisma/client';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import { parseVkPositiveIntegerId, unwrapVkResponse } from './vk.response';
-
-type VkOAuthTokens = {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-};
-
-type VkUserInfo = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  avatar: string;
-};
+import {
+  authenticateVkUser,
+  generateVkAuthUrl,
+  refreshVkUser,
+} from './vk.oauth';
 
 export class VkProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2; // VK has moderate API limits
@@ -52,18 +41,6 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     return 16384;
   }
 
-  private unwrapPayload<T>(payload: unknown, method: string): T {
-    if (
-      payload &&
-      typeof payload === 'object' &&
-      ('response' in payload || 'error' in payload)
-    ) {
-      return unwrapVkResponse<T>(payload, method);
-    }
-
-    return unwrapVkResponse<T>({ response: payload }, method);
-  }
-
   private badResponse(method: string, detail: string): never {
     throw new BadBody(
       'vk',
@@ -71,77 +48,6 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       {} as BodyInit,
       `VK ${method} returned ${detail}`
     );
-  }
-
-  private parseDeviceBoundValue(value: unknown, field: string) {
-    if (typeof value !== 'string') {
-      this.badResponse('oauth2/auth', `invalid ${field} or device ID`);
-    }
-    const [secret, deviceId] = value.split('&&&&');
-    if (!secret.trim() || !deviceId?.trim()) {
-      this.badResponse('oauth2/auth', `invalid ${field} or device ID`);
-    }
-    return { secret, deviceId };
-  }
-
-  private parseOAuthTokens(payload: unknown): VkOAuthTokens {
-    if (!payload || typeof payload !== 'object') {
-      this.badResponse('oauth2/auth', 'invalid token fields');
-    }
-
-    const value = payload as Record<string, unknown>;
-    if (
-      typeof value.access_token !== 'string' ||
-      !value.access_token.trim() ||
-      typeof value.refresh_token !== 'string' ||
-      !value.refresh_token.trim() ||
-      typeof value.expires_in !== 'number' ||
-      !Number.isFinite(value.expires_in) ||
-      !Number.isInteger(value.expires_in) ||
-      value.expires_in <= 0
-    ) {
-      this.badResponse('oauth2/auth', 'invalid token fields');
-    }
-
-    return {
-      accessToken: value.access_token,
-      refreshToken: value.refresh_token,
-      expiresIn: value.expires_in,
-    };
-  }
-
-  private parseUserInfo(payload: unknown): VkUserInfo {
-    if (!payload || typeof payload !== 'object') {
-      this.badResponse('oauth2/user_info', 'invalid user');
-    }
-
-    const user = (payload as Record<string, unknown>).user;
-    if (!user || typeof user !== 'object') {
-      this.badResponse('oauth2/user_info', 'invalid user');
-    }
-
-    const value = user as Record<string, unknown>;
-    const id = parseVkPositiveIntegerId(
-      value.user_id,
-      'oauth2/user_info',
-      'user ID'
-    );
-    if (
-      typeof value.first_name !== 'string' ||
-      !value.first_name ||
-      typeof value.last_name !== 'string' ||
-      !value.last_name ||
-      (value.avatar !== undefined && typeof value.avatar !== 'string')
-    ) {
-      this.badResponse('oauth2/user_info', 'invalid user');
-    }
-
-    return {
-      id,
-      firstName: value.first_name,
-      lastName: value.last_name,
-      avatar: typeof value.avatar === 'string' ? value.avatar : '',
-    };
   }
 
   private parseUploadUrl(value: unknown, method: string): string {
@@ -193,88 +99,28 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
   }
 
   async refreshToken(refresh: string): Promise<AuthTokenDetails> {
-    const { secret: oldRefreshToken, deviceId } = this.parseDeviceBoundValue(
+    const user = await refreshVkUser({
       refresh,
-      'refresh token'
-    );
-    const formData = new FormData();
-    formData.append('grant_type', 'refresh_token');
-    formData.append('refresh_token', oldRefreshToken);
-    formData.append('client_id', process.env.VK_ID!);
-    formData.append('device_id', deviceId);
-    formData.append('state', makeId(32));
-    formData.append('scope', this.scopes.join(' '));
-
-    const tokens = this.parseOAuthTokens(
-      this.unwrapPayload<unknown>(
-        await (
-          await this.fetch('https://id.vk.com/oauth2/auth', {
-            method: 'POST',
-            body: formData,
-          })
-        ).json(),
-        'oauth2/auth'
-      )
-    );
-
-    const newFormData = new FormData();
-    newFormData.append('client_id', process.env.VK_ID!);
-    newFormData.append('access_token', tokens.accessToken);
-
-    const user = this.parseUserInfo(
-      this.unwrapPayload<unknown>(
-        await (
-          await this.fetch('https://id.vk.com/oauth2/user_info', {
-            method: 'POST',
-            body: newFormData,
-          })
-        ).json(),
-        'oauth2/user_info'
-      )
-    );
+      scopes: this.scopes,
+      fetcher: (url, options) => this.fetch(url, options),
+    });
 
     return {
-      id: user.id,
-      name: user.firstName + ' ' + user.lastName,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken + '&&&&' + deviceId,
-      expiresIn:
-        dayjs().add(tokens.expiresIn, 'seconds').unix() - dayjs().unix(),
-      picture: user.avatar,
-      username: user.firstName.toLowerCase(),
+      id: user.userId,
+      name: user.name,
+      accessToken: user.accessToken,
+      refreshToken: user.refreshToken,
+      expiresIn: user.expiresIn,
+      picture: user.picture,
+      username: user.username,
     };
   }
 
   async generateAuthUrl() {
-    const state = makeId(32);
-    const codeVerifier = randomBytes(64).toString('base64url');
-    const challenge = Buffer.from(
-      createHash('sha256').update(codeVerifier).digest()
-    )
-      .toString('base64')
-      .replace(/=*$/g, '')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_');
-
-    return {
-      url:
-        'https://id.vk.com/authorize' +
-        `?response_type=code` +
-        `&client_id=${process.env.VK_ID}` +
-        `&code_challenge_method=S256` +
-        `&code_challenge=${challenge}` +
-        `&redirect_uri=${encodeURIComponent(
-          `${
-            process?.env.FRONTEND_URL?.indexOf('https') == -1
-              ? `https://redirectmeto.com/${process?.env.FRONTEND_URL}`
-              : `${process?.env.FRONTEND_URL}`
-          }/integrations/social/${this.identifier}`
-        )}` +
-        `&state=${state}` +
-        `&scope=${encodeURIComponent(this.scopes.join(' '))}`,
-      codeVerifier,
-      state,
-    };
+    return generateVkAuthUrl({
+      identifier: this.identifier,
+      scopes: this.scopes,
+    });
   }
 
   async authenticate(params: {
@@ -282,63 +128,21 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
     codeVerifier: string;
     refresh?: string;
   }) {
-    const { secret: code, deviceId } = this.parseDeviceBoundValue(
-      params.code,
-      'authorization code'
-    );
-
-    const formData = new FormData();
-    formData.append('client_id', process.env.VK_ID!);
-    formData.append('grant_type', 'authorization_code');
-    formData.append('code_verifier', params.codeVerifier);
-    formData.append('device_id', deviceId);
-    formData.append('code', code);
-    formData.append(
-      'redirect_uri',
-      `${
-        process?.env.FRONTEND_URL?.indexOf('https') == -1
-          ? `https://redirectmeto.com/${process?.env.FRONTEND_URL}`
-          : `${process?.env.FRONTEND_URL}`
-      }/integrations/social/${this.identifier}`
-    );
-
-    const tokens = this.parseOAuthTokens(
-      this.unwrapPayload<unknown>(
-        await (
-          await this.fetch('https://id.vk.com/oauth2/auth', {
-            method: 'POST',
-            body: formData,
-          })
-        ).json(),
-        'oauth2/auth'
-      )
-    );
-
-    const newFormData = new FormData();
-    newFormData.append('client_id', process.env.VK_ID!);
-    newFormData.append('access_token', tokens.accessToken);
-
-    const user = this.parseUserInfo(
-      this.unwrapPayload<unknown>(
-        await (
-          await this.fetch('https://id.vk.com/oauth2/user_info', {
-            method: 'POST',
-            body: newFormData,
-          })
-        ).json(),
-        'oauth2/user_info'
-      )
-    );
+    const user = await authenticateVkUser({
+      identifier: this.identifier,
+      code: params.code,
+      codeVerifier: params.codeVerifier,
+      fetcher: (url, options) => this.fetch(url, options),
+    });
 
     return {
-      id: user.id,
-      name: user.firstName + ' ' + user.lastName,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken + '&&&&' + deviceId,
-      expiresIn:
-        dayjs().add(tokens.expiresIn, 'seconds').unix() - dayjs().unix(),
-      picture: user.avatar,
-      username: user.firstName.toLowerCase(),
+      id: user.userId,
+      name: user.name,
+      accessToken: user.accessToken,
+      refreshToken: user.refreshToken,
+      expiresIn: user.expiresIn,
+      picture: user.picture,
+      username: user.username,
     };
   }
 
