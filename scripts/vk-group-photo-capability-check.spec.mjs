@@ -15,6 +15,11 @@ import {
 } from './vk-group-photo-capability-check.mjs';
 
 const roots = [];
+const authorizationMethods = [
+  'groups.getById',
+  'groups.getById',
+  'groups.getTokenPermissions',
+];
 
 async function makeFixture() {
   const root = await mkdtemp(join(tmpdir(), 'vk-capability-test-'));
@@ -49,6 +54,47 @@ function parseRecords(output) {
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line));
+}
+
+function authorizationFetch({
+  requestedPayload = { response: { groups: [{ id: 123 }] } },
+  ownerPayload = { response: { groups: [{ id: 123 }] } },
+  permissionsPayload = {
+    response: {
+      permissions: [
+        { name: 'manage', setting: 262144 },
+        { name: 'wall', setting: 8192 },
+        { name: 'photos', setting: 4 },
+      ],
+    },
+  },
+} = {}) {
+  const methods = [];
+  const fetchImpl = vi.fn(async (url, options) => {
+    expect(url).not.toContain('private-community-token');
+    expect(options.redirect).toBe('error');
+    const method = url.slice('https://api.vk.com/method/'.length);
+    methods.push(method);
+    expect(options.body.get('access_token')).toBe('private-community-token');
+
+    if (method === 'groups.getById') {
+      if (options.body.has('group_ids')) {
+        expect(options.body.get('group_ids')).toBe('123');
+        return jsonResponse(requestedPayload);
+      }
+      return jsonResponse(ownerPayload);
+    }
+    if (method === 'groups.getTokenPermissions') {
+      return jsonResponse(permissionsPayload);
+    }
+
+    return jsonResponse({
+      response: {
+        upload_url: 'https://upload.invalid/otherwise-capable-private-session',
+      },
+    });
+  });
+  return { fetchImpl, methods };
 }
 
 function successfulFetch(
@@ -89,6 +135,23 @@ function successfulFetch(
     }
 
     switch (method) {
+      case 'groups.getById':
+        if (options.body.has('group_ids')) {
+          expect(options.body.get('group_ids')).toBe('123');
+        } else {
+          expect(options.body.has('group_ids')).toBe(false);
+        }
+        return jsonResponse({ response: { groups: [{ id: 123 }] } });
+      case 'groups.getTokenPermissions':
+        return jsonResponse({
+          response: {
+            permissions: [
+              { name: 'manage', setting: 262144 },
+              { name: 'wall', setting: 8192 },
+              { name: 'photos', setting: 4 },
+            ],
+          },
+        });
       case 'photos.getWallUploadServer':
         expect(options.body.get('group_id')).toBe('123');
         if (removeMediaAfterUploadServer) {
@@ -109,9 +172,13 @@ function successfulFetch(
         const workspace = join(fixture.root, workspaceName);
         expect((await stat(workspace)).mode & 0o777).toBe(0o700);
         const rawFiles = await readdir(workspace);
-        expect(rawFiles).toHaveLength(1);
-        expect((await stat(join(workspace, rawFiles[0]))).mode & 0o777).toBe(
-          0o600
+        expect(rawFiles).toHaveLength(4);
+        await Promise.all(
+          rawFiles.map(async (rawFile) => {
+            expect((await stat(join(workspace, rawFile))).mode & 0o777).toBe(
+              0o600
+            );
+          })
         );
         return uploadErrorCode
           ? jsonResponse({
@@ -273,6 +340,121 @@ describe('VK Group photo capability check', () => {
     expect(fixture.output()).not.toContain('private-community-token');
   });
 
+  it.each([
+    [
+      'personal token',
+      { ownerPayload: { response: { groups: [] } } },
+      ['groups.getById', 'groups.getById'],
+    ],
+    [
+      'wrong-community token',
+      { ownerPayload: { response: { groups: [{ id: 456 }] } } },
+      ['groups.getById', 'groups.getById'],
+    ],
+    [
+      'token without photos',
+      {
+        permissionsPayload: {
+          response: {
+            permissions: [
+              { name: 'manage', setting: 262144 },
+              { name: 'wall', setting: 8192 },
+              { name: 'photos', setting: 0 },
+            ],
+          },
+        },
+      },
+      ['groups.getById', 'groups.getById', 'groups.getTokenPermissions'],
+    ],
+  ])(
+    'stops an otherwise capable %s before every photo or cleanup method',
+    async (_description, authorization, expectedMethods) => {
+      const fixture = await makeFixture();
+      const { fetchImpl, methods } = authorizationFetch(authorization);
+
+      const exitCode = await runCapabilityCheck({
+        args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+        env: {
+          VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+          VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        },
+        fetchImpl,
+        stdout: fixture.stdout,
+        tempRoot: fixture.root,
+      });
+
+      expect(exitCode).toBe(2);
+      expect(methods).toEqual(expectedMethods);
+      expect(methods).not.toContain('photos.getWallUploadServer');
+      expect(methods).not.toContain('upload');
+      expect(methods).not.toContain('wall.post');
+      expect(methods).not.toContain('wall.delete');
+      expect(parseRecords(fixture.output())).toEqual([
+        {
+          phase: 'authorization',
+          method: expectedMethods.at(-1),
+          status: 'STOP',
+        },
+      ]);
+      expect(fixture.output()).not.toContain('private-community-token');
+      expect(fixture.output()).not.toContain('private-session');
+      expect(fixture.output()).not.toContain('123');
+      expect(fixture.output()).not.toContain('456');
+      expect(parseRecords(fixture.output())).not.toContainEqual(
+        expect.objectContaining({ status: 'GO' })
+      );
+    }
+  );
+
+  it.each([
+    [
+      'requested group envelope',
+      { requestedPayload: { response: { groups: [{ id: '12.3' }] } } },
+      ['groups.getById'],
+    ],
+    [
+      'token owner envelope',
+      { ownerPayload: { response: { groups: [{ id: 0 }] } } },
+      ['groups.getById', 'groups.getById'],
+    ],
+    [
+      'permissions envelope',
+      { permissionsPayload: { response: { permissions: {} } } },
+      ['groups.getById', 'groups.getById', 'groups.getTokenPermissions'],
+    ],
+  ])(
+    'fails closed on a malformed %s',
+    async (_description, authorization, expectedMethods) => {
+      const fixture = await makeFixture();
+      const { fetchImpl, methods } = authorizationFetch(authorization);
+
+      const exitCode = await runCapabilityCheck({
+        args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+        env: {
+          VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+          VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        },
+        fetchImpl,
+        stdout: fixture.stdout,
+        tempRoot: fixture.root,
+      });
+
+      expect(exitCode).toBe(2);
+      expect(methods).toEqual(expectedMethods);
+      expect(methods.some((method) => method.startsWith('photos.'))).toBe(
+        false
+      );
+      expect(parseRecords(fixture.output())).toEqual([
+        {
+          phase: 'authorization',
+          method: expectedMethods.at(-1),
+          status: 'STOP',
+        },
+      ]);
+      expect(fixture.output()).not.toContain('private-community-token');
+    }
+  );
+
   it('records only method and numeric code for a VK pre-publication failure', async () => {
     const fixture = await makeFixture();
     const fetchImpl = vi.fn().mockResolvedValue(
@@ -302,8 +484,8 @@ describe('VK Group photo capability check', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fixture.output()).toBe(
       `${JSON.stringify({
-        phase: 'upload-server',
-        method: 'photos.getWallUploadServer',
+        phase: 'authorization',
+        method: 'groups.getById',
         error_code: 15,
         status: 'STOP',
       })}\n`
@@ -336,8 +518,8 @@ describe('VK Group photo capability check', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const record = JSON.parse(fixture.output());
     expect(record).toEqual({
-      phase: 'upload-server',
-      method: 'photos.getWallUploadServer',
+      phase: 'authorization',
+      method: 'groups.getById',
       status: 'STOP',
     });
     expect(record).not.toHaveProperty('error_code');
@@ -370,8 +552,8 @@ describe('VK Group photo capability check', () => {
 
     expect(exitCode).toBe(2);
     expect(JSON.parse(fixture.output())).toEqual({
-      phase: 'upload-server',
-      method: 'photos.getWallUploadServer',
+      phase: 'authorization',
+      method: 'groups.getById',
       status: 'STOP',
     });
     expect(fixture.output()).not.toContain('private upstream message');
@@ -395,7 +577,11 @@ describe('VK Group photo capability check', () => {
     });
 
     expect(exitCode).toBe(2);
-    expect(methods).toEqual(['photos.getWallUploadServer', 'upload']);
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+    ]);
     expect(JSON.parse(fixture.output())).toEqual({
       phase: 'upload',
       method: 'upload',
@@ -420,8 +606,12 @@ describe('VK Group photo capability check', () => {
       tempRoot: fixture.root,
     });
 
-    expect(exitCode).toBe(0);
+    expect(
+      exitCode,
+      JSON.stringify({ methods, records: parseRecords(fixture.output()) })
+    ).toBe(0);
     expect(methods).toEqual([
+      ...authorizationMethods,
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',
@@ -647,6 +837,7 @@ describe('VK Group photo capability check', () => {
 
     expect(exitCode).toBe(3);
     expect(methods).toEqual([
+      ...authorizationMethods,
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',
@@ -679,6 +870,7 @@ describe('VK Group photo capability check', () => {
 
     expect(exitCode).toBe(3);
     expect(methods).toEqual([
+      ...authorizationMethods,
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',
@@ -893,7 +1085,10 @@ describe('VK Group photo capability check', () => {
     });
 
     expect(exitCode).toBe(2);
-    expect(methods).toEqual(['photos.getWallUploadServer']);
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+    ]);
     expect(JSON.parse(fixture.output())).toEqual({
       phase: 'upload',
       method: 'upload',
@@ -920,6 +1115,7 @@ describe('VK Group photo capability check', () => {
 
     expect(exitCode).toBe(3);
     expect(methods).toEqual([
+      ...authorizationMethods,
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',
@@ -957,6 +1153,7 @@ describe('VK Group photo capability check', () => {
 
     expect(exitCode).toBe(3);
     expect(methods).toEqual([
+      ...authorizationMethods,
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',

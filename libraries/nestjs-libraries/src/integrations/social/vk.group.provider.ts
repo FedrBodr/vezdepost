@@ -329,6 +329,14 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     params: Record<string, string>
   ): Promise<T> {
+    return this.callGroupVk(method, accessToken, params);
+  }
+
+  private async callGroupVk<T>(
+    method: string,
+    accessToken: string,
+    params: Record<string, string> = {}
+  ): Promise<T> {
     let payload: unknown;
     try {
       payload = await this.callVk(method, accessToken, params);
@@ -336,6 +344,58 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       this.badGroupResponse(`VK ${method} request failed`);
     }
     return this.unwrapGroupResponse<T>(payload, method);
+  }
+
+  private async requirePhotoPermission(accessToken: string): Promise<void> {
+    const response = await this.callGroupVk<unknown>(
+      'groups.getTokenPermissions',
+      accessToken
+    );
+    if (!response || typeof response !== 'object') {
+      this.badGroupResponse(
+        'VK groups.getTokenPermissions returned invalid permissions'
+      );
+    }
+
+    const permissions = (response as { permissions?: unknown }).permissions;
+    if (!Array.isArray(permissions)) {
+      this.badGroupResponse(
+        'VK groups.getTokenPermissions returned invalid permissions'
+      );
+    }
+
+    const enabledNames = new Set<string>();
+    for (const permission of permissions) {
+      if (!permission || typeof permission !== 'object') {
+        this.badGroupResponse(
+          'VK groups.getTokenPermissions returned invalid permissions'
+        );
+      }
+      const { name, setting } = permission as {
+        name?: unknown;
+        setting?: unknown;
+      };
+      const validSetting =
+        (typeof setting === 'number' &&
+          Number.isSafeInteger(setting) &&
+          setting >= 0) ||
+        (typeof setting === 'string' && /^(?:0|[1-9]\d*)$/.test(setting));
+      if (typeof name !== 'string' || !name || !validSetting) {
+        this.badGroupResponse(
+          'VK groups.getTokenPermissions returned invalid permissions'
+        );
+      }
+      if (
+        (typeof setting === 'number' && setting > 0) ||
+        (typeof setting === 'string' && /[1-9]/.test(setting))
+      ) {
+        enabledNames.add(name);
+      }
+    }
+
+    if (!enabledNames.has('photos')) {
+      this.badGroupResponse(PHOTO_ACCESS_MISSING);
+    }
   }
 
   private parsePhotoUploadFields(payload: unknown): {
@@ -410,6 +470,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       uploadPayload = (
         await axios.post(uploadUrl, formData, {
           headers: formData.getHeaders(),
+          maxRedirects: 0,
         })
       ).data;
     } catch {
@@ -427,7 +488,12 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         hash: uploaded.hash,
       }
     );
-    if (!Array.isArray(saved) || !saved[0] || typeof saved[0] !== 'object') {
+    if (
+      !Array.isArray(saved) ||
+      saved.length !== 1 ||
+      !saved[0] ||
+      typeof saved[0] !== 'object'
+    ) {
       this.badGroupResponse(
         'VK photos.saveWallPhoto returned an invalid photo response'
       );
@@ -561,6 +627,9 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       'wall.post',
       'community ID'
     );
+    if (mainMedia.length > 0) {
+      await this.requirePhotoPermission(accessToken);
+    }
     const photos = await Promise.all(
       mainMedia.map((media) =>
         this.uploadPhoto(positiveGroupId, accessToken, media)
@@ -615,22 +684,17 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     integration: Integration
   ): Promise<PostResponse[]> {
     const [commentPost] = postDetails;
-    const wallCommentResult = await this.callVk(
-      'wall.createComment',
-      accessToken,
-      {
-        owner_id: userId,
-        from_group: String(Math.abs(Number(userId))),
-        message: commentPost.message,
-        post_id: postId,
-      }
-    );
+    const wallCommentResult = await this.callGroupVk<{
+      comment_id?: unknown;
+    }>('wall.createComment', accessToken, {
+      owner_id: userId,
+      from_group: String(Math.abs(Number(userId))),
+      message: commentPost.message,
+      post_id: postId,
+    });
 
-    if (wallCommentResult?.error || !wallCommentResult?.response) {
-      throw new BadBody(this.identifier, '{}', '{}', 'VK comment failed');
-    }
     const publishedCommentId = this.parsePositiveId(
-      wallCommentResult.response.comment_id,
+      wallCommentResult.comment_id,
       'wall.createComment',
       'comment ID'
     );

@@ -41,9 +41,10 @@ All of the following are required before the external check:
 3. The token is supplied out of band through an approved secret/environment
    mechanism. The operator confirms that the runner can read it without
    exposing its value in argv, shell history, process logs, or captured output.
-4. Explicit authorization names the community and permits the upload-server,
-   upload, save-photo, one `wall.post`, verification, and cleanup phases. This
-   authorization does not permit a push or deployment.
+4. Explicit authorization names the community and permits the requested-group,
+   token-owner, token-permission, upload-server, upload, save-photo, one
+   `wall.post`, verification, and cleanup phases. This authorization does not
+   permit a push or deployment.
 5. The test image is disposable, synthetic, contains no person or identifying
    content, and has metadata removed. Its path is supplied to the runner
    without recording a media URL.
@@ -156,6 +157,9 @@ message-marker, and attachment verification; it may never appear in a `STOP`,
 `PENDING_LOCAL_CLEANUP`. Do not add upstream messages, marker values, temporary
 paths, unverified candidate IDs, or raw details. Stdout is transient safe
 execution evidence, not the durable decision record below.
+The selected group ID, token-owned group ID, permission payload, and access
+token are never emitted; authorization output contains only the fixed method
+name, numeric VK error code when supplied, and decision status.
 
 If local workspace deletion fails, the runner suppresses every earlier result,
 including a provisional remote `GO`, and emits only
@@ -179,38 +183,49 @@ Run these phases only through the approved runner invocation. Use VK API version
 `5.251` for every VK method. Send the access token in the POST body, never in a
 URL.
 
-1. **Upload-server request** — POST
-   `photos.getWallUploadServer` with the positive dedicated community ID as
-   `group_id`. Validate that the response contains an HTTPS upload URL. Do not
-   display, copy, or persist that URL outside the private workspace.
-2. **Disposable upload** — POST the synthetic image as multipart field `photo`
+1. **Requested-community proof** — POST `groups.getById` with the positive
+   dedicated community ID as `group_ids`. Require exactly one structurally
+   valid community with that exact positive numeric ID.
+2. **Token-owner proof** — POST `groups.getById` without `group_ids`. Require
+   exactly one structurally valid token-owned community whose exact positive
+   numeric ID equals the requested community ID. A personal token, empty
+   response, or different community stops the run before any photo method.
+3. **Permission proof** — POST `groups.getTokenPermissions`. Require a
+   structurally valid permissions array with the exact enabled names `manage`,
+   `wall`, and `photos`. Missing, disabled, or malformed permissions stop the
+   run before any photo method.
+4. **Upload-server request** — POST `photos.getWallUploadServer` with the
+   positive dedicated community ID as `group_id`. Validate that the response
+   contains an HTTPS upload URL. Do not display, copy, or persist that URL
+   outside the private workspace.
+5. **Disposable upload** — POST the synthetic image as multipart field `photo`
    to the returned upload URL. Keep `photo`, `server`, and `hash` only in private
    runner memory or private temporary files. Do not emit the multipart body or
    response.
-3. **Wall-photo save** — POST `photos.saveWallPhoto` with the positive
+6. **Wall-photo save** — POST `photos.saveWallPhoto` with the positive
    `group_id` and the upload response's `photo`, `server`, and `hash`. Validate
    exactly one saved-photo result whose `owner_id` equals the negative selected
    community ID and whose photo ID is positive. Until that exact ownership is
    proven, its ID is ambiguous and must not be used as a deletion target.
-4. **Publication** — only after phases 1–3 succeed, POST one `wall.post` with
+7. **Publication** — only after phases 1–6 succeed, POST one `wall.post` with
    the negative community `owner_id`, `from_group=1`, the saved attachment in
    `photo<owner_id>_<photo_id>` form, and neutral non-identifying test text that
    includes a cryptographically unique per-run UUID marker. The marker remains
    internal and is not emitted as evidence. Never call `wall.post` after an
    upload-server, upload, or save failure.
-5. **Authorship verification** — call `wall.getById` for the numeric post ID.
+8. **Authorship verification** — call `wall.getById` for the numeric post ID.
    Exactly one post must exist with the returned post ID, both `owner_id` and
    `from_id` equal to the negative dedicated community ID, text exactly equal
    to the unique message sent by this run, and exactly one normalized photo
    attachment whose owner/photo identity equals the saved photo. Only then may
    the candidate post ID become an owned cleanup target.
-6. **Cleanup** — call `wall.delete` and `photos.delete`, then verify absence with
+9. **Cleanup** — call `wall.delete` and `photos.delete`, then verify absence with
    `wall.getById` and `photos.getById`. Cleanup is complete only when both
    delete calls succeed and both absence checks return no artifact.
-7. **Completion** — remove the private runner workspace, revoke the one-use
-   token through the approved secret procedure, and retain only the safe JSON
-   result. `GO` is possible only after phases 1–6 and private-workspace removal
-   all succeed.
+10. **Completion** — remove the private runner workspace, revoke the one-use
+    token through the approved secret procedure, and retain only the safe JSON
+    result. `GO` is possible only after phases 1–9 and private-workspace removal
+    all succeed.
 
 At the first rejection or invalid response, stop immediately. Do not retry with
 more permissions, a personal token, another community, or `wall.post`. If VK
@@ -243,32 +258,34 @@ because the ambiguous artifact cannot be claimed absent.
 
 Use this decision table exactly:
 
-| Result                                                                                                                                                        | Action                                                                                                                                                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Upload-server request, upload, wall-photo save, controlled `wall.post`, community-authorship verification, both delete calls, and both absence checks succeed | Record date, VK API version `5.251`, method names, safe test post ID, cleanup `completed`, and `GO` for later rollout approval.                                                          |
-| Upload-server, upload, or wall-photo save fails                                                                                                               | Record only method name and numeric VK error code when supplied, otherwise method name only; mark `STOP`; do not broaden permissions, use a personal token, call `wall.post`, or deploy. |
-| `wall.post` returns a definite numeric VK rejection and every previously proven artifact is absent                                                            | Record `wall.post` and its numeric VK error code; mark `STOP` and do not deploy.                                                                                                         |
-| `wall.post` is uncertain, or candidate-post authorship/message/attachment verification fails                                                                  | Do not delete the ambiguous post ID; clean only separately proven artifacts; mark `PENDING_CLEANUP`, never `GO`, and do not deploy.                                                      |
-| Cleanup fails or absence cannot be verified                                                                                                                   | Record only the cleanup/verification method and numeric VK error code when supplied, otherwise method name only; mark `PENDING_CLEANUP`, never `GO`, and do not deploy.                  |
-| Local private-workspace deletion fails                                                                                                                        | Retain only `PENDING_LOCAL_CLEANUP`; remove and verify the exact temporary-prefix residue using approved local tooling; never `GO`, rerun, or deploy while residue remains.              |
+| Result                                                                                                                                                                           | Action                                                                                                                                                                                   |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Requested-community, exact token-owner, `manage`/`wall`/`photos`, upload-server, upload, wall-photo save, controlled `wall.post`, authorship, delete, and absence checks succeed | Record date, VK API version `5.251`, method names, safe test post ID, cleanup `completed`, and `GO` for later rollout approval.                                                          |
+| Requested-community, token-owner, or permission proof fails or is malformed                                                                                                      | Record only the failed method name and numeric VK error code when supplied; mark `STOP`; do not call a photo, publication, or cleanup method, substitute another token, or deploy.       |
+| Upload-server, upload, or wall-photo save fails                                                                                                                                  | Record only method name and numeric VK error code when supplied, otherwise method name only; mark `STOP`; do not broaden permissions, use a personal token, call `wall.post`, or deploy. |
+| `wall.post` returns a definite numeric VK rejection and every previously proven artifact is absent                                                                               | Record `wall.post` and its numeric VK error code; mark `STOP` and do not deploy.                                                                                                         |
+| `wall.post` is uncertain, or candidate-post authorship/message/attachment verification fails                                                                                     | Do not delete the ambiguous post ID; clean only separately proven artifacts; mark `PENDING_CLEANUP`, never `GO`, and do not deploy.                                                      |
+| Cleanup fails or absence cannot be verified                                                                                                                                      | Record only the cleanup/verification method and numeric VK error code when supplied, otherwise method name only; mark `PENDING_CLEANUP`, never `GO`, and do not deploy.                  |
+| Local private-workspace deletion fails                                                                                                                                           | Retain only `PENDING_LOCAL_CLEANUP`; remove and verify the exact temporary-prefix residue using approved local tooling; never `GO`, rerun, or deploy while residue remains.              |
 
 The durable success record contains only:
 
 - execution date;
 - VK API version `5.251`;
-- method names `photos.getWallUploadServer`, `photos.saveWallPhoto`, and
-  `wall.post`;
+- method names `groups.getById`, `groups.getTokenPermissions`,
+  `photos.getWallUploadServer`, `photos.saveWallPhoto`, and `wall.post`;
 - the verified numeric test post ID;
 - cleanup status `completed` after both absence checks;
 - decision `GO` for a separately approved rollout.
 
 After the runner exits, the authorized operator creates this separate durable
 record from the safe JSON Lines plus the known execution date and the runner's
-fixed API version `5.251`. Record the three required capability method names
+fixed API version `5.251`. Record the required proof and capability method names
+`groups.getById`, `groups.getTokenPermissions`,
 `photos.getWallUploadServer`, `photos.saveWallPhoto`, and `wall.post` only after
-the emitted cleanup/absence phases culminate in `GO`. Do not copy raw temporary
-files or add upstream messages. Revoke the one-use token after recording the
-decision.
+the emitted cleanup/absence phases culminate in `GO`. Do not record either
+community ID, the permissions payload, raw temporary files, or upstream
+messages. Revoke the one-use token after recording the decision.
 
 The durable failure record contains only the failed method name, the numeric VK
 error code when returned, and decision `STOP` or `PENDING_CLEANUP`. When no

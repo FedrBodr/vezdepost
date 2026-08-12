@@ -400,8 +400,23 @@ describe('VkGroupProvider community credentials', () => {
 describe('VkGroupProvider photo publishing', () => {
   let provider: VkGroupProvider;
 
+  const useRealPermissionCall = () => {
+    vi.mocked((provider as any).callVk).mockRestore();
+  };
+
   beforeEach(() => {
     provider = new VkGroupProvider();
+    const callVk = (provider as any).callVk.bind(provider);
+    vi.spyOn(provider as any, 'callVk').mockImplementation(
+      (method: string, ...args: unknown[]) =>
+        method === 'groups.getTokenPermissions'
+          ? Promise.resolve({
+              response: {
+                permissions: [{ name: 'photos', setting: 4 }],
+              },
+            })
+          : callVk(method, ...args)
+    );
     vi.clearAllMocks();
     vi.mocked(axios.get).mockReset();
     vi.mocked(axios.post).mockReset();
@@ -561,6 +576,204 @@ describe('VkGroupProvider photo publishing', () => {
     expect(body.has('attachments')).toBe(false);
   });
 
+  it.each([
+    [[], 'absent'],
+    [[{ name: 'photos', setting: 0 }], 'disabled'],
+  ])(
+    'stops a photo publication before upload when photo permission is %s',
+    async (permissions) => {
+      useRealPermissionCall();
+      const fetchMock = vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+        response({
+          response: { permissions, private: upstreamPayload },
+        })
+      );
+
+      const thrown = await expectSanitizedPhotoFailure(
+        provider.post('-123', token, [
+          {
+            id: 'postiz-post',
+            message: 'Photo',
+            settings: {},
+            media: [{ type: 'image', path: mediaUrl }],
+          },
+        ]),
+        fetchMock,
+        { message: 'VK Group photo access is missing.' }
+      );
+
+      expect((thrown as Error).message).toBe(
+        'VK Group photo access is missing. Recreate the community key with photographs access and reconnect VK Group.'
+      );
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://api.vk.com/method/groups.getTokenPermissions'
+      );
+      expect(axios.get).not.toHaveBeenCalled();
+      expect(axios.post).not.toHaveBeenCalled();
+    }
+  );
+
+  it('checks photo permission exactly once before any photo API request', async () => {
+    useRealPermissionCall();
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({
+          response: {
+            permissions: [{ name: 'photos', setting: 4 }],
+          },
+        })
+      )
+      .mockImplementationOnce(() =>
+        response({ response: { upload_url: uploadUrl } })
+      )
+      .mockImplementationOnce(() =>
+        response({ response: [{ owner_id: -123, id: 456 }] })
+      )
+      .mockImplementationOnce(() => response({ response: { post_id: 789 } }));
+    vi.mocked(axios.get).mockResolvedValue({
+      data: Readable.from(['image-data']),
+    });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { photo: uploadedPhoto, server: 321, hash: uploadHash },
+    });
+
+    await provider.post('-123', token, [
+      {
+        id: 'postiz-post',
+        message: 'Photo',
+        settings: {},
+        media: [{ type: 'image', path: mediaUrl }],
+      },
+    ]);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.vk.com/method/groups.getTokenPermissions',
+      'https://api.vk.com/method/photos.getWallUploadServer',
+      'https://api.vk.com/method/photos.saveWallPhoto',
+      'https://api.vk.com/method/wall.post',
+    ]);
+  });
+
+  it.each([
+    [
+      'ordinary VK denial',
+      () =>
+        response({
+          error: {
+            error_code: 100,
+            error_msg: `denied ${token} ${mediaUrl} ${upstreamPayload}`,
+          },
+        }),
+      BadBody,
+      'VK groups.getTokenPermissions failed with error 100',
+    ],
+    [
+      'authentication expiry',
+      () =>
+        response({
+          error: {
+            error_code: 5,
+            error_msg: `expired ${token} ${mediaUrl} ${upstreamPayload}`,
+          },
+        }),
+      RefreshToken,
+      'VK groups.getTokenPermissions failed with error 5',
+    ],
+    [
+      'transport failure',
+      () =>
+        Promise.reject(
+          new Error(
+            `permission transport ${token} ${mediaUrl} ${upstreamPayload}`
+          )
+        ),
+      BadBody,
+      'VK groups.getTokenPermissions request failed',
+    ],
+    [
+      'JSON decoding failure',
+      () =>
+        Promise.resolve({
+          json: async () => {
+            throw new Error(
+              `permission JSON ${token} ${mediaUrl} ${upstreamPayload}`
+            );
+          },
+        } as Response),
+      BadBody,
+      'VK groups.getTokenPermissions request failed',
+    ],
+  ])(
+    'sanitizes a photo permission failure without downstream calls (%s)',
+    async (_description, permissionResponse, expectedClass, message) => {
+      useRealPermissionCall();
+      const fetchMock = vi
+        .spyOn(provider, 'fetch')
+        .mockImplementationOnce(permissionResponse);
+
+      await expectSanitizedPhotoFailure(
+        provider.post('-123', token, [
+          {
+            id: 'postiz-post',
+            message: 'Photo',
+            settings: {},
+            media: [{ type: 'image', path: mediaUrl }],
+          },
+        ]),
+        fetchMock,
+        { expectedClass, message }
+      );
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(axios.get).not.toHaveBeenCalled();
+      expect(axios.post).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [{}, 'VK groups.getTokenPermissions returned no response'],
+    [{ response: null }, 'VK groups.getTokenPermissions returned no response'],
+    [
+      { response: {} },
+      'VK groups.getTokenPermissions returned invalid permissions',
+    ],
+    [
+      { response: { permissions: {} } },
+      'VK groups.getTokenPermissions returned invalid permissions',
+    ],
+    [
+      { response: { permissions: [{ name: 'photos', setting: 'enabled' }] } },
+      'VK groups.getTokenPermissions returned invalid permissions',
+    ],
+  ])(
+    'rejects a malformed photo permission response (%s)',
+    async (payload, message) => {
+      useRealPermissionCall();
+      const fetchMock = vi
+        .spyOn(provider, 'fetch')
+        .mockImplementationOnce(() => response(payload));
+
+      await expectSanitizedPhotoFailure(
+        provider.post('-123', token, [
+          {
+            id: 'postiz-post',
+            message: 'Photo',
+            settings: {},
+            media: [{ type: 'image', path: mediaUrl }],
+          },
+        ]),
+        fetchMock,
+        { message }
+      );
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(axios.get).not.toHaveBeenCalled();
+      expect(axios.post).not.toHaveBeenCalled();
+    }
+  );
+
   it('publishes one photo with positive group upload IDs and a signed saved owner ID', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
@@ -636,6 +849,7 @@ describe('VkGroupProvider photo publishing', () => {
         'content-type': `multipart/form-data; boundary=${boundary}`,
       })
     );
+    expect(multipartOptions?.maxRedirects).toBe(0);
     expect(multipartBody).toContain('name="photo"');
     expect(multipartBody).toContain('filename="private-photo.jpg"');
     expect(multipartBody).toContain('image-data');
@@ -1026,6 +1240,63 @@ describe('VkGroupProvider photo publishing', () => {
     );
   });
 
+  it('rejects an upload redirect without following a private or downgrade location', async () => {
+    useRealPermissionCall();
+    const privateRedirect = 'http://private-upload.example/token-bearing-path';
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({
+          response: {
+            permissions: [{ name: 'photos', setting: 4 }],
+          },
+        })
+      )
+      .mockImplementationOnce(() =>
+        response({ response: { upload_url: uploadUrl } })
+      );
+    vi.mocked(axios.get).mockResolvedValue({
+      data: Readable.from(['image-data']),
+    });
+    vi.mocked(axios.post).mockRejectedValue(
+      Object.assign(
+        new Error(`redirect ${privateRedirect} ${token} ${uploadedPhoto}`),
+        {
+          response: {
+            status: 302,
+            headers: { location: privateRedirect },
+            data: upstreamPayload,
+          },
+          config: { url: uploadUrl, data: uploadedPhoto, maxRedirects: 0 },
+        }
+      )
+    );
+
+    await expectSanitizedPhotoFailure(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Photo',
+          settings: {},
+          media: [{ type: 'image', path: mediaUrl }],
+        },
+      ]),
+      fetchMock,
+      {
+        message: 'VK Group photo upload failed',
+        secrets: [privateRedirect],
+      }
+    );
+
+    expect(vi.mocked(axios.post).mock.calls[0][2]).toEqual(
+      expect.objectContaining({ maxRedirects: 0 })
+    );
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.vk.com/method/groups.getTokenPermissions',
+      'https://api.vk.com/method/photos.getWallUploadServer',
+    ]);
+  });
+
   it('redacts a multipart form construction failure', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
@@ -1168,6 +1439,53 @@ describe('VkGroupProvider photo publishing', () => {
       fetchMock,
       { message: 'VK photos.saveWallPhoto returned an invalid photo response' }
     );
+  });
+
+  it('rejects multiple saved photos before wall.post', async () => {
+    useRealPermissionCall();
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({
+          response: {
+            permissions: [{ name: 'photos', setting: 4 }],
+          },
+        })
+      )
+      .mockImplementationOnce(() =>
+        response({ response: { upload_url: uploadUrl } })
+      )
+      .mockImplementationOnce(() =>
+        response({
+          response: [
+            { owner_id: -123, id: 456 },
+            { owner_id: -123, id: 457 },
+          ],
+        })
+      );
+    vi.mocked(axios.get).mockResolvedValue({
+      data: Readable.from(['image-data']),
+    });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { photo: uploadedPhoto, server: 321, hash: uploadHash },
+    });
+
+    await expectSanitizedPhotoFailure(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Photo',
+          settings: {},
+          media: [{ type: 'image', path: mediaUrl }],
+        },
+      ]),
+      fetchMock,
+      { message: 'VK photos.saveWallPhoto returned an invalid photo response' }
+    );
+
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url.endsWith('/method/wall.post'))
+    ).toHaveLength(0);
   });
 
   it.each([
@@ -1522,6 +1840,100 @@ describe('VkGroupProvider photo publishing', () => {
     expect(body.get('message')).toBe('A reply');
     expect(body.has('attachments')).toBe(false);
   });
+
+  it.each([
+    [
+      () =>
+        Promise.reject(
+          new Error(`comment transport ${token} ${mediaUrl} ${upstreamPayload}`)
+        ),
+      'transport',
+    ],
+    [
+      () =>
+        Promise.resolve({
+          json: async () => {
+            throw new Error(
+              `comment JSON ${token} ${mediaUrl} ${upstreamPayload}`
+            );
+          },
+        } as Response),
+      'non-JSON',
+    ],
+  ])('sanitizes a wall.createComment %s failure', async (failure) => {
+    vi.spyOn(provider, 'fetch').mockImplementationOnce(failure);
+
+    let thrown: unknown;
+    try {
+      await provider.comment(
+        '-123',
+        '789',
+        undefined,
+        token,
+        [{ id: 'postiz-comment', message: 'A reply', settings: {} }],
+        {} as any
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(BadBody);
+    expect(String(thrown)).toContain('VK wall.createComment request failed');
+    expect((thrown as any).details).toEqual([
+      { identifier: 'vk-group', json: '{}', body: '{}' },
+    ]);
+    const serialized = `${String(thrown)} ${JSON.stringify(thrown)}`;
+    expect(serialized).not.toContain(token);
+    expect(serialized).not.toContain(mediaUrl);
+    expect(serialized).not.toContain(upstreamPayload);
+  });
+
+  it.each([
+    [5, RefreshToken],
+    [100, BadBody],
+  ])(
+    'sanitizes wall.createComment VK error %s',
+    async (errorCode, expectedClass) => {
+      vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+        response({
+          error: {
+            error_code: errorCode,
+            error_msg: `private ${token} ${mediaUrl} ${upstreamPayload}`,
+          },
+        })
+      );
+
+      let thrown: unknown;
+      try {
+        await provider.comment(
+          '-123',
+          '789',
+          undefined,
+          token,
+          [{ id: 'postiz-comment', message: 'A reply', settings: {} }],
+          {} as any
+        );
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(expectedClass);
+      expect(String(thrown)).toContain(
+        `VK wall.createComment failed with error ${errorCode}`
+      );
+      expect((thrown as any).details).toEqual([
+        {
+          identifier: 'vk-group',
+          json: `{"code":${errorCode}}`,
+          body: '{}',
+        },
+      ]);
+      const serialized = `${String(thrown)} ${JSON.stringify(thrown)}`;
+      expect(serialized).not.toContain(token);
+      expect(serialized).not.toContain(mediaUrl);
+      expect(serialized).not.toContain(upstreamPayload);
+    }
+  );
 
   it.each([
     [{ malicious: true }, 'object'],
