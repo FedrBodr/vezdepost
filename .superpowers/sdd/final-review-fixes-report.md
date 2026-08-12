@@ -92,6 +92,9 @@ All commands used Node `22.20.0` where applicable.
 - Prettier write/check for all changed implementation, test, and runbook files:
   passed.
 - `git diff --check`: passed before commit.
+- Post-commit `git diff --check prod...HEAD`: passed.
+- Post-commit release hygiene: changed-file enumeration, whitespace, tracked
+  `.tmp`, binary/image, and bounded secret-signature checks all passed.
 
 ## Files
 
