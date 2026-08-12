@@ -6,19 +6,32 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import {
   BadBody,
+  RefreshToken,
   SocialAbstract,
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { Integration } from '@prisma/client';
+import axios from 'axios';
 import dayjs from 'dayjs';
-import { parseVkPositiveIntegerId } from './vk.response';
+import FormDataNew from 'form-data';
+import mime from 'mime-types';
 
 const INVALID_GROUP = 'Enter a valid VK community link or short name.';
 const INVALID_TOKEN = 'The VK community token is invalid.';
 const WRONG_GROUP = 'This token belongs to a different VK community.';
 const MISSING_PERMISSIONS =
-  'The VK community token must allow community management and wall access.';
+  'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.';
+const TOO_MANY_PHOTOS = 'VK Group supports up to 10 photographs per post.';
+const UNSUPPORTED_MEDIA =
+  'VK Group supports photographs only. Remove videos and other attachments.';
+const PHOTO_ACCESS_MISSING =
+  'VK Group photo access is missing. Recreate the community key with photographs access and reconnect VK Group.';
+
+const isUnsupportedAttachmentPath = (path: string) =>
+  /\.(?:mp4|mov|avi|mkv|webm|m4v|pdf|docx?|xlsx?|pptx?|txt|rtf|csv|zip|rar|7z|tar|gz)(?:[?#].*)?$/i.test(
+    path || ''
+  );
 
 type VkGroup = {
   id: number;
@@ -36,22 +49,39 @@ export function normalizeVkGroupIdentifier(value: string): string | null {
     return null;
   }
 
+  const explicitScheme = input.match(/^([a-z][a-z\d+.-]*):\/\//i)?.[1];
+  if (explicitScheme && explicitScheme.toLowerCase() !== 'https') {
+    return null;
+  }
+
   let candidate = input;
-  const looksLikeVkUrl = /^(?:https?:\/\/)?(?:www\.)?vk\.com\//i.test(input);
+  const hostPattern = /^(?:www\.)?vk\.(?:com|ru)$/i;
+  const looksLikeVkUrl =
+    /^https:\/\//i.test(input) ||
+    /^(?:www\.)?vk\.(?:com|ru)(?::\d+)?(?:\/|$)/i.test(input);
 
   if (looksLikeVkUrl) {
     try {
-      const url = new URL(
-        /^https?:\/\//i.test(input) ? input : `https://${input}`
-      );
-      if (!/^(?:www\.)?vk\.com$/i.test(url.hostname)) {
+      const urlInput = /^https:\/\//i.test(input) ? input : `https://${input}`;
+      const rawAuthority = urlInput.match(/^https:\/\/([^/?#]+)/i)?.[1];
+      if (!rawAuthority || /[@:]/.test(rawAuthority)) {
         return null;
       }
-      candidate = url.pathname.replace(/^\/+|\/+$/g, '');
+      const url = new URL(urlInput);
+      if (
+        !hostPattern.test(url.hostname) ||
+        url.username ||
+        url.password ||
+        url.port ||
+        !/^\/[^/]+\/?$/.test(url.pathname)
+      ) {
+        return null;
+      }
+      candidate = url.pathname.slice(1).replace(/\/$/, '');
     } catch {
       return null;
     }
-  } else if (/^https?:\/\//i.test(input) || input.includes('/')) {
+  } else if (/^https:\/\//i.test(input) || input.includes('/')) {
     return null;
   }
 
@@ -59,13 +89,17 @@ export function normalizeVkGroupIdentifier(value: string): string | null {
     return null;
   }
 
-  if (/^-?\d+$/.test(candidate)) {
-    return String(Math.abs(Number(candidate)));
-  }
-
-  const prefixedId = candidate.match(/^(?:club|public)(\d+)$/i);
+  const prefixedId = candidate.match(/^(?:club|public)([1-9]\d*)$/i);
   if (prefixedId) {
     return prefixedId[1];
+  }
+
+  if (/^(?:club|public)/i.test(candidate)) {
+    return null;
+  }
+
+  if (/^-?\d+$/.test(candidate)) {
+    return /^-?[1-9]\d*$/.test(candidate) ? candidate.replace(/^-/, '') : null;
   }
 
   return /^[a-zA-Z0-9_.-]+$/.test(candidate) ? candidate : null;
@@ -79,12 +113,20 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   scopes = [] as string[];
   editor = 'normal' as const;
   customFieldsInstructions = {
-    title: 'When creating the VK access key, select only:',
+    collapsible: true,
+    summary: 'Where to get the link and key',
+    title: 'Connect a VK community',
     items: [
-      'Allow the application to manage the community',
-      'Allow the application to access the community wall',
+      'Open the community in the desktop VK website and select Management.',
+      'Open More → API usage → Access keys.',
+      'Select Create key.',
+      'Grant only community management, community wall, and photographs access.',
+      'Copy the generated community access key into Vezdepost.',
+      'Copy the public community address, for example https://vk.ru/fedrbodr_pro, into the first field.',
     ],
-    note: 'Messages, photos, documents, stories, and products/orders are not required.',
+    notRequired: 'Callback API and Long Poll API are not required.',
+    warning:
+      'The access key is secret. Do not send it to support, put it in screenshots, or share it with third parties.',
   };
 
   maxLength() {
@@ -94,8 +136,18 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   override async checkValidity(
     posts: Array<ValidityMedia[]>
   ): Promise<string | true> {
-    if (posts?.some((post) => post?.length > 0)) {
-      return 'VK Group temporarily supports text-only posts. Remove all media and try again.';
+    const [mainPost = [], ...comments] = posts || [];
+    if (comments.some((comment) => comment.length > 0)) {
+      return UNSUPPORTED_MEDIA;
+    }
+    if (mainPost.some((media) => media.type && media.type !== 'image')) {
+      return UNSUPPORTED_MEDIA;
+    }
+    if (mainPost.some((media) => isUnsupportedAttachmentPath(media.path))) {
+      return UNSUPPORTED_MEDIA;
+    }
+    if (mainPost.length > 10) {
+      return TOO_MANY_PHOTOS;
     }
     return true;
   }
@@ -104,13 +156,16 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     return [
       {
         key: 'group',
-        label: 'VK community link or short name',
+        label: 'VK community link',
+        placeholder: 'https://vk.ru/fedrbodr_pro',
+        placeholderTranslationKey: 'vk_group_community_link_placeholder',
         validation: '/^.{1,255}$/',
+        validationMessage: INVALID_GROUP,
         type: 'text' as const,
       },
       {
         key: 'accessToken',
-        label: 'Community access token',
+        label: 'Community access key',
         validation: '/^.{10,}$/',
         type: 'password' as const,
       },
@@ -150,6 +205,313 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         body,
       })
     ).json();
+  }
+
+  private badGroupResponse(message: string, code?: number): never {
+    throw new BadBody(
+      this.identifier,
+      code === undefined ? '{}' : JSON.stringify({ code }),
+      {} as BodyInit,
+      message
+    );
+  }
+
+  private unwrapGroupResponse<T>(payload: unknown, method: string): T {
+    const envelope =
+      payload && typeof payload === 'object'
+        ? (payload as {
+            response?: T;
+            error?: { error_code?: unknown } | unknown;
+          })
+        : {};
+
+    if (envelope.error !== undefined && envelope.error !== null) {
+      const rawCode =
+        typeof envelope.error === 'object'
+          ? (envelope.error as { error_code?: unknown }).error_code
+          : undefined;
+      const parsedCode = Number(rawCode);
+      const code =
+        Number.isFinite(parsedCode) && Number.isInteger(parsedCode)
+          ? parsedCode
+          : 0;
+      const message = `VK ${method} failed with error ${code}`;
+
+      if (code === 5) {
+        throw new RefreshToken(
+          this.identifier,
+          JSON.stringify({ code }),
+          {} as BodyInit,
+          message
+        );
+      }
+      if (code === 15 && method.startsWith('photos.')) {
+        this.badGroupResponse(PHOTO_ACCESS_MISSING, code);
+      }
+      this.badGroupResponse(message, code);
+    }
+
+    if (envelope.response === undefined || envelope.response === null) {
+      this.badGroupResponse(`VK ${method} returned no response`);
+    }
+    return envelope.response;
+  }
+
+  private parsePositiveId(
+    value: unknown,
+    method: string,
+    field: string
+  ): string {
+    if (
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      Number.isInteger(value) &&
+      Number.isSafeInteger(value) &&
+      value > 0
+    ) {
+      return String(value);
+    }
+    if (
+      typeof value === 'string' &&
+      /^\d+$/.test(value) &&
+      /[1-9]/.test(value)
+    ) {
+      return value;
+    }
+    this.badGroupResponse(`VK ${method} returned invalid ${field}`);
+  }
+
+  private parseSignedId(value: unknown, method: string, field: string): string {
+    if (
+      typeof value === 'number' &&
+      Number.isFinite(value) &&
+      Number.isInteger(value) &&
+      Number.isSafeInteger(value) &&
+      value !== 0
+    ) {
+      return String(value);
+    }
+    if (
+      typeof value === 'string' &&
+      /^-?\d+$/.test(value) &&
+      /[1-9]/.test(value)
+    ) {
+      return value;
+    }
+    this.badGroupResponse(`VK ${method} returned invalid ${field}`);
+  }
+
+  private parseHttpsUploadUrl(value: unknown): string {
+    if (typeof value !== 'string' || !value.trim()) {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
+      );
+    }
+
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
+      );
+    }
+    if (url.protocol !== 'https:' || url.username || url.password) {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
+      );
+    }
+    return value;
+  }
+
+  private async callPhotoVk<T>(
+    method: 'photos.getWallUploadServer' | 'photos.saveWallPhoto',
+    accessToken: string,
+    params: Record<string, string>
+  ): Promise<T> {
+    return this.callGroupVk(method, accessToken, params);
+  }
+
+  private async callGroupVk<T>(
+    method: string,
+    accessToken: string,
+    params: Record<string, string> = {}
+  ): Promise<T> {
+    let payload: unknown;
+    try {
+      payload = await this.callVk(method, accessToken, params);
+    } catch {
+      this.badGroupResponse(`VK ${method} request failed`);
+    }
+    return this.unwrapGroupResponse<T>(payload, method);
+  }
+
+  private async requirePhotoPermission(accessToken: string): Promise<void> {
+    const response = await this.callGroupVk<unknown>(
+      'groups.getTokenPermissions',
+      accessToken
+    );
+    if (!response || typeof response !== 'object') {
+      this.badGroupResponse(
+        'VK groups.getTokenPermissions returned invalid permissions'
+      );
+    }
+
+    const permissions = (response as { permissions?: unknown }).permissions;
+    if (!Array.isArray(permissions)) {
+      this.badGroupResponse(
+        'VK groups.getTokenPermissions returned invalid permissions'
+      );
+    }
+
+    const enabledNames = new Set<string>();
+    for (const permission of permissions) {
+      if (!permission || typeof permission !== 'object') {
+        this.badGroupResponse(
+          'VK groups.getTokenPermissions returned invalid permissions'
+        );
+      }
+      const { name, setting } = permission as {
+        name?: unknown;
+        setting?: unknown;
+      };
+      const validSetting =
+        (typeof setting === 'number' &&
+          Number.isSafeInteger(setting) &&
+          setting >= 0) ||
+        (typeof setting === 'string' && /^(?:0|[1-9]\d*)$/.test(setting));
+      if (typeof name !== 'string' || !name || !validSetting) {
+        this.badGroupResponse(
+          'VK groups.getTokenPermissions returned invalid permissions'
+        );
+      }
+      if (
+        (typeof setting === 'number' && setting > 0) ||
+        (typeof setting === 'string' && /[1-9]/.test(setting))
+      ) {
+        enabledNames.add(name);
+      }
+    }
+
+    if (!enabledNames.has('photos')) {
+      this.badGroupResponse(PHOTO_ACCESS_MISSING);
+    }
+  }
+
+  private parsePhotoUploadFields(payload: unknown): {
+    photo: string;
+    server: string;
+    hash: string;
+  } {
+    if (!payload || typeof payload !== 'object') {
+      this.badGroupResponse('VK Group photo upload returned invalid fields');
+    }
+    const value = payload as Record<string, unknown>;
+    if (
+      typeof value.photo !== 'string' ||
+      !value.photo.trim() ||
+      typeof value.hash !== 'string' ||
+      !value.hash.trim()
+    ) {
+      this.badGroupResponse('VK Group photo upload returned invalid fields');
+    }
+
+    let server: string;
+    try {
+      server = this.parsePositiveId(
+        value.server,
+        'photos.getWallUploadServer',
+        'upload server ID'
+      );
+    } catch {
+      this.badGroupResponse('VK Group photo upload returned invalid fields');
+    }
+    return { photo: value.photo, server, hash: value.hash };
+  }
+
+  private async uploadPhoto(
+    positiveGroupId: string,
+    accessToken: string,
+    media: NonNullable<PostDetails['media']>[number]
+  ): Promise<{ ownerId: string; id: string }> {
+    const uploadServer = await this.callPhotoVk<unknown>(
+      'photos.getWallUploadServer',
+      accessToken,
+      { group_id: positiveGroupId }
+    );
+    if (!uploadServer || typeof uploadServer !== 'object') {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid response'
+      );
+    }
+    const uploadUrl = this.parseHttpsUploadUrl(
+      (uploadServer as Record<string, unknown>).upload_url
+    );
+
+    let mediaStream: unknown;
+    try {
+      ({ data: mediaStream } = await axios.get(media.path, {
+        responseType: 'stream',
+      }));
+    } catch {
+      this.badGroupResponse('VK Group media download failed');
+    }
+
+    let formData: FormDataNew;
+    let uploadPayload: unknown;
+    try {
+      const pathTail = media.path.split('/').at(-1) || 'photo';
+      const filename = pathTail.split(/[?#]/)[0] || 'photo';
+      formData = new FormDataNew();
+      formData.append('photo', mediaStream, {
+        filename,
+        contentType: mime.lookup(filename) || '',
+      });
+      uploadPayload = (
+        await axios.post(uploadUrl, formData, {
+          headers: formData.getHeaders(),
+          maxRedirects: 0,
+        })
+      ).data;
+    } catch {
+      this.badGroupResponse('VK Group photo upload failed');
+    }
+
+    const uploaded = this.parsePhotoUploadFields(uploadPayload);
+    const saved = await this.callPhotoVk<unknown>(
+      'photos.saveWallPhoto',
+      accessToken,
+      {
+        group_id: positiveGroupId,
+        photo: uploaded.photo,
+        server: uploaded.server,
+        hash: uploaded.hash,
+      }
+    );
+    if (
+      !Array.isArray(saved) ||
+      saved.length !== 1 ||
+      !saved[0] ||
+      typeof saved[0] !== 'object'
+    ) {
+      this.badGroupResponse(
+        'VK photos.saveWallPhoto returned an invalid photo response'
+      );
+    }
+
+    const savedPhoto = saved[0] as Record<string, unknown>;
+    return {
+      ownerId: this.parseSignedId(
+        savedPhoto.owner_id,
+        'photos.saveWallPhoto',
+        'owner ID'
+      ),
+      id: this.parsePositiveId(
+        savedPhoto.id,
+        'photos.saveWallPhoto',
+        'photo ID'
+      ),
+    };
   }
 
   async authenticate(params: {
@@ -211,11 +573,11 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         .filter((permission: any) => Number(permission?.setting) > 0)
         .map((permission: any) => permission.name)
         .filter(Boolean);
+      const requiredPermissions = ['manage', 'wall', 'photos'];
 
       if (
         permissionsPayload?.error ||
-        !permissionNames.includes('manage') ||
-        !permissionNames.includes('wall')
+        requiredPermissions.some((name) => !permissionNames.includes(name))
       ) {
         return MISSING_PERMISSIONS;
       }
@@ -239,18 +601,66 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     postDetails: PostDetails[]
   ): Promise<PostResponse[]> {
-    const [firstPost] = postDetails;
-    const wallPostResult = await this.callVk('wall.post', accessToken, {
-      owner_id: userId,
-      from_group: '1',
-      message: firstPost.message,
-    });
-
-    if (wallPostResult?.error || !wallPostResult?.response) {
-      throw new BadBody(this.identifier, '{}', '{}', 'VK post failed');
+    const [firstPost, ...comments] = postDetails;
+    const mainMedia = firstPost?.media || [];
+    if (comments.some((comment) => (comment.media || []).length > 0)) {
+      throw new Error(UNSUPPORTED_MEDIA);
     }
-    const publishedPostId = parseVkPositiveIntegerId(
-      wallPostResult.response.post_id,
+    if (
+      mainMedia.some(
+        (item) =>
+          item.type !== 'image' || isUnsupportedAttachmentPath(item.path)
+      )
+    ) {
+      throw new Error(UNSUPPORTED_MEDIA);
+    }
+    if (mainMedia.length > 10) {
+      throw new Error(TOO_MANY_PHOTOS);
+    }
+
+    const ownerId = this.parseSignedId(userId, 'wall.post', 'owner ID');
+    if (!ownerId.startsWith('-')) {
+      this.badGroupResponse('VK wall.post returned invalid community owner ID');
+    }
+    const positiveGroupId = this.parsePositiveId(
+      ownerId.slice(1),
+      'wall.post',
+      'community ID'
+    );
+    if (mainMedia.length > 0) {
+      await this.requirePhotoPermission(accessToken);
+    }
+    const photos = await Promise.all(
+      mainMedia.map((media) =>
+        this.uploadPhoto(positiveGroupId, accessToken, media)
+      )
+    );
+
+    let wallPostPayload: unknown;
+    try {
+      wallPostPayload = await this.callVk('wall.post', accessToken, {
+        owner_id: ownerId,
+        from_group: '1',
+        message: firstPost.message,
+        ...(photos.length
+          ? {
+              attachments: photos
+                .map(
+                  ({ ownerId: photoOwnerId, id }) =>
+                    `photo${photoOwnerId}_${id}`
+                )
+                .join(','),
+            }
+          : {}),
+      });
+    } catch {
+      this.badGroupResponse('VK wall.post request failed');
+    }
+    const wallPostResult = this.unwrapGroupResponse<{
+      post_id?: unknown;
+    }>(wallPostPayload, 'wall.post');
+    const publishedPostId = this.parsePositiveId(
+      wallPostResult.post_id,
       'wall.post',
       'post ID'
     );
@@ -259,7 +669,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       {
         id: firstPost.id,
         postId: publishedPostId,
-        releaseURL: `https://vk.com/wall${userId}_${publishedPostId}`,
+        releaseURL: `https://vk.com/wall${ownerId}_${publishedPostId}`,
         status: 'completed',
       },
     ];
@@ -274,22 +684,17 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     integration: Integration
   ): Promise<PostResponse[]> {
     const [commentPost] = postDetails;
-    const wallCommentResult = await this.callVk(
-      'wall.createComment',
-      accessToken,
-      {
-        owner_id: userId,
-        from_group: String(Math.abs(Number(userId))),
-        message: commentPost.message,
-        post_id: postId,
-      }
-    );
+    const wallCommentResult = await this.callGroupVk<{
+      comment_id?: unknown;
+    }>('wall.createComment', accessToken, {
+      owner_id: userId,
+      from_group: String(Math.abs(Number(userId))),
+      message: commentPost.message,
+      post_id: postId,
+    });
 
-    if (wallCommentResult?.error || !wallCommentResult?.response) {
-      throw new BadBody(this.identifier, '{}', '{}', 'VK comment failed');
-    }
-    const publishedCommentId = parseVkPositiveIntegerId(
-      wallCommentResult.response.comment_id,
+    const publishedCommentId = this.parsePositiveId(
+      wallCommentResult.comment_id,
       'wall.createComment',
       'comment ID'
     );

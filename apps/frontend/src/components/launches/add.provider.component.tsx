@@ -28,6 +28,7 @@ import {
   useChannelConnectAnalytics,
 } from '@gitroom/frontend/components/launches/channel-connect.analytics';
 import { ChannelSupportLink } from '@gitroom/frontend/components/launches/channel-support-link';
+import type { CustomFieldDefinition } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 const resolver = classValidatorResolver(ApiKeyDto);
 
 export const getConnectionType = ({
@@ -50,6 +51,23 @@ export const getConnectionType = ({
 
 export const isUsableStartUrl = (url: unknown): url is string =>
   typeof url === 'string' && url.trim().length > 0;
+
+export const VK_GROUP_SAFE_CONNECTION_MESSAGES = new Set([
+  'Enter a valid VK community link or short name.',
+  'The VK community token is invalid.',
+  'This token belongs to a different VK community.',
+  'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.',
+]);
+
+const getSafeCustomFieldConnectionFailureMessage = (
+  identifier: string,
+  message: unknown
+) =>
+  identifier === 'vk-group' &&
+  typeof message === 'string' &&
+  VK_GROUP_SAFE_CONNECTION_MESSAGES.has(message)
+    ? message
+    : undefined;
 
 export const runAnalyticsSafely = (capture: () => void) => {
   try {
@@ -74,7 +92,7 @@ export const submitCustomFieldConnection = async ({
   onboarding?: boolean;
   data: FieldValues;
   connectPath?: string;
-  onFailed: () => void;
+  onFailed: (message?: string) => void;
   onCompleted: () => void;
   onRedirect: (url: string) => void;
 }) => {
@@ -104,7 +122,12 @@ export const submitCustomFieldConnection = async ({
     });
     const connectResult = await connectResponse.json().catch(() => ({}));
     if (!connectResponse.ok) {
-      onFailed();
+      onFailed(
+        getSafeCustomFieldConnectionFailureMessage(
+          identifier,
+          connectResult.msg
+        )
+      );
       return;
     }
 
@@ -259,14 +282,7 @@ export const UrlModal: FC<{
   );
 };
 export const CustomVariables: FC<{
-  variables: Array<{
-    key: string;
-    label: string;
-    defaultValue?: string;
-    validation: string;
-    type: 'text' | 'password';
-    hint?: string;
-  }>;
+  variables: CustomFieldDefinition[];
   customFieldsInstructions?: CustomFieldsInstructionsData;
   close?: () => void;
   identifier: string;
@@ -297,15 +313,19 @@ export const CustomVariables: FC<{
           splitter.slice(1, -1).join('/'),
           splitter.pop()
         );
+        const validationMessage = t(
+          item.validationMessageTranslationKey ||
+            item.validationMessage ||
+            'field_is_invalid',
+          item.validationMessage || 'This value is invalid.'
+        );
         return {
           ...aIcc,
-          [item.key]: string()
-            .matches(regex, `${item.label} is invalid`)
-            .required(),
+          [item.key]: string().matches(regex, validationMessage).required(),
         };
       }, {}),
     });
-  }, [variables]);
+  }, [t, variables]);
   const methods = useForm({
     mode: 'onChange',
     resolver: yupResolver(schema),
@@ -323,11 +343,11 @@ export const CustomVariables: FC<{
   });
   const submit = useCallback(
     async (data: FieldValues) => {
-      const safeMessage = t(
-        'could_not_connect_to_platform',
-        'Не удалось подключить платформу'
-      );
-      const failStart = () => {
+      const failStart = (message?: string) => {
+        const safeMessage = t(
+          message || 'could_not_connect_to_platform',
+          message || 'Не удалось подключить платформу'
+        );
         if (onStartFailure) {
           onStartFailure(safeMessage);
         } else {
@@ -387,6 +407,16 @@ export const CustomVariables: FC<{
                     label=""
                     name={variable.key}
                     type={variable.type == 'text' ? 'text' : 'password'}
+                    placeholder={
+                      variable.placeholder || variable.placeholderTranslationKey
+                        ? t(
+                            variable.placeholderTranslationKey ||
+                              variable.placeholder!,
+                            variable.placeholder || ''
+                          )
+                        : undefined
+                    }
+                    translationKey={variable.translationKey}
                   />
                 </div>
               ) : (
@@ -394,6 +424,16 @@ export const CustomVariables: FC<{
                   label={variable.label}
                   name={variable.key}
                   type={variable.type == 'text' ? 'text' : 'password'}
+                  placeholder={
+                    variable.placeholder || variable.placeholderTranslationKey
+                      ? t(
+                          variable.placeholderTranslationKey ||
+                            variable.placeholder!,
+                          variable.placeholder || ''
+                        )
+                      : undefined
+                  }
+                  translationKey={variable.translationKey}
                 />
               )}
             </div>
@@ -522,13 +562,7 @@ export const AddProviderComponent: FC<{
       name: string;
       domain: string;
     }>;
-    customFields?: Array<{
-      key: string;
-      label: string;
-      validation: string;
-      type: 'text' | 'password';
-      hint?: string;
-    }>;
+    customFields?: CustomFieldDefinition[];
     customFieldsInstructions?: CustomFieldsInstructionsData;
   }>;
   article: Array<{
@@ -555,14 +589,7 @@ export const AddProviderComponent: FC<{
         isExternal: boolean,
         isWeb3: boolean,
         isChromeExtension?: boolean,
-        customFields?: Array<{
-          key: string;
-          label: string;
-          validation: string;
-          defaultValue?: string;
-          type: 'text' | 'password';
-          hint?: string;
-        }>,
+        customFields?: CustomFieldDefinition[],
         customFieldsInstructions?: CustomFieldsInstructionsData
       ) =>
       async () => {

@@ -375,7 +375,7 @@ export class PostsService {
                     process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
                     m.path
                   : m.path,
-              type: 'image',
+              type: m.type || (hasExtension(m.path, 'mp4') ? 'video' : 'image'),
               path:
                 m.path.indexOf('http') === -1
                   ? process.env.UPLOAD_DIRECTORY + m.path
@@ -387,7 +387,7 @@ export class PostsService {
               return m;
             }
 
-            if (hasExtension(m.path, 'png')) {
+            if (m.type === 'image' && hasExtension(m.path, 'png')) {
               imageUpdateNeeded = true;
               const response = await axios.get(m.url, {
                 responseType: 'arraybuffer',
@@ -773,7 +773,11 @@ export class PostsService {
       integration: { id: string };
       value: Array<{
         content?: string;
-        image?: Array<{ path: string; thumbnail?: string }>;
+        image?: Array<{
+          path: string;
+          thumbnail?: string;
+          type?: 'image' | 'video' | string;
+        }>;
       }>;
       settings?: any;
     }>

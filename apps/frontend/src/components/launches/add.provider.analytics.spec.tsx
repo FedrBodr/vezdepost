@@ -5,6 +5,7 @@ import {
   isUsableStartUrl,
   runAnalyticsSafely,
   submitCustomFieldConnection,
+  VK_GROUP_SAFE_CONNECTION_MESSAGES,
 } from './add.provider.component';
 
 const source = readFileSync(
@@ -13,7 +14,7 @@ const source = readFileSync(
 );
 
 const response = (ok: boolean, body: unknown) =>
-  ({ ok, json: vi.fn().mockResolvedValue(body) }) as unknown as Response;
+  ({ ok, json: vi.fn().mockResolvedValue(body) } as unknown as Response);
 
 describe('provider connection analytics', () => {
   it('derives the connection type by provider precedence', () => {
@@ -100,6 +101,122 @@ describe('provider connection analytics', () => {
     expect(onFailed).not.toHaveBeenCalled();
     expect(onCompleted).toHaveBeenCalledOnce();
     expect(onRedirect).toHaveBeenCalledWith('/done');
+  });
+
+  it('propagates a safe string connection failure message', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(
+        response(false, { msg: 'The VK community token is invalid.' })
+      );
+    const onFailed = vi.fn();
+    const onCompleted = vi.fn();
+    const onRedirect = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'vk-group',
+      data: { accessToken: 'credential-value' },
+      onFailed,
+      onCompleted,
+      onRedirect,
+    });
+
+    expect(onFailed).toHaveBeenCalledWith('The VK community token is invalid.');
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(onRedirect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'Enter a valid VK community link or short name.',
+    'The VK community token is invalid.',
+    'This token belongs to a different VK community.',
+    'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.',
+  ])('propagates the known VK Group authentication error %s', async (msg) => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(response(false, { msg }));
+    const onFailed = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'vk-group',
+      data: { accessToken: 'credential-value' },
+      onFailed,
+      onCompleted: vi.fn(),
+      onRedirect: vi.fn(),
+    });
+
+    expect(onFailed).toHaveBeenCalledWith(msg);
+  });
+
+  it('allows exactly the current VK Group authentication errors', () => {
+    expect(VK_GROUP_SAFE_CONNECTION_MESSAGES).toEqual(
+      new Set([
+        'Enter a valid VK community link or short name.',
+        'The VK community token is invalid.',
+        'This token belongs to a different VK community.',
+        'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.',
+      ])
+    );
+  });
+
+  it.each([
+    ['token', 'vk1.a.secret-community-access-token'],
+    ['upload URL', 'https://up.vk.com/upload.php?act=do_upload'],
+    ['media URL', 'https://sun9-22.userapi.com/private-photo.jpg'],
+    [
+      'multipart form body',
+      '------WebKitFormBoundary\r\nContent-Disposition: form-data; name="photo"',
+    ],
+    [
+      'upstream payload',
+      '{"error":{"error_code":15,"error_msg":"Access denied"}}',
+    ],
+  ])('keeps a VK Group %s out of the UI and analytics', async (_name, msg) => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(response(false, { msg }));
+    const onFailed = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'vk-group',
+      data: { accessToken: 'credential-value' },
+      onFailed,
+      onCompleted: vi.fn(),
+      onRedirect: vi.fn(),
+    });
+
+    expect(onFailed).toHaveBeenCalledWith(undefined);
+  });
+
+  it('keeps VK Group detail strings generic for other providers', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, { url: 'connection-state' }))
+      .mockResolvedValueOnce(
+        response(false, { msg: 'The VK community token is invalid.' })
+      );
+    const onFailed = vi.fn();
+
+    await submitCustomFieldConnection({
+      fetcher,
+      identifier: 'listmonk',
+      data: { token: 'credential-value' },
+      onFailed,
+      onCompleted: vi.fn(),
+      onRedirect: vi.fn(),
+    });
+
+    expect(onFailed).toHaveBeenCalledWith(undefined);
+  });
+
+  it('rebuilds localized custom-field validation when the translator changes', () => {
+    expect(source).toMatch(/\}, \[t, variables\]\);/);
   });
 
   it.each([
