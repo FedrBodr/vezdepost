@@ -34,14 +34,14 @@ class LocalCleanupFailure extends Error {
   }
 }
 
-function stopRecord(failure) {
+function noGoRecord(failure) {
   return {
     phase: failure.phase,
     method: failure.method,
     ...(Number.isInteger(failure.errorCode)
       ? { error_code: failure.errorCode }
       : {}),
-    status: 'STOP',
+    status: 'NO_GO',
   };
 }
 
@@ -78,8 +78,8 @@ function parseArgs(args) {
 async function validateInputs(args, env) {
   if (
     env.VK_GROUP_CAPABILITY_AUTHORIZED !== '1' ||
-    typeof env.VK_GROUP_CAPABILITY_TOKEN !== 'string' ||
-    env.VK_GROUP_CAPABILITY_TOKEN.length < 10
+    typeof env.VK_GROUP_CAPABILITY_USER_TOKEN !== 'string' ||
+    env.VK_GROUP_CAPABILITY_USER_TOKEN.length < 10
   ) {
     throw new SafeFailure('preflight');
   }
@@ -103,7 +103,7 @@ async function validateInputs(args, env) {
   }
 
   return {
-    accessToken: env.VK_GROUP_CAPABILITY_TOKEN,
+    accessToken: env.VK_GROUP_CAPABILITY_USER_TOKEN,
     groupId: values['--group-id'],
     mediaFile,
   };
@@ -297,112 +297,48 @@ function responseItems(response) {
   return Array.isArray(response?.items) ? response.items : undefined;
 }
 
-function responseGroups(response) {
-  if (Array.isArray(response)) {
-    return response;
-  }
-  return Array.isArray(response?.groups) ? response.groups : undefined;
-}
-
-function exactGroupId(response) {
-  const groups = responseGroups(response);
-  if (groups?.length !== 1 || !groups[0] || typeof groups[0] !== 'object') {
-    return undefined;
-  }
-  return integerString(groups[0].id);
-}
-
-function hasRequiredPermissions(response) {
-  if (!response || typeof response !== 'object') {
-    return false;
-  }
-  const permissions = response.permissions;
-  if (!Array.isArray(permissions)) {
+function hasExactManagedTarget(response, groupId) {
+  if (
+    !response ||
+    typeof response !== 'object' ||
+    !Number.isSafeInteger(response.count) ||
+    response.count < 0 ||
+    !Array.isArray(response.items) ||
+    response.count < response.items.length
+  ) {
     return false;
   }
 
-  const enabledNames = new Set();
-  for (const permission of permissions) {
-    if (!permission || typeof permission !== 'object') {
-      return false;
-    }
-    const { name, setting } = permission;
-    const validSetting =
-      (typeof setting === 'number' &&
-        Number.isSafeInteger(setting) &&
-        setting >= 0) ||
-      (typeof setting === 'string' && /^(?:0|[1-9]\d*)$/.test(setting));
-    if (typeof name !== 'string' || !name || !validSetting) {
-      return false;
-    }
-    if (
-      (typeof setting === 'number' && setting > 0) ||
-      (typeof setting === 'string' && /[1-9]/.test(setting))
-    ) {
-      enabledNames.add(name);
-    }
-  }
-
-  const requiredNames = ['manage', 'wall', 'photos'];
+  const groupIds = response.items.map((group) =>
+    group && typeof group === 'object' ? integerString(group.id) : undefined
+  );
   return (
-    enabledNames.size === requiredNames.length &&
-    requiredNames.every((name) => enabledNames.has(name))
+    groupIds.every(Boolean) &&
+    groupIds.filter((candidate) => candidate === groupId).length === 1
   );
 }
 
-async function authorizeCommunityToken({
+async function authorizeUserTarget({
   fetchImpl,
   workspace,
   accessToken,
   groupId,
   events,
 }) {
-  const requestedGroup = await callVk({
+  const managedGroups = await callVk({
     fetchImpl,
     workspace,
     accessToken,
     phase: 'authorization',
-    method: 'groups.getById',
-    params: { group_ids: groupId },
+    method: 'groups.get',
+    params: { filter: 'admin', extended: '1' },
   });
-  if (exactGroupId(requestedGroup) !== groupId) {
-    throw new SafeFailure('authorization', 'groups.getById');
+  if (!hasExactManagedTarget(managedGroups, groupId)) {
+    throw new SafeFailure('authorization', 'groups.get');
   }
   events.push({
     phase: 'authorization',
-    method: 'groups.getById',
-    status: 'PASS',
-  });
-
-  const tokenOwner = await callVk({
-    fetchImpl,
-    workspace,
-    accessToken,
-    phase: 'authorization',
-    method: 'groups.getById',
-  });
-  if (exactGroupId(tokenOwner) !== groupId) {
-    throw new SafeFailure('authorization', 'groups.getById');
-  }
-  events.push({
-    phase: 'authorization',
-    method: 'groups.getById',
-    status: 'PASS',
-  });
-
-  const permissions = await callVk({
-    fetchImpl,
-    workspace,
-    accessToken,
-    phase: 'authorization',
-    method: 'groups.getTokenPermissions',
-  });
-  if (!hasRequiredPermissions(permissions)) {
-    throw new SafeFailure('authorization', 'groups.getTokenPermissions');
-  }
-  events.push({
-    phase: 'authorization',
-    method: 'groups.getTokenPermissions',
+    method: 'groups.get',
     status: 'PASS',
   });
 }
@@ -580,7 +516,9 @@ export async function runCapabilityCheck({
   try {
     inputs = await validateInputs(args, env);
   } catch {
-    stdout.write(`${JSON.stringify({ phase: 'preflight', status: 'STOP' })}\n`);
+    stdout.write(
+      `${JSON.stringify({ phase: 'preflight', status: 'NO_GO' })}\n`
+    );
     return 2;
   }
 
@@ -597,7 +535,7 @@ export async function runCapabilityCheck({
       chmodWorkspaceImpl,
       removeWorkspaceImpl
     );
-    await authorizeCommunityToken({
+    await authorizeUserTarget({
       fetchImpl,
       workspace,
       accessToken: inputs.accessToken,
@@ -790,7 +728,7 @@ export async function runCapabilityCheck({
         outputRecords = [pendingCleanupRecord(pendingFailure)];
         exitCode = 3;
       } else {
-        outputRecords = [stopRecord(failure)];
+        outputRecords = [noGoRecord(failure)];
       }
     }
   } finally {

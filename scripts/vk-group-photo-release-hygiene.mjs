@@ -8,7 +8,7 @@ export const SECRET_SIGNATURES = [
   /\bgh[pousr]_[A-Za-z0-9]{36,}\b/,
   /\bAKIA[0-9A-Z]{16}\b/,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-  /\b(?:VK_GROUP_CAPABILITY_TOKEN|access[_-]?token|api[_-]?key|client[_-]?secret)\b\s*[:=]\s*["']?[A-Za-z0-9._-]{32,}/i,
+  /\b(?:VK_GROUP_CAPABILITY_(?:USER_)?TOKEN|access[_-]?token|api[_-]?key|client[_-]?secret)\b\s*[:=]\s*["']?[A-Za-z0-9._-]{32,}/i,
 ];
 
 function git(cwd, args, encoding = 'utf8') {

@@ -144,6 +144,45 @@ describe('VK Group photo release hygiene', () => {
     expect(output).not.toContain('VK_GROUP_CAPABILITY_TOKEN=');
   });
 
+  it.each([
+    ['legacy', 'VK_GROUP_CAPABILITY_TOKEN'],
+    ['user OAuth', 'VK_GROUP_CAPABILITY_USER_TOKEN'],
+  ])(
+    'detects and redacts the %s environment assignment in history',
+    async (label, environmentName) => {
+      const root = await makeRepository();
+      const secret = `${label.replace(' ', '-')}-token-${'a'.repeat(40)}`;
+      await writeFile(
+        join(root, 'capability-token.env'),
+        `${environmentName}=${secret}\n`
+      );
+      git(root, 'add', 'capability-token.env');
+      git(root, 'commit', '-qm', `introduce ${label} token assignment`);
+      await writeFile(join(root, 'capability-token.env'), 'safe replacement\n');
+      let output = '';
+
+      const exitCode = runHygieneChecks({
+        cwd: root,
+        base: 'prod',
+        stdout: { write: (chunk) => (output += String(chunk)) },
+      });
+
+      expect(exitCode).toBe(2);
+      expect(
+        output
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+      ).toContainEqual({
+        check: 'secret-signatures',
+        status: 'STOP',
+        files: ['capability-token.env'],
+      });
+      expect(output).not.toContain(secret);
+      expect(output).not.toContain(`${environmentName}=`);
+    }
+  );
+
   it('scans secret and image blobs that branch history later deletes', async () => {
     const root = await makeRepository();
     const secret = `vk1.${'a'.repeat(64)}`;

@@ -15,11 +15,7 @@ import {
 } from './vk-group-photo-capability-check.mjs';
 
 const roots = [];
-const authorizationMethods = [
-  'groups.getById',
-  'groups.getById',
-  'groups.getTokenPermissions',
-];
+const authorizationMethods = ['groups.get'];
 
 async function makeFixture() {
   const root = await mkdtemp(join(tmpdir(), 'vk-capability-test-'));
@@ -57,35 +53,25 @@ function parseRecords(output) {
 }
 
 function authorizationFetch({
-  requestedPayload = { response: { groups: [{ id: 123 }] } },
-  ownerPayload = { response: { groups: [{ id: 123 }] } },
-  permissionsPayload = {
+  groupsPayload = {
     response: {
-      permissions: [
-        { name: 'manage', setting: 262144 },
-        { name: 'wall', setting: 8192 },
-        { name: 'photos', setting: 4 },
-      ],
+      count: 2,
+      items: [{ id: 123 }, { id: 999 }],
     },
   },
 } = {}) {
   const methods = [];
   const fetchImpl = vi.fn(async (url, options) => {
-    expect(url).not.toContain('private-community-token');
+    expect(url).not.toContain('private-user-oauth-token');
     expect(options.redirect).toBe('error');
     const method = url.slice('https://api.vk.com/method/'.length);
     methods.push(method);
-    expect(options.body.get('access_token')).toBe('private-community-token');
+    expect(options.body.get('access_token')).toBe('private-user-oauth-token');
 
-    if (method === 'groups.getById') {
-      if (options.body.has('group_ids')) {
-        expect(options.body.get('group_ids')).toBe('123');
-        return jsonResponse(requestedPayload);
-      }
-      return jsonResponse(ownerPayload);
-    }
-    if (method === 'groups.getTokenPermissions') {
-      return jsonResponse(permissionsPayload);
+    if (method === 'groups.get') {
+      expect(options.body.get('filter')).toBe('admin');
+      expect(options.body.get('extended')).toBe('1');
+      return jsonResponse(groupsPayload);
     }
 
     return jsonResponse({
@@ -100,11 +86,8 @@ function authorizationFetch({
 function successfulFetch(
   fixture,
   {
-    permissions = [
-      { name: 'manage', setting: 262144 },
-      { name: 'wall', setting: 8192 },
-      { name: 'photos', setting: 4 },
-    ],
+    managedGroups = [{ id: 123 }, { id: 999 }],
+    uploadUrl = 'https://upload.invalid/private-session',
     wallDeleteErrorCode,
     wallDeleteHttpStatus = 200,
     wallDeleteMalformed,
@@ -117,15 +100,18 @@ function successfulFetch(
     saveExtraPhoto = false,
     verifyErrorCode,
     verifiedPostId = 789,
+    verifiedOwnerId = -123,
+    verifiedFromId = -123,
     verifiedMessage,
     verifiedAttachments,
+    verifiedExtraPost = false,
   } = {}
 ) {
   let wallGetCount = 0;
   let publishedMessage;
   const methods = [];
   const fetchImpl = vi.fn(async (url, options) => {
-    expect(url).not.toContain('private-community-token');
+    expect(url).not.toContain('private-user-oauth-token');
     expect(options.redirect).toBe('error');
     expect(options.signal).toBeInstanceOf(AbortSignal);
     const method = url.startsWith('https://api.vk.com/method/')
@@ -135,21 +121,16 @@ function successfulFetch(
 
     if (method !== 'upload') {
       expect(options.body).toBeInstanceOf(FormData);
-      expect(options.body.get('access_token')).toBe('private-community-token');
+      expect(options.body.get('access_token')).toBe('private-user-oauth-token');
       expect(options.body.get('v')).toBe('5.251');
     }
 
     switch (method) {
-      case 'groups.getById':
-        if (options.body.has('group_ids')) {
-          expect(options.body.get('group_ids')).toBe('123');
-        } else {
-          expect(options.body.has('group_ids')).toBe(false);
-        }
-        return jsonResponse({ response: { groups: [{ id: 123 }] } });
-      case 'groups.getTokenPermissions':
+      case 'groups.get':
+        expect(options.body.get('filter')).toBe('admin');
+        expect(options.body.get('extended')).toBe('1');
         return jsonResponse({
-          response: { permissions },
+          response: { count: managedGroups.length, items: managedGroups },
         });
       case 'photos.getWallUploadServer':
         expect(options.body.get('group_id')).toBe('123');
@@ -157,7 +138,7 @@ function successfulFetch(
           await unlink(fixture.mediaFile);
         }
         return jsonResponse({
-          response: { upload_url: 'https://upload.invalid/private-session' },
+          response: { upload_url: uploadUrl },
         });
       case 'upload': {
         expect(url).toBe('https://upload.invalid/private-session');
@@ -171,7 +152,7 @@ function successfulFetch(
         const workspace = join(fixture.root, workspaceName);
         expect((await stat(workspace)).mode & 0o777).toBe(0o700);
         const rawFiles = await readdir(workspace);
-        expect(rawFiles).toHaveLength(4);
+        expect(rawFiles).toHaveLength(2);
         await Promise.all(
           rawFiles.map(async (rawFile) => {
             expect((await stat(join(workspace, rawFile))).mode & 0o777).toBe(
@@ -234,8 +215,8 @@ function successfulFetch(
                 items: [
                   {
                     id: verifiedPostId,
-                    owner_id: -123,
-                    from_id: -123,
+                    owner_id: verifiedOwnerId,
+                    from_id: verifiedFromId,
                     text: verifiedMessage ?? publishedMessage,
                     attachments: verifiedAttachments ?? [
                       {
@@ -244,6 +225,22 @@ function successfulFetch(
                       },
                     ],
                   },
+                  ...(verifiedExtraPost
+                    ? [
+                        {
+                          id: 789,
+                          owner_id: -123,
+                          from_id: -123,
+                          text: publishedMessage,
+                          attachments: [
+                            {
+                              type: 'photo',
+                              photo: { owner_id: -123, id: 456 },
+                            },
+                          ],
+                        },
+                      ]
+                    : []),
                 ],
               },
             })
@@ -294,7 +291,7 @@ describe('VK Group photo capability check', () => {
 
     const exitCode = await runCapabilityCheck({
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
-      env: { VK_GROUP_CAPABILITY_TOKEN: 'private-community-token' },
+      env: { VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token' },
       fetchImpl,
       stdout: fixture.stdout,
       tempRoot: fixture.root,
@@ -303,10 +300,10 @@ describe('VK Group photo capability check', () => {
     expect(exitCode).toBe(2);
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(fixture.output()).toBe(
-      `${JSON.stringify({ phase: 'preflight', status: 'STOP' })}\n`
+      `${JSON.stringify({ phase: 'preflight', status: 'NO_GO' })}\n`
     );
     expect(await readdir(fixture.root)).toEqual(['synthetic.png']);
-    expect(fixture.output()).not.toContain('private-community-token');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
   });
 
   it('rejects a token argument before network access without echoing it', async () => {
@@ -320,11 +317,11 @@ describe('VK Group photo capability check', () => {
         '--media-file',
         fixture.mediaFile,
         '--token',
-        'private-community-token',
+        'private-user-oauth-token',
       ],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -334,48 +331,55 @@ describe('VK Group photo capability check', () => {
     expect(exitCode).toBe(2);
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(fixture.output()).toBe(
-      `${JSON.stringify({ phase: 'preflight', status: 'STOP' })}\n`
+      `${JSON.stringify({ phase: 'preflight', status: 'NO_GO' })}\n`
     );
-    expect(fixture.output()).not.toContain('private-community-token');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
+  });
+
+  it('rejects the legacy community-token environment contract', async () => {
+    const fixture = await makeFixture();
+    const fetchImpl = vi.fn();
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-legacy-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(2);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(parseRecords(fixture.output())).toEqual([
+      { phase: 'preflight', status: 'NO_GO' },
+    ]);
+    expect(fixture.output()).not.toContain('private-legacy-community-token');
   });
 
   it.each([
+    ['no administered groups', { response: { count: 0, items: [] } }],
     [
-      'personal token',
-      { ownerPayload: { response: { groups: [] } } },
-      ['groups.getById', 'groups.getById'],
+      'a different administered group',
+      { response: { count: 1, items: [{ id: 456 }] } },
     ],
     [
-      'wrong-community token',
-      { ownerPayload: { response: { groups: [{ id: 456 }] } } },
-      ['groups.getById', 'groups.getById'],
-    ],
-    [
-      'token without photos',
-      {
-        permissionsPayload: {
-          response: {
-            permissions: [
-              { name: 'manage', setting: 262144 },
-              { name: 'wall', setting: 8192 },
-              { name: 'photos', setting: 0 },
-            ],
-          },
-        },
-      },
-      ['groups.getById', 'groups.getById', 'groups.getTokenPermissions'],
+      'duplicate target entries',
+      { response: { count: 2, items: [{ id: 123 }, { id: 123 }] } },
     ],
   ])(
-    'stops an otherwise capable %s before every photo or cleanup method',
-    async (_description, authorization, expectedMethods) => {
+    'stops when groups.get reports %s before every photo or cleanup method',
+    async (_description, groupsPayload) => {
       const fixture = await makeFixture();
-      const { fetchImpl, methods } = authorizationFetch(authorization);
+      const { fetchImpl, methods } = authorizationFetch({ groupsPayload });
 
       const exitCode = await runCapabilityCheck({
         args: ['--group-id', '123', '--media-file', fixture.mediaFile],
         env: {
           VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-          VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+          VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
         },
         fetchImpl,
         stdout: fixture.stdout,
@@ -383,7 +387,7 @@ describe('VK Group photo capability check', () => {
       });
 
       expect(exitCode).toBe(2);
-      expect(methods).toEqual(expectedMethods);
+      expect(methods).toEqual(['groups.get']);
       expect(methods).not.toContain('photos.getWallUploadServer');
       expect(methods).not.toContain('upload');
       expect(methods).not.toContain('wall.post');
@@ -391,11 +395,11 @@ describe('VK Group photo capability check', () => {
       expect(parseRecords(fixture.output())).toEqual([
         {
           phase: 'authorization',
-          method: expectedMethods.at(-1),
-          status: 'STOP',
+          method: 'groups.get',
+          status: 'NO_GO',
         },
       ]);
-      expect(fixture.output()).not.toContain('private-community-token');
+      expect(fixture.output()).not.toContain('private-user-oauth-token');
       expect(fixture.output()).not.toContain('private-session');
       expect(fixture.output()).not.toContain('123');
       expect(fixture.output()).not.toContain('456');
@@ -406,32 +410,20 @@ describe('VK Group photo capability check', () => {
   );
 
   it.each([
-    [
-      'requested group envelope',
-      { requestedPayload: { response: { groups: [{ id: '12.3' }] } } },
-      ['groups.getById'],
-    ],
-    [
-      'token owner envelope',
-      { ownerPayload: { response: { groups: [{ id: 0 }] } } },
-      ['groups.getById', 'groups.getById'],
-    ],
-    [
-      'permissions envelope',
-      { permissionsPayload: { response: { permissions: {} } } },
-      ['groups.getById', 'groups.getById', 'groups.getTokenPermissions'],
-    ],
+    ['response envelope', { response: { count: 1, items: {} } }],
+    ['target group id', { response: { count: 1, items: [{ id: '12.3' }] } }],
+    ['count', { response: { count: '1', items: [{ id: 123 }] } }],
   ])(
-    'fails closed on a malformed %s',
-    async (_description, authorization, expectedMethods) => {
+    'fails closed on a malformed groups.get %s',
+    async (_description, groupsPayload) => {
       const fixture = await makeFixture();
-      const { fetchImpl, methods } = authorizationFetch(authorization);
+      const { fetchImpl, methods } = authorizationFetch({ groupsPayload });
 
       const exitCode = await runCapabilityCheck({
         args: ['--group-id', '123', '--media-file', fixture.mediaFile],
         env: {
           VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-          VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+          VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
         },
         fetchImpl,
         stdout: fixture.stdout,
@@ -439,42 +431,40 @@ describe('VK Group photo capability check', () => {
       });
 
       expect(exitCode).toBe(2);
-      expect(methods).toEqual(expectedMethods);
+      expect(methods).toEqual(['groups.get']);
       expect(methods.some((method) => method.startsWith('photos.'))).toBe(
         false
       );
       expect(parseRecords(fixture.output())).toEqual([
         {
           phase: 'authorization',
-          method: expectedMethods.at(-1),
-          status: 'STOP',
+          method: 'groups.get',
+          status: 'NO_GO',
         },
       ]);
-      expect(fixture.output()).not.toContain('private-community-token');
+      expect(fixture.output()).not.toContain('private-user-oauth-token');
     }
   );
 
-  it('stops before every photo method when an unrelated permission is enabled', async () => {
+  it('records only groups.get and error 27 when user authorization is unavailable', async () => {
     const fixture = await makeFixture();
-    const { fetchImpl, methods } = authorizationFetch({
-      permissionsPayload: {
-        response: {
-          permissions: [
-            { name: 'manage', setting: 262144 },
-            { name: 'wall', setting: 8192 },
-            { name: 'photos', setting: 4 },
-            { name: 'private-extra-permission', setting: 1 },
-          ],
-          private: 'private-permission-payload',
+    const methods = [];
+    const fetchImpl = vi.fn(async (url, options) => {
+      methods.push(url.slice('https://api.vk.com/method/'.length));
+      expect(options.body.get('access_token')).toBe('private-user-oauth-token');
+      return jsonResponse({
+        error: {
+          error_code: 27,
+          error_msg: 'private user authorization details',
         },
-      },
+      });
     });
 
     const exitCode = await runCapabilityCheck({
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -486,31 +476,26 @@ describe('VK Group photo capability check', () => {
     expect(parseRecords(fixture.output())).toEqual([
       {
         phase: 'authorization',
-        method: 'groups.getTokenPermissions',
-        status: 'STOP',
+        method: 'groups.get',
+        error_code: 27,
+        status: 'NO_GO',
       },
     ]);
-    expect(fixture.output()).not.toContain('private-extra-permission');
-    expect(fixture.output()).not.toContain('private-permission-payload');
-    expect(fixture.output()).not.toContain('private-community-token');
+    expect(fixture.output()).not.toContain('private user authorization');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
   });
 
-  it('accepts an unrelated disabled permission and completes the controlled run', async () => {
+  it('accepts the exact target among other administered groups', async () => {
     const fixture = await makeFixture();
     const { fetchImpl, methods } = successfulFetch(fixture, {
-      permissions: [
-        { name: 'manage', setting: 262144 },
-        { name: 'wall', setting: 8192 },
-        { name: 'photos', setting: 4 },
-        { name: 'private-disabled-permission', setting: 0 },
-      ],
+      managedGroups: [{ id: 999 }, { id: 123 }],
     });
 
     const exitCode = await runCapabilityCheck({
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -527,7 +512,6 @@ describe('VK Group photo capability check', () => {
       status: 'GO',
       post_id: 789,
     });
-    expect(fixture.output()).not.toContain('private-disabled-permission');
   });
 
   it('records only method and numeric code for a VK pre-publication failure', async () => {
@@ -538,7 +522,7 @@ describe('VK Group photo capability check', () => {
           error: {
             error_code: 15,
             error_msg: 'upstream-private-message',
-            request_params: [{ value: 'private-community-token' }],
+            request_params: [{ value: 'private-user-oauth-token' }],
           },
         })
       )
@@ -548,7 +532,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -560,13 +544,13 @@ describe('VK Group photo capability check', () => {
     expect(fixture.output()).toBe(
       `${JSON.stringify({
         phase: 'authorization',
-        method: 'groups.getById',
+        method: 'groups.get',
         error_code: 15,
-        status: 'STOP',
+        status: 'NO_GO',
       })}\n`
     );
     expect(fixture.output()).not.toContain('upstream-private-message');
-    expect(fixture.output()).not.toContain('private-community-token');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
     expect(await readdir(fixture.root)).toEqual(['synthetic.png']);
   });
 
@@ -575,14 +559,14 @@ describe('VK Group photo capability check', () => {
     const fetchImpl = vi
       .fn()
       .mockRejectedValue(
-        new Error('transport private-community-token https://private.invalid')
+        new Error('transport private-user-oauth-token https://private.invalid')
       );
 
     const exitCode = await runCapabilityCheck({
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -594,11 +578,11 @@ describe('VK Group photo capability check', () => {
     const record = JSON.parse(fixture.output());
     expect(record).toEqual({
       phase: 'authorization',
-      method: 'groups.getById',
-      status: 'STOP',
+      method: 'groups.get',
+      status: 'NO_GO',
     });
     expect(record).not.toHaveProperty('error_code');
-    expect(fixture.output()).not.toContain('private-community-token');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
     expect(fixture.output()).not.toContain('private.invalid');
     expect(await readdir(fixture.root)).toEqual(['synthetic.png']);
   });
@@ -618,7 +602,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -628,8 +612,8 @@ describe('VK Group photo capability check', () => {
     expect(exitCode).toBe(2);
     expect(JSON.parse(fixture.output())).toEqual({
       phase: 'authorization',
-      method: 'groups.getById',
-      status: 'STOP',
+      method: 'groups.get',
+      status: 'NO_GO',
     });
     expect(fixture.output()).not.toContain('private upstream message');
   });
@@ -644,7 +628,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -661,9 +645,38 @@ describe('VK Group photo capability check', () => {
       phase: 'upload',
       method: 'upload',
       error_code: 15,
-      status: 'STOP',
+      status: 'NO_GO',
     });
     expect(fixture.output()).not.toContain('private upload rejection');
+  });
+
+  it('rejects a non-HTTPS upload URL before sending the image', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      uploadUrl: 'http://upload.invalid/private-session',
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(2);
+    expect(methods).toEqual(['groups.get', 'photos.getWallUploadServer']);
+    expect(parseRecords(fixture.output())).toEqual([
+      {
+        phase: 'upload-server',
+        method: 'photos.getWallUploadServer',
+        status: 'NO_GO',
+      },
+    ]);
+    expect(fixture.output()).not.toContain('upload.invalid');
   });
 
   it('emits GO only after authorship and cleanup absence are verified', async () => {
@@ -674,7 +687,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -707,7 +720,7 @@ describe('VK Group photo capability check', () => {
     expect(records.map(({ method }) => method).filter(Boolean)).toEqual(
       methods
     );
-    expect(fixture.output()).not.toContain('private-community-token');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
     expect(fixture.output()).not.toContain('private-session');
     expect(fixture.output()).not.toContain('private-upload');
     expect(await readdir(fixture.root)).toEqual(['synthetic.png']);
@@ -715,6 +728,8 @@ describe('VK Group photo capability check', () => {
 
   it.each([
     ['a stale post id', { verifiedPostId: 788 }],
+    ['a wrong post owner', { verifiedOwnerId: -999 }],
+    ['a wrong post author', { verifiedFromId: 456 }],
     ['a wrong marker message', { verifiedMessage: 'unrelated post' }],
     [
       'a wrong photo attachment',
@@ -733,6 +748,7 @@ describe('VK Group photo capability check', () => {
         ],
       },
     ],
+    ['multiple post readback results', { verifiedExtraPost: true }],
   ])(
     'never deletes an ambiguous post with %s',
     async (_description, verificationOverride) => {
@@ -746,7 +762,7 @@ describe('VK Group photo capability check', () => {
         args: ['--group-id', '123', '--media-file', fixture.mediaFile],
         env: {
           VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-          VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+          VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
         },
         fetchImpl,
         stdout: fixture.stdout,
@@ -782,7 +798,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -812,7 +828,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -866,7 +882,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl: vi
         .fn()
@@ -903,7 +919,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -936,7 +952,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -969,7 +985,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -1007,7 +1023,7 @@ describe('VK Group photo capability check', () => {
         args: ['--group-id', '123', '--media-file', fixture.mediaFile],
         env: {
           VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-          VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+          VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
         },
         fetchImpl,
         stdout: fixture.stdout,
@@ -1038,7 +1054,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -1054,7 +1070,7 @@ describe('VK Group photo capability check', () => {
       status: 'PENDING_CLEANUP',
     });
     expect(fixture.output()).not.toContain('private cleanup message');
-    expect(fixture.output()).not.toContain('private-community-token');
+    expect(fixture.output()).not.toContain('private-user-oauth-token');
     expect(parseRecords(fixture.output())).not.toContainEqual(
       expect.objectContaining({ status: 'GO' })
     );
@@ -1069,7 +1085,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -1098,7 +1114,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -1125,7 +1141,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -1142,7 +1158,7 @@ describe('VK Group photo capability check', () => {
     ]);
   });
 
-  it('classifies a media read race as upload STOP with no raw details', async () => {
+  it('classifies a media read race as upload NO_GO with no raw details', async () => {
     const fixture = await makeFixture();
     const { fetchImpl, methods } = successfulFetch(fixture, {
       removeMediaAfterUploadServer: true,
@@ -1152,7 +1168,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -1167,7 +1183,7 @@ describe('VK Group photo capability check', () => {
     expect(JSON.parse(fixture.output())).toEqual({
       phase: 'upload',
       method: 'upload',
-      status: 'STOP',
+      status: 'NO_GO',
     });
   });
 
@@ -1181,7 +1197,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
@@ -1219,7 +1235,7 @@ describe('VK Group photo capability check', () => {
       args: ['--group-id', '123', '--media-file', fixture.mediaFile],
       env: {
         VK_GROUP_CAPABILITY_AUTHORIZED: '1',
-        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
       },
       fetchImpl,
       stdout: fixture.stdout,
