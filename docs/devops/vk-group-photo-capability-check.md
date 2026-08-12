@@ -192,8 +192,10 @@ URL.
    response, or different community stops the run before any photo method.
 3. **Permission proof** — POST `groups.getTokenPermissions`. Require a
    structurally valid permissions array with the exact enabled names `manage`,
-   `wall`, and `photos`. Missing, disabled, or malformed permissions stop the
-   run before any photo method.
+   `wall`, and `photos`. Any additional enabled permission, any missing or
+   disabled required permission, or any malformed entry stops the run before
+   any photo method. Structurally valid unrelated entries with setting `0` are
+   allowed because they are not enabled.
 4. **Upload-server request** — POST `photos.getWallUploadServer` with the
    positive dedicated community ID as `group_id`. Validate that the response
    contains an HTTPS upload URL. Do not display, copy, or persist that URL

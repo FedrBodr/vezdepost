@@ -100,6 +100,11 @@ function authorizationFetch({
 function successfulFetch(
   fixture,
   {
+    permissions = [
+      { name: 'manage', setting: 262144 },
+      { name: 'wall', setting: 8192 },
+      { name: 'photos', setting: 4 },
+    ],
     wallDeleteErrorCode,
     wallDeleteHttpStatus = 200,
     wallDeleteMalformed,
@@ -144,13 +149,7 @@ function successfulFetch(
         return jsonResponse({ response: { groups: [{ id: 123 }] } });
       case 'groups.getTokenPermissions':
         return jsonResponse({
-          response: {
-            permissions: [
-              { name: 'manage', setting: 262144 },
-              { name: 'wall', setting: 8192 },
-              { name: 'photos', setting: 4 },
-            ],
-          },
+          response: { permissions },
         });
       case 'photos.getWallUploadServer':
         expect(options.body.get('group_id')).toBe('123');
@@ -454,6 +453,82 @@ describe('VK Group photo capability check', () => {
       expect(fixture.output()).not.toContain('private-community-token');
     }
   );
+
+  it('stops before every photo method when an unrelated permission is enabled', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = authorizationFetch({
+      permissionsPayload: {
+        response: {
+          permissions: [
+            { name: 'manage', setting: 262144 },
+            { name: 'wall', setting: 8192 },
+            { name: 'photos', setting: 4 },
+            { name: 'private-extra-permission', setting: 1 },
+          ],
+          private: 'private-permission-payload',
+        },
+      },
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(2);
+    expect(methods).toEqual(authorizationMethods);
+    expect(parseRecords(fixture.output())).toEqual([
+      {
+        phase: 'authorization',
+        method: 'groups.getTokenPermissions',
+        status: 'STOP',
+      },
+    ]);
+    expect(fixture.output()).not.toContain('private-extra-permission');
+    expect(fixture.output()).not.toContain('private-permission-payload');
+    expect(fixture.output()).not.toContain('private-community-token');
+  });
+
+  it('accepts an unrelated disabled permission and completes the controlled run', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      permissions: [
+        { name: 'manage', setting: 262144 },
+        { name: 'wall', setting: 8192 },
+        { name: 'photos', setting: 4 },
+        { name: 'private-disabled-permission', setting: 0 },
+      ],
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_TOKEN: 'private-community-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(methods.slice(0, authorizationMethods.length)).toEqual(
+      authorizationMethods
+    );
+    expect(methods).toContain('photos.getWallUploadServer');
+    expect(parseRecords(fixture.output()).at(-1)).toEqual({
+      phase: 'complete',
+      status: 'GO',
+      post_id: 789,
+    });
+    expect(fixture.output()).not.toContain('private-disabled-permission');
+  });
 
   it('records only method and numeric code for a VK pre-publication failure', async () => {
     const fixture = await makeFixture();

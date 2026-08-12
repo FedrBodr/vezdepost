@@ -343,7 +343,11 @@ function hasRequiredPermissions(response) {
     }
   }
 
-  return ['manage', 'wall', 'photos'].every((name) => enabledNames.has(name));
+  const requiredNames = ['manage', 'wall', 'photos'];
+  return (
+    enabledNames.size === requiredNames.length &&
+    requiredNames.every((name) => enabledNames.has(name))
+  );
 }
 
 async function authorizeCommunityToken({
