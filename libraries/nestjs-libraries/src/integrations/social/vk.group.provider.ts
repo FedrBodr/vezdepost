@@ -266,6 +266,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       typeof value === 'number' &&
       Number.isFinite(value) &&
       Number.isInteger(value) &&
+      Number.isSafeInteger(value) &&
       value > 0
     ) {
       return String(value);
@@ -285,6 +286,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       typeof value === 'number' &&
       Number.isFinite(value) &&
       Number.isInteger(value) &&
+      Number.isSafeInteger(value) &&
       value !== 0
     ) {
       return String(value);
@@ -565,26 +567,31 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       )
     );
 
-    const wallPostResult = await this.callVk('wall.post', accessToken, {
-      owner_id: ownerId,
-      from_group: '1',
-      message: firstPost.message,
-      ...(photos.length
-        ? {
-            attachments: photos
-              .map(
-                ({ ownerId: photoOwnerId, id }) => `photo${photoOwnerId}_${id}`
-              )
-              .join(','),
-          }
-        : {}),
-    });
-
-    if (wallPostResult?.error || !wallPostResult?.response) {
-      throw new BadBody(this.identifier, '{}', '{}', 'VK post failed');
+    let wallPostPayload: unknown;
+    try {
+      wallPostPayload = await this.callVk('wall.post', accessToken, {
+        owner_id: ownerId,
+        from_group: '1',
+        message: firstPost.message,
+        ...(photos.length
+          ? {
+              attachments: photos
+                .map(
+                  ({ ownerId: photoOwnerId, id }) =>
+                    `photo${photoOwnerId}_${id}`
+                )
+                .join(','),
+            }
+          : {}),
+      });
+    } catch {
+      this.badGroupResponse('VK wall.post request failed');
     }
+    const wallPostResult = this.unwrapGroupResponse<{
+      post_id?: unknown;
+    }>(wallPostPayload, 'wall.post');
     const publishedPostId = this.parsePositiveId(
-      wallPostResult.response.post_id,
+      wallPostResult.post_id,
       'wall.post',
       'post ID'
     );

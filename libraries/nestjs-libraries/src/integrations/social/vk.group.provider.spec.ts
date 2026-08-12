@@ -98,6 +98,33 @@ async function expectSanitizedPhotoFailure(
   return thrown;
 }
 
+async function expectSanitizedWallFailure(request: Promise<unknown>) {
+  let thrown: unknown;
+  try {
+    await request;
+  } catch (error) {
+    thrown = error;
+  }
+
+  expect(thrown).toBeInstanceOf(BadBody);
+  expect(String(thrown)).toContain('VK wall.post request failed');
+  expect((thrown as any).details).toEqual([
+    { identifier: 'vk-group', json: '{}', body: '{}' },
+  ]);
+  const serialized = `${String(thrown)} ${JSON.stringify(thrown)}`;
+  for (const secret of [
+    token,
+    mediaUrl,
+    uploadUrl,
+    upstreamPayload,
+    uploadedPhoto,
+    uploadHash,
+    'wall-private-error',
+  ]) {
+    expect(serialized).not.toContain(secret);
+  }
+}
+
 describe('VK Group identifier normalization', () => {
   it.each([
     ['https://vk.ru/fedrbodr_pro', 'fedrbodr_pro'],
@@ -600,10 +627,14 @@ describe('VkGroupProvider photo publishing', () => {
     expect(axios.get).toHaveBeenCalledWith(mediaUrl, {
       responseType: 'stream',
     });
-    expect(axios.post).toHaveBeenCalledWith(
-      uploadUrl,
-      expect.anything(),
-      expect.objectContaining({ headers: expect.any(Object) })
+    const [, multipartForm, multipartOptions] = vi.mocked(axios.post).mock
+      .calls[0];
+    const boundary = (multipartForm as { getBoundary(): string }).getBoundary();
+    expect(vi.mocked(axios.post).mock.calls[0][0]).toBe(uploadUrl);
+    expect(multipartOptions?.headers).toEqual(
+      expect.objectContaining({
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      })
     );
     expect(multipartBody).toContain('name="photo"');
     expect(multipartBody).toContain('filename="private-photo.jpg"');
@@ -629,6 +660,8 @@ describe('VkGroupProvider photo publishing', () => {
         if (url.endsWith('/method/photos.saveWallPhoto')) {
           const body = options?.body as FormData;
           const index = Number(String(body.get('photo')).split('-').at(-1));
+          expect(body.get('server')).toBe(String(3000 + index));
+          expect(body.get('hash')).toBe(`upload-hash-${index}`);
           return response({
             response: [
               {
@@ -647,11 +680,12 @@ describe('VkGroupProvider photo publishing', () => {
       const index = Number(String(path).match(/photo-(\d+)\.jpg$/)?.[1]);
       return { data: Readable.from([`image-from-media-${index}`]) };
     });
-    vi.mocked(axios.post).mockImplementation(async (_url, formData) => {
+    vi.mocked(axios.post).mockImplementation(async (url, formData) => {
       const multipartBody = await readMultipartBody(
         formData as NodeJS.ReadableStream
       );
       const index = Number(multipartBody.match(/image-from-media-(\d+)/)?.[1]);
+      expect(url).toBe(`https://upload.example/private-upload-${index}`);
       expect(multipartBody).toContain('name="photo"');
       expect(multipartBody).toContain(`filename="private-photo-${index}.jpg"`);
       return uploads[index].promise;
@@ -696,7 +730,10 @@ describe('VkGroupProvider photo publishing', () => {
     );
   });
 
-  it('preserves large signed saved owner and photo IDs without numeric conversion', async () => {
+  it('preserves large decimal string IDs throughout photo publication', async () => {
+    const workerOwnerId = '-90071992547409931111111111';
+    const positiveGroupId = '90071992547409931111111111';
+    const uploadServerId = '90071992547409932222222222';
     const ownerId = '-90071992547409931234567890';
     const photoId = '90071992547409939876543210';
     const fetchMock = vi
@@ -712,10 +749,14 @@ describe('VkGroupProvider photo publishing', () => {
       data: Readable.from(['image-data']),
     });
     vi.mocked(axios.post).mockResolvedValue({
-      data: { photo: uploadedPhoto, server: 321, hash: uploadHash },
+      data: {
+        photo: uploadedPhoto,
+        server: uploadServerId,
+        hash: uploadHash,
+      },
     });
 
-    await provider.post('-123', token, [
+    await provider.post(workerOwnerId, token, [
       {
         id: 'postiz-post',
         message: 'Large IDs',
@@ -724,7 +765,13 @@ describe('VkGroupProvider photo publishing', () => {
       },
     ]);
 
+    const getUploadBody = fetchMock.mock.calls[0][1]?.body as FormData;
+    const saveBody = fetchMock.mock.calls[1][1]?.body as FormData;
     const wallBody = fetchMock.mock.calls[2][1]?.body as FormData;
+    expect(getUploadBody.get('group_id')).toBe(positiveGroupId);
+    expect(saveBody.get('group_id')).toBe(positiveGroupId);
+    expect(saveBody.get('server')).toBe(uploadServerId);
+    expect(wallBody.get('owner_id')).toBe(workerOwnerId);
     expect(wallBody.get('attachments')).toBe(`photo${ownerId}_${photoId}`);
   });
 
@@ -735,13 +782,15 @@ describe('VkGroupProvider photo publishing', () => {
     ['-1.5', 'fractional'],
     ['-abc', 'nonnumeric'],
     ['', 'empty'],
+    [-9007199254740993, 'unsafe rounded number'],
+    [-1e21, 'exponent-producing number'],
   ])(
-    'rejects an invalid worker community ID before photo requests (%s)',
+    'rejects an invalid worker community ID before photo requests (%s: %s)',
     async (userId) => {
       const fetchMock = vi.spyOn(provider, 'fetch');
 
       await expect(
-        provider.post(userId, token, [
+        provider.post(userId as string, token, [
           {
             id: 'postiz-post',
             message: 'Photo',
@@ -1011,32 +1060,43 @@ describe('VkGroupProvider photo publishing', () => {
       { photo: uploadedPhoto, server: 1.5, hash: uploadHash },
       'fractional server',
     ],
+    [
+      { photo: uploadedPhoto, server: 9007199254740993, hash: uploadHash },
+      'unsafe rounded numeric server',
+    ],
+    [
+      { photo: uploadedPhoto, server: 1e21, hash: uploadHash },
+      'exponent-producing numeric server',
+    ],
     [{ photo: uploadedPhoto, server: 321 }, 'missing hash'],
     [{ photo: uploadedPhoto, server: 321, hash: '' }, 'empty hash'],
-  ])('rejects malformed multipart photo upload fields (%s)', async (data) => {
-    const fetchMock = vi
-      .spyOn(provider, 'fetch')
-      .mockImplementationOnce(() =>
-        response({ response: { upload_url: uploadUrl } })
-      );
-    vi.mocked(axios.get).mockResolvedValue({
-      data: Readable.from(['image-data']),
-    });
-    vi.mocked(axios.post).mockResolvedValue({ data });
+  ])(
+    'rejects malformed multipart photo upload fields (%s: %s)',
+    async (data) => {
+      const fetchMock = vi
+        .spyOn(provider, 'fetch')
+        .mockImplementationOnce(() =>
+          response({ response: { upload_url: uploadUrl } })
+        );
+      vi.mocked(axios.get).mockResolvedValue({
+        data: Readable.from(['image-data']),
+      });
+      vi.mocked(axios.post).mockResolvedValue({ data });
 
-    await expectSanitizedPhotoFailure(
-      provider.post('-123', token, [
-        {
-          id: 'postiz-post',
-          message: 'Photo',
-          settings: {},
-          media: [{ type: 'image', path: mediaUrl }],
-        },
-      ]),
-      fetchMock,
-      { message: 'VK Group photo upload returned invalid fields' }
-    );
-  });
+      await expectSanitizedPhotoFailure(
+        provider.post('-123', token, [
+          {
+            id: 'postiz-post',
+            message: 'Photo',
+            settings: {},
+            media: [{ type: 'image', path: mediaUrl }],
+          },
+        ]),
+        fetchMock,
+        { message: 'VK Group photo upload returned invalid fields' }
+      );
+    }
+  );
 
   it.each([
     [{}, 'missing response'],
@@ -1117,9 +1177,11 @@ describe('VkGroupProvider photo publishing', () => {
     [0, 'zero'],
     ['0', 'zero string'],
     [1.5, 'fractional'],
+    [9007199254740993, 'unsafe rounded number'],
+    [1e21, 'exponent-producing number'],
     ['', 'empty'],
     ['not-an-id', 'nonnumeric'],
-  ])('rejects an invalid saved photo owner ID (%s)', async (ownerId) => {
+  ])('rejects an invalid saved photo owner ID (%s: %s)', async (ownerId) => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
       .mockImplementationOnce(() =>
@@ -1156,9 +1218,11 @@ describe('VkGroupProvider photo publishing', () => {
     [0, 'zero'],
     [-1, 'negative'],
     [2.5, 'fractional'],
+    [9007199254740993, 'unsafe rounded number'],
+    [1e21, 'exponent-producing number'],
     ['', 'empty'],
     ['not-an-id', 'nonnumeric'],
-  ])('rejects an invalid saved photo ID (%s)', async (photoId) => {
+  ])('rejects an invalid saved photo ID (%s: %s)', async (photoId) => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
       .mockImplementationOnce(() =>
@@ -1259,9 +1323,80 @@ describe('VkGroupProvider photo publishing', () => {
     });
   });
 
+  it.each([
+    ['transport', 'text-only'],
+    ['JSON decoding', 'text-only'],
+    ['transport', 'photo'],
+    ['JSON decoding', 'photo'],
+  ])(
+    'redacts a final wall.post %s failure for a %s publication',
+    async (failurePhase, publicationType) => {
+      const privateError = Object.assign(
+        new Error(
+          `wall-private-error ${token} ${mediaUrl} ${uploadUrl} ${upstreamPayload}`
+        ),
+        {
+          config: { url: uploadUrl, data: uploadedPhoto },
+          response: { data: { hash: uploadHash, payload: upstreamPayload } },
+        }
+      );
+      const finalWallFailure = () =>
+        failurePhase === 'transport'
+          ? Promise.reject(privateError)
+          : Promise.resolve({
+              json: async () => {
+                throw privateError;
+              },
+            } as Response);
+      const fetchMock = vi.spyOn(provider, 'fetch');
+      if (publicationType === 'photo') {
+        fetchMock
+          .mockImplementationOnce(() =>
+            response({ response: { upload_url: uploadUrl } })
+          )
+          .mockImplementationOnce(() =>
+            response({ response: [{ owner_id: -123, id: 456 }] })
+          )
+          .mockImplementationOnce(finalWallFailure);
+        vi.mocked(axios.get).mockResolvedValue({
+          data: Readable.from(['image-data']),
+        });
+        vi.mocked(axios.post).mockResolvedValue({
+          data: { photo: uploadedPhoto, server: 321, hash: uploadHash },
+        });
+      } else {
+        fetchMock.mockImplementationOnce(finalWallFailure);
+      }
+
+      await expectSanitizedWallFailure(
+        provider.post('-123', token, [
+          {
+            id: 'postiz-post',
+            message: 'Hello VK',
+            settings: {},
+            ...(publicationType === 'photo'
+              ? { media: [{ type: 'image' as const, path: mediaUrl }] }
+              : {}),
+          },
+        ])
+      );
+
+      expect(
+        fetchMock.mock.calls.filter(([url]) =>
+          url.endsWith('/method/wall.post')
+        )
+      ).toHaveLength(1);
+    }
+  );
+
   it('turns VK HTTP-200 errors into a failed post without leaking the token', async () => {
     vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
-      response({ error: { error_code: 15, error_msg: 'Access denied' } })
+      response({
+        error: {
+          error_code: 15,
+          error_msg: `Access denied ${token} ${upstreamPayload}`,
+        },
+      })
     );
 
     let thrown: unknown;
@@ -1273,10 +1408,44 @@ describe('VkGroupProvider photo publishing', () => {
       thrown = error;
     }
 
-    expect(thrown).toBeInstanceOf(Error);
-    expect(String(thrown)).toContain('VK post failed');
-    expect(JSON.stringify(thrown)).not.toContain(token);
-    expect(JSON.stringify(thrown)).not.toContain('error_code');
+    expect(thrown).toBeInstanceOf(BadBody);
+    expect(String(thrown)).toContain('VK wall.post failed with error 15');
+    expect((thrown as any).details).toEqual([
+      { identifier: 'vk-group', json: '{"code":15}', body: '{}' },
+    ]);
+    const serialized = `${String(thrown)} ${JSON.stringify(thrown)}`;
+    expect(serialized).not.toContain(token);
+    expect(serialized).not.toContain(upstreamPayload);
+    expect(serialized).not.toContain('Access denied');
+  });
+
+  it('classifies a final wall.post VK error 5 for VK Group', async () => {
+    vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+      response({
+        error: {
+          error_code: 5,
+          error_msg: `expired ${token} ${upstreamPayload}`,
+        },
+      })
+    );
+
+    let thrown: unknown;
+    try {
+      await provider.post('-123', token, [
+        { id: 'postiz-post', message: 'Hello VK', settings: {} },
+      ]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(RefreshToken);
+    expect(String(thrown)).toContain('VK wall.post failed with error 5');
+    expect((thrown as any).details).toEqual([
+      { identifier: 'vk-group', json: '{"code":5}', body: '{}' },
+    ]);
+    const serialized = `${String(thrown)} ${JSON.stringify(thrown)}`;
+    expect(serialized).not.toContain(token);
+    expect(serialized).not.toContain(upstreamPayload);
   });
 
   it.each([
@@ -1285,6 +1454,8 @@ describe('VkGroupProvider photo publishing', () => {
     [0, 'zero'],
     [-1, 'negative'],
     [1.5, 'fractional'],
+    [9007199254740993, 'unsafe rounded number'],
+    [1e21, 'exponent-producing number'],
     ['', 'empty'],
     ['abc', 'nonnumeric'],
   ])('rejects a %s wall.post ID (%s)', async (postId) => {
