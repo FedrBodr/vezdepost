@@ -1,7 +1,7 @@
 # VK Group User OAuth Photo Publishing Design
 
-**Date:** 2026-08-12  
-**Status:** Approved in conversation; pending written-spec review  
+**Date:** 2026-08-12
+**Status:** Approved in conversation; pending written-spec review
 **Supersedes:** The community-access-key authentication portions of
 `2026-08-12-vk-group-photo-publishing-and-onboarding-design.md`
 
