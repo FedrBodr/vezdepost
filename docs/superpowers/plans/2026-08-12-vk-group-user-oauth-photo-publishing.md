@@ -508,7 +508,7 @@ git commit -m "fix: gate VK Group photos with user OAuth"
 **Interfaces:**
 - Produces a reviewable branch and a capability result; does not merge, push, or deploy.
 
-- [ ] **Step 1: Run focused suites**
+- [x] **Step 1: Run focused suites**
 
 ```bash
 pnpm --use-node-version=22.20.0 exec vitest run \
@@ -526,7 +526,7 @@ pnpm --use-node-version=22.20.0 exec vitest run \
 
 Expected: all focused tests pass with zero failures.
 
-- [ ] **Step 2: Run repository verification and production builds**
+- [x] **Step 2: Run repository verification and production builds**
 
 ```bash
 pnpm --use-node-version=22.20.0 run verify:workspace
@@ -539,11 +539,27 @@ git diff --check prod...HEAD
 
 Expected: all commands exit 0.
 
-- [ ] **Step 3: Run history-aware release hygiene**
+- [x] **Step 3: Run history-aware release hygiene**
 
 Run the documented hygiene command against `prod...HEAD`. Expected final safe
 JSON status: `GO`, with no sensitive blobs, unexpected binaries, tracked temp
 files, or scope violations.
+
+Local evidence on 2026-08-12 under Node 22.20.0:
+
+- focused suite: 10/10 files and 267/267 tests passed;
+- post-fix hygiene suite: 15/15 tests passed after a four-failure RED run;
+- workspace verification and the 511-test full suite exited 0;
+- frontend, backend, and orchestrator production builds exited 0;
+- Prettier, runner/spec syntax checks, and `git diff --check prod...HEAD`
+  exited 0;
+- the documented history-aware command checked 24 changed files, reported
+  `PASS` for whitespace, tracked temp, binary/image, and secret-signature
+  checks, then emitted exactly `{"check":"terminal","status":"GO"}` and
+  exited 0.
+
+The real VK capability gate and final code review remain pending and are not
+represented by this local `GO`.
 
 - [ ] **Step 4: Run the real VK capability gate**
 
@@ -557,7 +573,7 @@ history, process arguments, logs, plan evidence, or chat.
 Review the complete `prod...HEAD` diff against the approved spec. Resolve every
 Critical and Important finding with a new RED/GREEN cycle; rerun affected tests.
 
-- [ ] **Step 6: Commit verification evidence**
+- [x] **Step 6: Commit verification evidence**
 
 ```bash
 git add docs/superpowers/plans/2026-08-12-vk-group-user-oauth-photo-publishing.md
