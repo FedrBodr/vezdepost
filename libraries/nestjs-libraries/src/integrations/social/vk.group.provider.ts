@@ -18,7 +18,7 @@ const INVALID_GROUP = 'Enter a valid VK community link or short name.';
 const INVALID_TOKEN = 'The VK community token is invalid.';
 const WRONG_GROUP = 'This token belongs to a different VK community.';
 const MISSING_PERMISSIONS =
-  'The VK community token must allow community management and wall access.';
+  'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.';
 
 type VkGroup = {
   id: number;
@@ -37,17 +37,29 @@ export function normalizeVkGroupIdentifier(value: string): string | null {
   }
 
   let candidate = input;
-  const looksLikeVkUrl = /^(?:https?:\/\/)?(?:www\.)?vk\.com\//i.test(input);
+  const hostPattern = /^(?:www\.)?vk\.(?:com|ru)$/i;
+  const looksLikeVkUrl =
+    /^https?:\/\//i.test(input) ||
+    /^(?:www\.)?vk\.(?:com|ru)(?::\d+)?(?:\/|$)/i.test(input);
 
   if (looksLikeVkUrl) {
     try {
-      const url = new URL(
-        /^https?:\/\//i.test(input) ? input : `https://${input}`
-      );
-      if (!/^(?:www\.)?vk\.com$/i.test(url.hostname)) {
+      const urlInput = /^https?:\/\//i.test(input) ? input : `https://${input}`;
+      const rawAuthority = urlInput.match(/^https?:\/\/([^/?#]+)/i)?.[1];
+      if (!rawAuthority || /[@:]/.test(rawAuthority)) {
         return null;
       }
-      candidate = url.pathname.replace(/^\/+|\/+$/g, '');
+      const url = new URL(urlInput);
+      if (
+        !hostPattern.test(url.hostname) ||
+        url.username ||
+        url.password ||
+        url.port ||
+        !/^\/[^/]+\/?$/.test(url.pathname)
+      ) {
+        return null;
+      }
+      candidate = url.pathname.slice(1).replace(/\/$/, '');
     } catch {
       return null;
     }
@@ -59,13 +71,17 @@ export function normalizeVkGroupIdentifier(value: string): string | null {
     return null;
   }
 
-  if (/^-?\d+$/.test(candidate)) {
-    return String(Math.abs(Number(candidate)));
-  }
-
-  const prefixedId = candidate.match(/^(?:club|public)(\d+)$/i);
+  const prefixedId = candidate.match(/^(?:club|public)([1-9]\d*)$/i);
   if (prefixedId) {
     return prefixedId[1];
+  }
+
+  if (/^(?:club|public)/i.test(candidate)) {
+    return null;
+  }
+
+  if (/^-?\d+$/.test(candidate)) {
+    return /^-?[1-9]\d*$/.test(candidate) ? candidate.replace(/^-/, '') : null;
   }
 
   return /^[a-zA-Z0-9_.-]+$/.test(candidate) ? candidate : null;
@@ -79,12 +95,20 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   scopes = [] as string[];
   editor = 'normal' as const;
   customFieldsInstructions = {
-    title: 'When creating the VK access key, select only:',
+    collapsible: true,
+    summary: 'Where to get the link and key',
+    title: 'Connect a VK community',
     items: [
-      'Allow the application to manage the community',
-      'Allow the application to access the community wall',
+      'Open the community in the desktop VK website and select Management.',
+      'Open More → API usage → Access keys.',
+      'Select Create key.',
+      'Grant only community management, community wall, and photographs access.',
+      'Copy the generated community access key into Vezdepost.',
+      'Copy the public community address, for example https://vk.ru/fedrbodr_pro, into the first field.',
     ],
-    note: 'Messages, photos, documents, stories, and products/orders are not required.',
+    notRequired: 'Callback API and Long Poll API are not required.',
+    warning:
+      'The access key is secret. Do not send it to support, put it in screenshots, or share it with third parties.',
   };
 
   maxLength() {
@@ -104,13 +128,16 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     return [
       {
         key: 'group',
-        label: 'VK community link or short name',
+        label: 'VK community link',
+        placeholder: 'https://vk.ru/fedrbodr_pro',
+        placeholderTranslationKey: 'vk_group_community_link_placeholder',
         validation: '/^.{1,255}$/',
+        validationMessage: INVALID_GROUP,
         type: 'text' as const,
       },
       {
         key: 'accessToken',
-        label: 'Community access token',
+        label: 'Community access key',
         validation: '/^.{10,}$/',
         type: 'password' as const,
       },
@@ -211,11 +238,11 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         .filter((permission: any) => Number(permission?.setting) > 0)
         .map((permission: any) => permission.name)
         .filter(Boolean);
+      const requiredPermissions = ['manage', 'wall', 'photos'];
 
       if (
         permissionsPayload?.error ||
-        !permissionNames.includes('manage') ||
-        !permissionNames.includes('wall')
+        requiredPermissions.some((name) => !permissionNames.includes(name))
       ) {
         return MISSING_PERMISSIONS;
       }

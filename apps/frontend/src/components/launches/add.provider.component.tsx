@@ -56,7 +56,6 @@ export const VK_GROUP_SAFE_CONNECTION_MESSAGES = new Set([
   'Enter a valid VK community link or short name.',
   'The VK community token is invalid.',
   'This token belongs to a different VK community.',
-  'The VK community token must allow community management and wall access.',
   'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.',
 ]);
 
@@ -322,9 +321,7 @@ export const CustomVariables: FC<{
         );
         return {
           ...aIcc,
-          [item.key]: string()
-            .matches(regex, validationMessage)
-            .required(),
+          [item.key]: string().matches(regex, validationMessage).required(),
         };
       }, {}),
     });

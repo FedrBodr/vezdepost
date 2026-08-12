@@ -6,6 +6,7 @@ import {
 import { BadBody } from '../social.abstract';
 
 const token = 'vk-community-secret-token';
+const upstreamPayload = 'vk-upstream-sensitive-payload';
 
 const encodedCredentials = (
   group: unknown = 'https://vk.com/fedrbodr_pro',
@@ -15,26 +16,38 @@ const encodedCredentials = (
 const response = (body: unknown) =>
   Promise.resolve({ json: async () => body } as Response);
 
-describe('normalizeVkGroupIdentifier', () => {
+describe('VK Group identifier normalization', () => {
   it.each([
+    ['https://vk.ru/fedrbodr_pro', 'fedrbodr_pro'],
     ['https://vk.com/fedrbodr_pro', 'fedrbodr_pro'],
     ['https://www.vk.com/fedrbodr_pro/?from=groups', 'fedrbodr_pro'],
+    ['vk.ru/fedrbodr_pro', 'fedrbodr_pro'],
     ['vk.com/fedrbodr_pro', 'fedrbodr_pro'],
     ['fedrbodr_pro', 'fedrbodr_pro'],
     ['club123', '123'],
     ['public123', '123'],
     ['123', '123'],
     ['-123', '123'],
+    ['123456789012345678901234567890', '123456789012345678901234567890'],
   ])('normalizes %s', (input, expected) => {
     expect(normalizeVkGroupIdentifier(input)).toBe(expected);
   });
 
-  it.each(['', '   ', 'https://example.com/group', 'vk.com/a/b'])(
-    'rejects invalid group value %s',
-    (input) => {
-      expect(normalizeVkGroupIdentifier(input)).toBeNull();
-    }
-  );
+  it.each([
+    '',
+    '   ',
+    'https://example.com/fedrbodr_pro',
+    'https://vk.ru/a/b',
+    'vk.com/a/b',
+    'https://vk.ru/',
+    'https://vk.ru/fedrbodr_pro/extra',
+    'https://user@vk.ru/fedrbodr_pro',
+    'https://vk.ru:443/fedrbodr_pro',
+    'club',
+    'public-1',
+  ])('rejects %s', (input) => {
+    expect(normalizeVkGroupIdentifier(input)).toBeNull();
+  });
 });
 
 describe('VkGroupProvider community credentials', () => {
@@ -50,13 +63,16 @@ describe('VkGroupProvider community credentials', () => {
     expect(await provider.customFields()).toEqual([
       {
         key: 'group',
-        label: 'VK community link or short name',
+        label: 'VK community link',
+        placeholder: 'https://vk.ru/fedrbodr_pro',
+        placeholderTranslationKey: 'vk_group_community_link_placeholder',
         validation: '/^.{1,255}$/',
+        validationMessage: 'Enter a valid VK community link or short name.',
         type: 'text',
       },
       {
         key: 'accessToken',
-        label: 'Community access token',
+        label: 'Community access key',
         validation: '/^.{10,}$/',
         type: 'password',
       },
@@ -65,12 +81,20 @@ describe('VkGroupProvider community credentials', () => {
 
   it('declares the exact community-key permission guide', () => {
     expect(provider.customFieldsInstructions).toEqual({
-      title: 'When creating the VK access key, select only:',
+      collapsible: true,
+      summary: 'Where to get the link and key',
+      title: 'Connect a VK community',
       items: [
-        'Allow the application to manage the community',
-        'Allow the application to access the community wall',
+        'Open the community in the desktop VK website and select Management.',
+        'Open More → API usage → Access keys.',
+        'Select Create key.',
+        'Grant only community management, community wall, and photographs access.',
+        'Copy the generated community access key into Vezdepost.',
+        'Copy the public community address, for example https://vk.ru/fedrbodr_pro, into the first field.',
       ],
-      note: 'Messages, photos, documents, stories, and products/orders are not required.',
+      notRequired: 'Callback API and Long Poll API are not required.',
+      warning:
+        'The access key is secret. Do not send it to support, put it in screenshots, or share it with third parties.',
     });
   });
 
@@ -100,6 +124,7 @@ describe('VkGroupProvider community credentials', () => {
             permissions: [
               { name: 'manage', setting: 262144 },
               { name: 'wall', setting: 8192 },
+              { name: 'photos', setting: 4 },
             ],
           },
         })
@@ -180,14 +205,50 @@ describe('VkGroupProvider community credentials', () => {
   });
 
   it.each([
-    [[{ name: 'manage', setting: 262144 }], 'without wall'],
-    [[{ name: 'wall', setting: 8192 }], 'without management'],
+    [
+      [
+        { name: 'wall', setting: 8192 },
+        { name: 'photos', setting: 4 },
+      ],
+      'without management',
+    ],
+    [
+      [
+        { name: 'manage', setting: 262144 },
+        { name: 'photos', setting: 4 },
+      ],
+      'without wall',
+    ],
+    [
+      [
+        { name: 'manage', setting: 262144 },
+        { name: 'wall', setting: 8192 },
+      ],
+      'without photographs',
+    ],
+    [
+      [
+        { name: 'manage', setting: 0 },
+        { name: 'wall', setting: 8192 },
+        { name: 'photos', setting: 4 },
+      ],
+      'with management disabled',
+    ],
     [
       [
         { name: 'manage', setting: 262144 },
         { name: 'wall', setting: 0 },
+        { name: 'photos', setting: 4 },
       ],
       'with wall disabled',
+    ],
+    [
+      [
+        { name: 'manage', setting: 262144 },
+        { name: 'wall', setting: 8192 },
+        { name: 'photos', setting: 0 },
+      ],
+      'with photographs disabled',
     ],
   ])('rejects permissions %s (%s)', async (permissions) => {
     vi.spyOn(provider, 'fetch')
@@ -197,7 +258,9 @@ describe('VkGroupProvider community credentials', () => {
       .mockImplementationOnce(() =>
         response({ response: { groups: [{ id: 123, name: 'Requested' }] } })
       )
-      .mockImplementationOnce(() => response({ response: { permissions } }));
+      .mockImplementationOnce(() =>
+        response({ response: { permissions, debug: upstreamPayload } })
+      );
 
     const result = await provider.authenticate({
       code: encodedCredentials(),
@@ -205,9 +268,10 @@ describe('VkGroupProvider community credentials', () => {
     });
 
     expect(result).toBe(
-      'The VK community token must allow community management and wall access.'
+      'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.'
     );
     expect(String(result)).not.toContain(token);
+    expect(String(result)).not.toContain(upstreamPayload);
   });
 
   it('does not expose malformed secret input in an error', async () => {

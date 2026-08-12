@@ -5,6 +5,7 @@ import {
   isUsableStartUrl,
   runAnalyticsSafely,
   submitCustomFieldConnection,
+  VK_GROUP_SAFE_CONNECTION_MESSAGES,
 } from './add.provider.component';
 
 const source = readFileSync(
@@ -13,7 +14,7 @@ const source = readFileSync(
 );
 
 const response = (ok: boolean, body: unknown) =>
-  ({ ok, json: vi.fn().mockResolvedValue(body) }) as unknown as Response;
+  ({ ok, json: vi.fn().mockResolvedValue(body) } as unknown as Response);
 
 describe('provider connection analytics', () => {
   it('derives the connection type by provider precedence', () => {
@@ -122,9 +123,7 @@ describe('provider connection analytics', () => {
       onRedirect,
     });
 
-    expect(onFailed).toHaveBeenCalledWith(
-      'The VK community token is invalid.'
-    );
+    expect(onFailed).toHaveBeenCalledWith('The VK community token is invalid.');
     expect(onCompleted).not.toHaveBeenCalled();
     expect(onRedirect).not.toHaveBeenCalled();
   });
@@ -133,7 +132,6 @@ describe('provider connection analytics', () => {
     'Enter a valid VK community link or short name.',
     'The VK community token is invalid.',
     'This token belongs to a different VK community.',
-    'The VK community token must allow community management and wall access.',
     'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.',
   ])('propagates the known VK Group authentication error %s', async (msg) => {
     const fetcher = vi
@@ -152,6 +150,17 @@ describe('provider connection analytics', () => {
     });
 
     expect(onFailed).toHaveBeenCalledWith(msg);
+  });
+
+  it('allows exactly the current VK Group authentication errors', () => {
+    expect(VK_GROUP_SAFE_CONNECTION_MESSAGES).toEqual(
+      new Set([
+        'Enter a valid VK community link or short name.',
+        'The VK community token is invalid.',
+        'This token belongs to a different VK community.',
+        'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.',
+      ])
+    );
   });
 
   it.each([
