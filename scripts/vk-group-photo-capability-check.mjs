@@ -532,6 +532,7 @@ export async function runCapabilityCheck({
   let outputRecords;
   let exitCode = 2;
   let photo;
+  let verifiedPhotoCleanupTarget;
   let postId;
   let candidatePostId;
   const events = [];
@@ -596,11 +597,7 @@ export async function runCapabilityCheck({
     const savedPhoto = savedItems?.[0];
     const ownerId = integerString(savedPhoto?.owner_id, { signed: true });
     const photoId = integerString(savedPhoto?.id);
-    if (
-      savedItems?.length !== 1 ||
-      ownerId !== `-${inputs.groupId}` ||
-      !photoId
-    ) {
+    if (savedItems?.length !== 1 || !ownerId || !photoId) {
       throw new SafeFailure(
         'save-photo',
         'photos.saveWallPhoto',
@@ -684,6 +681,7 @@ export async function runCapabilityCheck({
       );
     }
     postId = candidatePostId;
+    verifiedPhotoCleanupTarget = photo;
     events.push({
       phase: 'verify-authorship',
       method: 'wall.getById',
@@ -699,7 +697,7 @@ export async function runCapabilityCheck({
       accessToken: inputs.accessToken,
       groupId: inputs.groupId,
       postId,
-      photo,
+      photo: verifiedPhotoCleanupTarget,
       events,
     });
     if (cleanupFailure) {
@@ -708,6 +706,7 @@ export async function runCapabilityCheck({
     } else {
       postId = undefined;
       photo = undefined;
+      verifiedPhotoCleanupTarget = undefined;
       throwIfSignalRequested(signalState);
       events.push({
         phase: 'complete',
@@ -727,14 +726,14 @@ export async function runCapabilityCheck({
       const failure =
         error instanceof SafeFailure ? error : new SafeFailure('preflight');
       let pendingFailure = failure.creationUncertain ? failure : undefined;
-      if (workspace && (postId || photo)) {
+      if (workspace && (postId || verifiedPhotoCleanupTarget)) {
         const cleanupFailure = await cleanupArtifacts({
           fetchImpl,
           workspace,
           accessToken: inputs.accessToken,
           groupId: inputs.groupId,
           postId,
-          photo,
+          photo: verifiedPhotoCleanupTarget,
           events: [],
         });
         if (cleanupFailure) {
@@ -742,7 +741,11 @@ export async function runCapabilityCheck({
         } else {
           postId = undefined;
           photo = undefined;
+          verifiedPhotoCleanupTarget = undefined;
         }
+      }
+      if (photo) {
+        pendingFailure ||= failure;
       }
       if (pendingFailure) {
         outputRecords = [pendingCleanupRecord(pendingFailure)];

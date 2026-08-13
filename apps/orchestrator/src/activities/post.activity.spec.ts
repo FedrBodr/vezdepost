@@ -391,7 +391,7 @@ describe('PostActivity VK Group OAuth publishing', () => {
     ]);
   });
 
-  it('does not call wall.post when VK saves the photo for another owner', async () => {
+  it('publishes a stored photo saved for the OAuth user to the community wall', async () => {
     const media = {
       id: 'stored-photo',
       path: 'https://media.example/stored-photo.jpg',
@@ -399,13 +399,18 @@ describe('PostActivity VK Group OAuth publishing', () => {
     };
     const { activity, fetchMock } = createHarness({
       storedMedia: { [media.id]: media },
-      savedOwnerId: '-999',
+      savedOwnerId: '456',
     });
 
-    await expectNoWallPost(
-      activity.postSocial(integration, [storedPost('post-1', [media.id])]),
-      fetchMock,
-      'VK photos.saveWallPhoto returned an unexpected owner ID'
+    await expect(
+      activity.postSocial(integration, [storedPost('post-1', [media.id])])
+    ).resolves.toEqual([expect.objectContaining({ status: 'completed' })]);
+    const wallCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith('/method/wall.post')
     );
+    const wallBody = wallCall?.[1]?.body as FormData;
+    expect(wallBody.get('owner_id')).toBe('-123');
+    expect(wallBody.get('from_group')).toBe('1');
+    expect(wallBody.get('attachments')).toBe('photo456_456');
   });
 });

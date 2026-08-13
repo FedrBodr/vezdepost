@@ -127,9 +127,12 @@ For a valid publication, the worker:
 2. For each photograph, calls `photos.getWallUploadServer` with `group_id`,
    downloads the Postiz media, uploads the multipart body to the validated
    HTTPS upload URL, and calls `photos.saveWallPhoto` with `group_id`.
-3. Validates that every saved photograph belongs to the selected community and
-   builds `photo<owner_id>_<id>` attachment identifiers in the original media
-   order.
+3. Validates that every saved photograph has a well-formed, non-zero signed
+   `owner_id` and a positive `id`, then builds `photo<owner_id>_<id>` attachment
+   identifiers in the original media order. `group_id` selects the destination
+   community wall, while the returned photo `owner_id` identifies the saved
+   attachment and may be the positive VK user ID under user OAuth; it is not
+   required to equal `-<groupId>`.
 4. Calls `wall.post` only after every photograph succeeds, with:
 
 ```text
@@ -145,7 +148,10 @@ attachments=<comma-separated saved photographs, when present>
 The operation remains atomic with respect to wall publication: no wall post is
 created if an upload or save fails. VK may retain an uploaded/saved photograph
 without a wall post; automatic deletion of such media is not introduced in
-this change.
+this change. A returned photo owner that differs from the wall owner is not by
+itself a failure: `wall.post.owner_id` still targets `-<groupId>`, and the
+attachment uses the exact validated owner/photo pair returned by
+`photos.saveWallPhoto`.
 
 ## Existing Community-Key Integrations
 
@@ -203,9 +209,9 @@ provider component whose submitted field names or semantics differ.
   reconnect, capability preflight, and safe errors.
 - Refresh tests prove a token rotation cannot change the signed group ID or
   community metadata.
-- Provider tests cover text-only, one photo, ten photos, upload order,
-  community ownership of saved media, atomic failure, error 15, error 27,
-  malformed responses, and direct release URLs.
+- Provider tests cover text-only, one photo, ten photos, upload order, positive
+  user-owned and negative community-owned saved-media identifiers, atomic
+  failure, error 15, error 27, malformed responses, and direct release URLs.
 - Pre-enqueue and worker-path tests retain the media count/type/comment
   boundaries from the prior design.
 - Frontend tests cover OAuth start, VK Group two-step selector registration,
@@ -220,11 +226,13 @@ appears in `groups.get filter=admin` and that `photos.getWallUploadServer`
 succeeds.
 
 The mutating phase uses a UUID marker and a repository-owned non-sensitive test
-image. It uploads and saves one photograph, publishes one community-authored
-wall post, reads it back with `wall.getById`, and verifies exact owner, author,
-marker, and attachment identity. Cleanup may delete only artifacts whose
-ownership and marker were proven. The runner must verify absence after cleanup.
-Any ambiguous ownership or cleanup result is `PENDING_CLEANUP`, never `GO`.
+image. It uploads and saves one photograph, accepts the validated signed photo
+owner returned by VK, publishes one community-authored wall post, reads it back
+with `wall.getById`, and verifies exact wall owner, author, marker, and returned
+attachment identity. Cleanup may delete only the exact photo returned by the
+save call after the marked wall post proves that attachment identity. The
+runner must verify absence after cleanup. Any ambiguous identity or cleanup
+result is `PENDING_CLEANUP`, never `GO`.
 
 Production rollout requires the runner's machine-readable final status to be
 exactly `GO`. A conversational approval such as "go" is authorization to run
