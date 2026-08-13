@@ -52,4 +52,24 @@ without rebuilding the image. Copying first is required: piping the script into
 `ssh` would occupy standard input and prevent the hidden remote prompt from
 receiving the token.
 
+## Tumblr
+
+Register the Tumblr application with this exact OAuth callback URL:
+
+`https://app.vezdepost.ru/integrations/social/tumblr`
+
+Apply `TUMBLR_CLIENT_ID` and `TUMBLR_CLIENT_SECRET` through the guarded
+production script:
+
+```bash
+scp -q -o BatchMode=yes -o ConnectTimeout=10 docs/server-scripts/16-configure-tumblr.sh vezdepost:/tmp/vezdepost-configure-tumblr.sh
+ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/vezdepost-configure-tumblr.sh || status=$?; rm -f /tmp/vezdepost-configure-tumblr.sh; exit "$status"'
+```
+
+Enter the OAuth Consumer Key and secret key only at the hidden terminal
+prompts. Never paste them into chat, command arguments, logs, or tracked files.
+The script creates timestamped backups, validates Compose, and recreates only
+`postiz` without rebuilding the image. It does not publish any Tumblr post.
+
 This directory lives only on the `prod` branch — do not merge it into `main`.
