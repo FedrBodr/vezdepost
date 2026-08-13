@@ -596,11 +596,7 @@ export async function runCapabilityCheck({
     const savedPhoto = savedItems?.[0];
     const ownerId = integerString(savedPhoto?.owner_id, { signed: true });
     const photoId = integerString(savedPhoto?.id);
-    if (
-      savedItems?.length !== 1 ||
-      ownerId !== `-${inputs.groupId}` ||
-      !photoId
-    ) {
+    if (savedItems?.length !== 1 || !ownerId || !photoId) {
       throw new SafeFailure(
         'save-photo',
         'photos.saveWallPhoto',

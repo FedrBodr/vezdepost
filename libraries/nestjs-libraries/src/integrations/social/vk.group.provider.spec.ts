@@ -1353,14 +1353,14 @@ describe('VkGroupProvider photo publishing', () => {
     );
   });
 
-  it('rejects a saved photo owned by another community before wall.post', async () => {
+  it('publishes a saved photo owned by the OAuth user to the community wall', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
       .mockImplementationOnce(() =>
         response({ response: { upload_url: uploadUrl } })
       )
       .mockImplementationOnce(() =>
-        response({ response: [{ owner_id: -999, id: 456 }] })
+        response({ response: [{ owner_id: 456, id: 789 }] })
       )
       .mockImplementationOnce(() => response({ response: { post_id: 789 } }));
     vi.mocked(axios.get).mockResolvedValue({
@@ -1379,12 +1379,16 @@ describe('VkGroupProvider photo publishing', () => {
           media: [{ type: 'image', path: mediaUrl }],
         },
       ])
-    ).rejects.toThrow(
-      'VK photos.saveWallPhoto returned an unexpected owner ID'
+    ).resolves.toEqual([
+      expect.objectContaining({ releaseURL: 'https://vk.com/wall-123_789' }),
+    ]);
+    const wallCall = fetchMock.mock.calls.find(([url]) =>
+      url.endsWith('/method/wall.post')
     );
-    expect(
-      fetchMock.mock.calls.filter(([url]) => url.endsWith('/method/wall.post'))
-    ).toHaveLength(0);
+    const wallBody = wallCall?.[1]?.body as FormData;
+    expect(wallBody.get('owner_id')).toBe('-123');
+    expect(wallBody.get('from_group')).toBe('1');
+    expect(wallBody.get('attachments')).toBe('photo456_789');
   });
 
   it.each([

@@ -101,6 +101,7 @@ function successfulFetch(
     removeMediaAfterUploadServer = false,
     photoRemains = false,
     savedOwnerId = -123,
+    savedPhotoId = 456,
     saveExtraPhoto = false,
     verifyErrorCode,
     verifiedPostId = 789,
@@ -190,7 +191,7 @@ function successfulFetch(
             response: saveMalformed
               ? []
               : [
-                  { owner_id: savedOwnerId, id: 456 },
+                  { owner_id: savedOwnerId, id: savedPhotoId },
                   ...(saveExtraPhoto ? [{ owner_id: -123, id: 457 }] : []),
                 ],
           }
@@ -198,7 +199,9 @@ function successfulFetch(
       case 'wall.post':
         expect(options.body.get('owner_id')).toBe('-123');
         expect(options.body.get('from_group')).toBe('1');
-        expect(options.body.get('attachments')).toBe('photo-123_456');
+        expect(options.body.get('attachments')).toBe(
+          `photo${savedOwnerId}_${savedPhotoId}`
+        );
         publishedMessage = options.body.get('message');
         expect(publishedMessage).toMatch(
           /^Vezdepost VK Group photo capability check [0-9a-f-]{36}$/
@@ -233,7 +236,7 @@ function successfulFetch(
                   attachments: verifiedAttachments ?? [
                     {
                       type: 'photo',
-                      photo: { owner_id: -123, id: 456 },
+                      photo: { owner_id: savedOwnerId, id: savedPhotoId },
                     },
                   ],
                 },
@@ -247,7 +250,7 @@ function successfulFetch(
                         attachments: [
                           {
                             type: 'photo',
-                            photo: { owner_id: -123, id: 456 },
+                            photo: { owner_id: savedOwnerId, id: savedPhotoId },
                           },
                         ],
                       },
@@ -277,13 +280,17 @@ function successfulFetch(
             })
           : jsonResponse({ response: 1 }, wallDeleteHttpStatus);
       case 'photos.delete':
-        expect(options.body.get('owner_id')).toBe('-123');
-        expect(options.body.get('photo_id')).toBe('456');
+        expect(options.body.get('owner_id')).toBe(String(savedOwnerId));
+        expect(options.body.get('photo_id')).toBe(String(savedPhotoId));
         return jsonResponse({ response: 1 });
       case 'photos.getById':
-        expect(options.body.get('photos')).toBe('-123_456');
+        expect(options.body.get('photos')).toBe(
+          `${savedOwnerId}_${savedPhotoId}`
+        );
         return jsonResponse({
-          response: photoRemains ? [{ owner_id: -123, id: 456 }] : [],
+          response: photoRemains
+            ? [{ owner_id: savedOwnerId, id: savedPhotoId }]
+            : [],
         });
       default:
         throw new Error(`Unexpected method ${method}`);
@@ -766,6 +773,44 @@ describe('VK Group photo capability check', () => {
     expect(await readdir(fixture.root)).toEqual(['synthetic.png']);
   });
 
+  it('proves a photo saved for the OAuth user is published and cleaned up by its exact identity', async () => {
+    const fixture = await makeFixture();
+    const { fetchImpl, methods } = successfulFetch(fixture, {
+      savedOwnerId: 456,
+      savedPhotoId: 789,
+    });
+
+    const exitCode = await runCapabilityCheck({
+      args: ['--group-id', '123', '--media-file', fixture.mediaFile],
+      env: {
+        VK_GROUP_CAPABILITY_AUTHORIZED: '1',
+        VK_GROUP_CAPABILITY_USER_TOKEN: 'private-user-oauth-token',
+      },
+      fetchImpl,
+      stdout: fixture.stdout,
+      tempRoot: fixture.root,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(methods).toEqual([
+      ...authorizationMethods,
+      'photos.getWallUploadServer',
+      'upload',
+      'photos.saveWallPhoto',
+      'wall.post',
+      'wall.getById',
+      'wall.delete',
+      'photos.delete',
+      'wall.getById',
+      'photos.getById',
+    ]);
+    expect(parseRecords(fixture.output()).at(-1)).toEqual({
+      phase: 'complete',
+      status: 'GO',
+      post_id: 789,
+    });
+  });
+
   it.each([
     ['a stale post id', { verifiedPostId: 788 }],
     ['a wrong post owner', { verifiedOwnerId: -999 }],
@@ -1156,10 +1201,10 @@ describe('VK Group photo capability check', () => {
     expect(fixture.output()).not.toContain('private local');
   });
 
-  it('never stores or deletes a saved photo owned by another target', async () => {
+  it('marks a zero saved photo owner pending before publication', async () => {
     const fixture = await makeFixture();
     const { fetchImpl, methods } = successfulFetch(fixture, {
-      savedOwnerId: -999,
+      savedOwnerId: 0,
     });
 
     const exitCode = await runCapabilityCheck({

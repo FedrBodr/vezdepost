@@ -367,11 +367,6 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       'photos.saveWallPhoto',
       'owner ID'
     );
-    if (savedOwnerId !== `-${positiveGroupId}`) {
-      this.badGroupResponse(
-        'VK photos.saveWallPhoto returned an unexpected owner ID'
-      );
-    }
     return {
       ownerId: savedOwnerId,
       id: this.parsePositiveId(
