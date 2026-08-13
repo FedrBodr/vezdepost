@@ -100,3 +100,34 @@ and waits for the Docker API before fetching or building the expected SHA. The
 default is `0`; ordinary deployments never restart Docker.
 
 This directory lives only on the `prod` branch — do not merge it into `main`.
+
+## Pinterest
+
+Use the exact OAuth callback URL:
+
+`https://app.vezdepost.ru/integrations/social/pinterest`
+
+The provider requests only `boards:read`, `boards:write`, `pins:read`,
+`pins:write`, and `user_accounts:read`. Configure `PINTEREST_CLIENT_ID` and
+`PINTEREST_CLIENT_SECRET` through the guarded script; enter both values only at
+its hidden prompts.
+
+Trial access is used to validate OAuth, the authenticated Business account,
+board discovery, and an unpublished draft. Do not publish a public Pin until
+Standard access is active and the user explicitly approves the test.
+
+Copy the script first so that the interactive SSH session can use standard
+input for the two hidden prompts. Start the guarded deployment before pushing
+its expected revision to `origin/prod`:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/19-deploy-pinterest-trial.sh \
+  vezdepost:/tmp/vezdepost-deploy-pinterest-trial.sh
+rtk ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  "status=0; bash /tmp/vezdepost-deploy-pinterest-trial.sh $(rtk git rev-parse HEAD) || status=\$?; rm -f /tmp/vezdepost-deploy-pinterest-trial.sh; exit \"\$status\""
+```
+
+The script backs up the production `.env`, checkout, and application image,
+holds the autodeploy lock, validates Compose, and recreates only `postiz`. It
+rolls all changed state back if verification fails and never publishes a Pin.

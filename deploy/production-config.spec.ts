@@ -57,4 +57,21 @@ describe('production configuration', () => {
       "TUMBLR_CLIENT_SECRET: '${TUMBLR_CLIENT_SECRET:?set in .env}'"
     );
   });
+
+  it('requires Pinterest credentials and documents the Trial OAuth setup', () => {
+    const override = readRootFile('docker-compose.override.yaml');
+    const readme = readRootFile('deploy/README.md');
+
+    expect(override).toContain(
+      "PINTEREST_CLIENT_ID: '${PINTEREST_CLIENT_ID:?set in .env}'"
+    );
+    expect(override).toContain(
+      "PINTEREST_CLIENT_SECRET: '${PINTEREST_CLIENT_SECRET:?set in .env}'"
+    );
+    expect(readme).toContain(
+      'https://app.vezdepost.ru/integrations/social/pinterest'
+    );
+    expect(readme).toContain('Trial access');
+    expect(readme).toContain('19-deploy-pinterest-trial.sh');
+  });
 });
