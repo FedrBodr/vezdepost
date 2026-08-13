@@ -110,8 +110,21 @@ git reset --hard "$EXPECTED_REV"
 docker compose build postiz
 docker compose up -d --no-deps --force-recreate postiz
 
-docker exec "$POSTIZ_CONTAINER" sh -lc \
-  'test -n "${TUMBLR_CLIENT_ID:-}" && test -n "${TUMBLR_CLIENT_SECRET:-}"'
+ENV_READY_ATTEMPTS=60
+[[ "${SKIP_DEPLOY_WAIT:-0}" == 1 ]] && ENV_READY_ATTEMPTS=1
+ENV_READY=0
+for _ in $(seq 1 "$ENV_READY_ATTEMPTS"); do
+  if docker exec "$POSTIZ_CONTAINER" sh -lc \
+    'test -n "${TUMBLR_CLIENT_ID:-}" && test -n "${TUMBLR_CLIENT_SECRET:-}"'; then
+    ENV_READY=1
+    break
+  fi
+  [[ "${SKIP_DEPLOY_WAIT:-0}" == 1 ]] || sleep 2
+done
+[[ "$ENV_READY" -eq 1 ]] || {
+  echo 'Tumblr environment variables were not present after container startup' >&2
+  exit 1
+}
 
 READINESS_ATTEMPTS=180
 [[ "${SKIP_DEPLOY_WAIT:-0}" == 1 ]] && READINESS_ATTEMPTS=1

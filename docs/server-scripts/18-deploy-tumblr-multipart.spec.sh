@@ -30,6 +30,10 @@ printf '%s\n' "$*" >> "$DOCKER_CALLS"
 if [[ "${FAIL_BUILD:-0}" == 1 && "$*" == 'compose build postiz' ]]; then
   exit 1
 fi
+if [[ "${FAIL_ENV_ONCE:-0}" == 1 && "$*" == 'exec postiz sh -lc '*TUMBLR_CLIENT_ID* && ! -e "$ENV_FAILURE_MARKER" ]]; then
+  : > "$ENV_FAILURE_MARKER"
+  exit 1
+fi
 case "$*" in
   'exec temporal-admin-tools temporal task-queue describe '*)
     printf '%s\n' 'Pollers: Identity worker@postiz'
@@ -246,8 +250,47 @@ run_buildkit_recovery_case() {
     fail 'postiz was not built after BuildKit recovery'
 }
 
+run_environment_retry_case() {
+  local case_dir="$TMP_DIR/environment-retry"
+  local repo="$case_dir/repo"
+  local bin_dir="$case_dir/bin"
+  local git_calls="$case_dir/git.calls"
+  local docker_calls="$case_dir/docker.calls"
+  local curl_calls="$case_dir/curl.calls"
+  local systemctl_calls="$case_dir/systemctl.calls"
+  local expected_rev='2222222222222222222222222222222222222222'
+
+  mkdir -p "$repo"
+  make_stubs "$bin_dir"
+  : > "$git_calls"
+  : > "$docker_calls"
+  : > "$curl_calls"
+  : > "$systemctl_calls"
+
+  PATH="$bin_dir:$PATH" \
+    GIT_CALLS="$git_calls" \
+    DOCKER_CALLS="$docker_calls" \
+    CURL_CALLS="$curl_calls" \
+    SYSTEMCTL_CALLS="$systemctl_calls" \
+    CURRENT_REV='1111111111111111111111111111111111111111' \
+    EXPECTED_REV="$expected_rev" \
+    FAIL_ENV_ONCE=1 \
+    ENV_FAILURE_MARKER="$case_dir/env-failed-once" \
+    REPO_DIR="$repo" \
+    DEPLOYED_REV_FILE="$case_dir/deployed-rev" \
+    AUTODEPLOY_LOCK="$case_dir/autodeploy.lock" \
+    bash "$SCRIPT" "$expected_rev" > "$case_dir/output" 2>&1 || {
+      cat "$case_dir/output" >&2
+      fail 'transient environment check failure was not retried'
+    }
+
+  [[ "$(grep -c '^exec postiz sh -lc .*TUMBLR_CLIENT_ID' "$docker_calls")" == 2 ]] ||
+    fail 'Tumblr environment check was not retried exactly once'
+}
+
 run_success_case
 run_invalid_sha_case
 run_rollback_case
 run_buildkit_recovery_case
+run_environment_retry_case
 echo 'Tumblr multipart deployment script tests passed'
