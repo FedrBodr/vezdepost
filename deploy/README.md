@@ -72,4 +72,24 @@ prompts. Never paste them into chat, command arguments, logs, or tracked files.
 The script creates timestamped backups, validates Compose, and recreates only
 `postiz` without rebuilding the image. It does not publish any Tumblr post.
 
+To deploy the tested Tumblr multipart implementation at one exact production
+revision, copy script 18 and start it **before** pushing that revision to
+`origin/prod`:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/18-deploy-tumblr-multipart.sh \
+  vezdepost:/tmp/vezdepost-deploy-tumblr-multipart.sh
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  "bash /tmp/vezdepost-deploy-tumblr-multipart.sh <40-char-prod-sha>"
+```
+
+The remote script holds `/var/lock/vezdepost-autodeploy.lock` while it waits
+for the expected SHA, preventing the cron deployment from racing it. After the
+fast-forward push, it backs up the current `postiz-max:local` image, resets the
+server checkout to that exact SHA, builds and recreates only `postiz`, and
+checks the application ports, public API, Temporal worker, Tumblr environment
+presence, and PostgreSQL attribute capacity. A failed deployment restores the
+previous revision and image. It never publishes a Tumblr post.
+
 This directory lives only on the `prod` branch — do not merge it into `main`.
