@@ -113,7 +113,7 @@ docker compose up -d --no-deps --force-recreate postiz
 docker exec "$POSTIZ_CONTAINER" sh -lc \
   'test -n "${TUMBLR_CLIENT_ID:-}" && test -n "${TUMBLR_CLIENT_SECRET:-}"'
 
-READINESS_ATTEMPTS=60
+READINESS_ATTEMPTS=180
 [[ "${SKIP_DEPLOY_WAIT:-0}" == 1 ]] && READINESS_ATTEMPTS=1
 READY=0
 for _ in $(seq 1 "$READINESS_ATTEMPTS"); do
@@ -133,7 +133,7 @@ for _ in $(seq 1 "$READINESS_ATTEMPTS"); do
 done
 
 [[ "$READY" -eq 1 ]] || {
-  echo 'postiz readiness checks did not pass before timeout' >&2
+  echo "postiz readiness checks did not pass before timeout; public API HTTP: ${HTTP_CODE:-unknown}" >&2
   exit 1
 }
 
