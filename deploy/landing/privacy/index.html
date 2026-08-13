@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" class="i18n-pending">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Политика конфиденциальности — Vezdepost</title>
-  <meta name="description" content="Политика конфиденциальности сервиса Vezdepost: какие данные обрабатываются, зачем и как связаться с оператором.">
+  <title data-i18n="meta.title">Политика конфиденциальности — Vezdepost</title>
+  <meta name="description" data-i18n-content="meta.description" content="Политика конфиденциальности сервиса Vezdepost: какие данные обрабатываются, зачем и как связаться с оператором.">
   <link rel="canonical" href="https://vezdepost.ru/privacy">
   <link rel="icon" type="image/png" href="/assets/vezdepost-logo.png">
   <style>
@@ -19,6 +19,7 @@
       --accent-2: #4ecdc4;
     }
     * { box-sizing: border-box; }
+    .i18n-pending body { visibility: hidden; }
     body {
       margin: 0;
       background: var(--bg);
@@ -34,10 +35,15 @@
       background: rgba(11, 13, 18, .92);
     }
     .nav, main, footer { width: min(100% - 40px, 820px); margin: 0 auto; }
-    .nav { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .nav { min-height: 64px; display: flex; align-items: center; gap: 20px; }
     .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font-size: 20px; font-weight: 800; text-decoration: none; }
     .brand img { width: 30px; height: 30px; border-radius: 8px; }
+    .nav-tools { margin-left: auto; display: flex; align-items: center; gap: 18px; }
     .back { color: var(--muted); font-size: 14px; }
+    .language-switcher { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+    .language-switcher button { border: 0; padding: 5px 3px; background: transparent; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; }
+    .language-switcher button:hover, .language-switcher button[aria-pressed="true"] { color: var(--text); }
+    .language-switcher button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 4px; }
     main { padding: 72px 0 56px; }
     h1 { margin: 0 0 10px; font-size: clamp(34px, 6vw, 52px); line-height: 1.12; letter-spacing: -.035em; }
     h1 span {
@@ -56,83 +62,283 @@
     li + li { margin-top: 8px; }
     strong { color: #fff; }
     footer { padding: 28px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
-    @media (max-width: 560px) {
+    @media (max-width: 620px) {
       main { padding-top: 44px; }
       .lead, section { padding: 20px; border-radius: 14px; }
-      .back { font-size: 0; }
-      .back::after { content: "На главную"; font-size: 14px; }
+      .nav { flex-wrap: wrap; padding: 10px 0; }
+      .nav-tools { gap: 12px; }
+      .back { font-size: 12px; }
+      .language-switcher span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     }
   </style>
 </head>
 <body>
   <header>
-    <nav class="nav" aria-label="Основная навигация">
+    <nav class="nav" aria-label="Основная навигация" data-i18n-aria-label="nav.ariaLabel">
       <a class="brand" href="/"><img src="/assets/vezdepost-logo.png" width="30" height="30" alt="">Vezdepost</a>
-      <a class="back" href="/">Вернуться на главную</a>
+      <div class="nav-tools">
+        <a class="back" href="/" data-i18n="nav.back">Вернуться на главную</a>
+        <div class="language-switcher" aria-label="Язык" data-i18n-aria-label="language.label">
+          <span data-i18n="language.label">Язык</span>
+          <button type="button" data-language="ru" aria-pressed="true" data-i18n-aria-label="language.ru">RU</button>
+          <span aria-hidden="true">/</span>
+          <button type="button" data-language="en" aria-pressed="false" data-i18n-aria-label="language.en">EN</button>
+        </div>
+      </div>
     </nav>
   </header>
 
   <main>
-    <h1>Политика <span>конфиденциальности</span></h1>
-    <p class="updated">Действует с 13 августа 2026 года</p>
+    <h1 data-i18n-html="hero.title">Политика <span>конфиденциальности</span></h1>
+    <p class="updated" data-i18n="hero.updated">Действует с 13 августа 2026 года</p>
 
     <div class="lead">
-      <p>Эта политика описывает обработку персональных данных при использовании сайта <a href="https://vezdepost.ru">vezdepost.ru</a> и приложения Vezdepost — сервиса для подготовки, планирования и публикации материалов в социальных сетях и мессенджерах.</p>
-      <p><strong>Оператор:</strong> Федоренко Дмитрий Александрович, плательщик налога на профессиональный доход (ИНН 772373964340).</p>
+      <p data-i18n-html="intro.description">Эта политика описывает обработку персональных данных при использовании сайта <a href="https://vezdepost.ru">vezdepost.ru</a> и приложения Vezdepost — сервиса для подготовки, планирования и публикации материалов в социальных сетях и мессенджерах.</p>
+      <p data-i18n-html="intro.operator"><strong>Оператор:</strong> Федоренко Дмитрий Александрович, плательщик налога на профессиональный доход (ИНН 772373964340).</p>
     </div>
 
     <section id="data">
-      <h2>Какие данные мы обрабатываем</h2>
+      <h2 data-i18n="data.title">Какие данные мы обрабатываем</h2>
       <ul>
-        <li>данные учётной записи и организации: имя, email, сведения профиля и настройки;</li>
-        <li>идентификаторы подключённых аккаунтов социальных платформ, предоставленные ими данные профиля, разрешения и токены авторизации;</li>
-        <li>созданные или загруженные вами тексты, изображения, видео и расписание публикаций;</li>
-        <li>сведения о тарифе и платеже, при этом полные реквизиты банковской карты обрабатывает платёжный провайдер;</li>
-        <li>технические данные: IP-адрес, тип устройства и браузера, cookies, журналы действий, диагностика ошибок и статистика использования.</li>
+        <li data-i18n="data.account">данные учётной записи и организации: имя, email, сведения профиля и настройки;</li>
+        <li data-i18n="data.social">идентификаторы подключённых аккаунтов социальных платформ, предоставленные ими данные профиля, разрешения и токены авторизации;</li>
+        <li data-i18n="data.content">созданные или загруженные вами тексты, изображения, видео и расписание публикаций;</li>
+        <li data-i18n="data.billing">сведения о тарифе и платеже, при этом полные реквизиты банковской карты обрабатывает платёжный провайдер;</li>
+        <li data-i18n="data.technical">технические данные: IP-адрес, тип устройства и браузера, cookies, журналы действий, диагностика ошибок и статистика использования.</li>
       </ul>
     </section>
 
     <section id="purposes">
-      <h2>Для чего используются данные</h2>
-      <p>Данные нужны, чтобы создавать и защищать учётные записи, подключать выбранные вами платформы, хранить и публиковать контент по расписанию, оказывать поддержку, проводить платежи, предотвращать злоупотребления, устранять ошибки и улучшать Vezdepost.</p>
-      <p>Обработка выполняется для предоставления запрошенного сервиса, исполнения соглашения с пользователем, соблюдения применимых требований закона и на основании согласия — когда оно требуется.</p>
+      <h2 data-i18n="purposes.title">Для чего используются данные</h2>
+      <p data-i18n="purposes.service">Данные нужны, чтобы создавать и защищать учётные записи, подключать выбранные вами платформы, хранить и публиковать контент по расписанию, оказывать поддержку, проводить платежи, предотвращать злоупотребления, устранять ошибки и улучшать Vezdepost.</p>
+      <p data-i18n="purposes.basis">Обработка выполняется для предоставления запрошенного сервиса, исполнения соглашения с пользователем, соблюдения применимых требований закона и на основании согласия — когда оно требуется.</p>
     </section>
 
     <section id="sharing">
-      <h2>Передача данных</h2>
-      <p>По вашей команде Vezdepost передаёт контент и необходимые данные подключённым платформам, включая Pinterest и другие выбранные вами социальные сети и мессенджеры. Их дальнейшая обработка регулируется собственными правилами этих платформ.</p>
-      <p>Ограниченный объём данных также может обрабатываться поставщиками инфраструктуры, хранения файлов, платежей, email, аналитики и мониторинга ошибок. Им передаются только данные, необходимые для соответствующей функции. Мы также можем раскрыть данные по обязательному законному требованию.</p>
-      <p>Некоторые поставщики и платформы могут находиться в других странах. Такая передача выполняется только в объёме, необходимом для работы выбранной функции, и с учётом применимых требований.</p>
+      <h2 data-i18n="sharing.title">Передача данных</h2>
+      <p data-i18n="sharing.platforms">По вашей команде Vezdepost передаёт контент и необходимые данные подключённым платформам, включая Pinterest и другие выбранные вами социальные сети и мессенджеры. Их дальнейшая обработка регулируется собственными правилами этих платформ.</p>
+      <p data-i18n="sharing.providers">Ограниченный объём данных также может обрабатываться поставщиками инфраструктуры, хранения файлов, платежей, email, аналитики и мониторинга ошибок. Им передаются только данные, необходимые для соответствующей функции. Мы также можем раскрыть данные по обязательному законному требованию.</p>
+      <p data-i18n="sharing.international">Некоторые поставщики и платформы могут находиться в других странах. Такая передача выполняется только в объёме, необходимом для работы выбранной функции, и с учётом применимых требований.</p>
     </section>
 
     <section id="retention">
-      <h2>Хранение и защита</h2>
-      <p>Данные хранятся, пока действует учётная запись или пока они нужны для предоставления сервиса. После запроса на удаление мы удаляем или обезличиваем данные в разумный срок, кроме сведений, которые необходимо сохранить для безопасности, разрешения споров или исполнения закона. Резервные копии обновляются по своему циклу хранения.</p>
-      <p>Мы применяем разумные технические и организационные меры защиты, но ни один способ хранения и передачи данных не может гарантировать абсолютную безопасность.</p>
+      <h2 data-i18n="retention.title">Хранение и защита</h2>
+      <p data-i18n="retention.duration">Данные хранятся, пока действует учётная запись или пока они нужны для предоставления сервиса. После запроса на удаление мы удаляем или обезличиваем данные в разумный срок, кроме сведений, которые необходимо сохранить для безопасности, разрешения споров или исполнения закона. Резервные копии обновляются по своему циклу хранения.</p>
+      <p data-i18n="retention.security">Мы применяем разумные технические и организационные меры защиты, но ни один способ хранения и передачи данных не может гарантировать абсолютную безопасность.</p>
     </section>
 
     <section id="rights">
-      <h2>Ваши права</h2>
-      <p>Вы можете запросить сведения об обработке, копию данных, исправление, ограничение или удаление данных, а также отозвать ранее данное согласие. Подключение социальной платформы можно отозвать в Vezdepost и в настройках самой платформы.</p>
-      <p>Чтобы удалить данные или задать вопрос, напишите оператору и укажите email учётной записи. Для защиты аккаунта мы можем попросить подтвердить личность.</p>
+      <h2 data-i18n="rights.title">Ваши права</h2>
+      <p data-i18n="rights.requests">Вы можете запросить сведения об обработке, копию данных, исправление, ограничение или удаление данных, а также отозвать ранее данное согласие. Подключение социальной платформы можно отозвать в Vezdepost и в настройках самой платформы.</p>
+      <p data-i18n="rights.verification">Чтобы удалить данные или задать вопрос, напишите оператору и укажите email учётной записи. Для защиты аккаунта мы можем попросить подтвердить личность.</p>
     </section>
 
     <section id="cookies">
-      <h2>Файлы cookie и аналитика</h2>
-      <p>Необходимые cookies поддерживают вход, безопасность и выбранные настройки. Аналитические инструменты помогают понять использование сайта и приложения, а системы мониторинга — находить ошибки. Доступность необязательных cookies можно ограничить настройками браузера, однако часть функций после этого может работать некорректно.</p>
+      <h2 data-i18n="cookies.title">Файлы cookie и аналитика</h2>
+      <p data-i18n="cookies.body">Необходимые cookies поддерживают вход, безопасность и выбранные настройки. Аналитические инструменты помогают понять использование сайта и приложения, а системы мониторинга — находить ошибки. Доступность необязательных cookies можно ограничить настройками браузера, однако часть функций после этого может работать некорректно.</p>
     </section>
 
     <section id="changes">
-      <h2>Изменения политики</h2>
-      <p>Политика может обновляться при изменении Vezdepost, состава поставщиков или требований закона. Актуальная версия всегда опубликована по этому адресу; дата начала её действия указана вверху страницы.</p>
+      <h2 data-i18n="changes.title">Изменения политики</h2>
+      <p data-i18n="changes.body">Политика может обновляться при изменении Vezdepost, состава поставщиков или требований закона. Актуальная версия всегда опубликована по этому адресу; дата начала её действия указана вверху страницы.</p>
     </section>
 
     <section id="contacts">
-      <h2>Контакты</h2>
-      <p>Запросы о персональных данных, включая удаление данных и учётной записи: <a href="https://t.me/FedrBodr" rel="noopener noreferrer">Telegram @FedrBodr</a>.</p>
+      <h2 data-i18n="contacts.title">Контакты</h2>
+      <p data-i18n-html="contacts.body">Запросы о персональных данных, включая удаление данных и учётной записи: <a href="https://t.me/FedrBodr" rel="noopener noreferrer">Telegram @FedrBodr</a>.</p>
     </section>
   </main>
 
-  <footer>© 2026 Vezdepost · <a href="/">Главная</a></footer>
+  <footer data-i18n-html="footer.body">© 2026 Vezdepost · <a href="/">Главная</a></footer>
+
+  <script id="privacy-i18n">
+  (function () {
+    var STORAGE_KEY = 'vezdepost-language';
+    var RUSSIAN_REGIONS = ['RU', 'BY', 'KZ', 'KG'];
+    var currentLanguage = 'en';
+    var translations = {
+      ru: {
+        'meta.title': 'Политика конфиденциальности — Vezdepost',
+        'meta.description': 'Политика конфиденциальности сервиса Vezdepost: какие данные обрабатываются, зачем и как связаться с оператором.',
+        'nav.ariaLabel': 'Основная навигация',
+        'nav.back': 'Вернуться на главную',
+        'language.label': 'Язык',
+        'language.ru': 'Русский',
+        'language.en': 'Английский',
+        'hero.title': 'Политика <span>конфиденциальности</span>',
+        'hero.updated': 'Действует с 13 августа 2026 года',
+        'intro.description': 'Эта политика описывает обработку персональных данных при использовании сайта <a href="https://vezdepost.ru">vezdepost.ru</a> и приложения Vezdepost — сервиса для подготовки, планирования и публикации материалов в социальных сетях и мессенджерах.',
+        'intro.operator': '<strong>Оператор:</strong> Федоренко Дмитрий Александрович, плательщик налога на профессиональный доход (ИНН 772373964340).',
+        'data.title': 'Какие данные мы обрабатываем',
+        'data.account': 'данные учётной записи и организации: имя, email, сведения профиля и настройки;',
+        'data.social': 'идентификаторы подключённых аккаунтов социальных платформ, предоставленные ими данные профиля, разрешения и токены авторизации;',
+        'data.content': 'созданные или загруженные вами тексты, изображения, видео и расписание публикаций;',
+        'data.billing': 'сведения о тарифе и платеже, при этом полные реквизиты банковской карты обрабатывает платёжный провайдер;',
+        'data.technical': 'технические данные: IP-адрес, тип устройства и браузера, cookies, журналы действий, диагностика ошибок и статистика использования.',
+        'purposes.title': 'Для чего используются данные',
+        'purposes.service': 'Данные нужны, чтобы создавать и защищать учётные записи, подключать выбранные вами платформы, хранить и публиковать контент по расписанию, оказывать поддержку, проводить платежи, предотвращать злоупотребления, устранять ошибки и улучшать Vezdepost.',
+        'purposes.basis': 'Обработка выполняется для предоставления запрошенного сервиса, исполнения соглашения с пользователем, соблюдения применимых требований закона и на основании согласия — когда оно требуется.',
+        'sharing.title': 'Передача данных',
+        'sharing.platforms': 'По вашей команде Vezdepost передаёт контент и необходимые данные подключённым платформам, включая Pinterest и другие выбранные вами социальные сети и мессенджеры. Их дальнейшая обработка регулируется собственными правилами этих платформ.',
+        'sharing.providers': 'Ограниченный объём данных также может обрабатываться поставщиками инфраструктуры, хранения файлов, платежей, email, аналитики и мониторинга ошибок. Им передаются только данные, необходимые для соответствующей функции. Мы также можем раскрыть данные по обязательному законному требованию.',
+        'sharing.international': 'Некоторые поставщики и платформы могут находиться в других странах. Такая передача выполняется только в объёме, необходимом для работы выбранной функции, и с учётом применимых требований.',
+        'retention.title': 'Хранение и защита',
+        'retention.duration': 'Данные хранятся, пока действует учётная запись или пока они нужны для предоставления сервиса. После запроса на удаление мы удаляем или обезличиваем данные в разумный срок, кроме сведений, которые необходимо сохранить для безопасности, разрешения споров или исполнения закона. Резервные копии обновляются по своему циклу хранения.',
+        'retention.security': 'Мы применяем разумные технические и организационные меры защиты, но ни один способ хранения и передачи данных не может гарантировать абсолютную безопасность.',
+        'rights.title': 'Ваши права',
+        'rights.requests': 'Вы можете запросить сведения об обработке, копию данных, исправление, ограничение или удаление данных, а также отозвать ранее данное согласие. Подключение социальной платформы можно отозвать в Vezdepost и в настройках самой платформы.',
+        'rights.verification': 'Чтобы удалить данные или задать вопрос, напишите оператору и укажите email учётной записи. Для защиты аккаунта мы можем попросить подтвердить личность.',
+        'cookies.title': 'Файлы cookie и аналитика',
+        'cookies.body': 'Необходимые cookies поддерживают вход, безопасность и выбранные настройки. Аналитические инструменты помогают понять использование сайта и приложения, а системы мониторинга — находить ошибки. Доступность необязательных cookies можно ограничить настройками браузера, однако часть функций после этого может работать некорректно.',
+        'changes.title': 'Изменения политики',
+        'changes.body': 'Политика может обновляться при изменении Vezdepost, состава поставщиков или требований закона. Актуальная версия всегда опубликована по этому адресу; дата начала её действия указана вверху страницы.',
+        'contacts.title': 'Контакты',
+        'contacts.body': 'Запросы о персональных данных, включая удаление данных и учётной записи: <a href="https://t.me/FedrBodr" rel="noopener noreferrer">Telegram @FedrBodr</a>.',
+        'footer.body': '© 2026 Vezdepost · <a href="/">Главная</a>'
+      },
+      en: {
+        'meta.title': 'Privacy Policy — Vezdepost',
+        'meta.description': 'Privacy Policy explaining how Vezdepost processes personal data, why it is used, and how to contact the operator.',
+        'nav.ariaLabel': 'Main navigation',
+        'nav.back': 'Back to home',
+        'language.label': 'Language',
+        'language.ru': 'Russian',
+        'language.en': 'English',
+        'hero.title': 'Privacy <span>Policy</span>',
+        'hero.updated': 'Effective August 13, 2026',
+        'intro.description': 'This policy describes the processing of personal data when you use <a href="https://vezdepost.ru">vezdepost.ru</a> and the Vezdepost application, a service for preparing, scheduling, and publishing content to social networks and messengers.',
+        'intro.operator': '<strong>Operator:</strong> Федоренко Дмитрий Александрович, an individual registered in Russia under the professional income tax regime (INN 772373964340).',
+        'data.title': 'Data we process',
+        'data.account': 'account and organization data, including your name, email address, profile details, and settings;',
+        'data.social': 'identifiers of connected social-platform accounts, profile data supplied by those platforms, permissions, and authorization tokens;',
+        'data.content': 'texts, images, videos, and publishing schedules that you create or upload;',
+        'data.billing': 'plan and payment metadata; full bank-card details are processed by the payment provider;',
+        'data.technical': 'technical data, including IP address, device and browser type, cookies, activity logs, error diagnostics, and usage statistics.',
+        'purposes.title': 'How we use data',
+        'purposes.service': 'We use data to create and protect accounts, connect the platforms you select, store and publish content on schedule, provide support, process payments, prevent abuse, diagnose errors, and improve Vezdepost.',
+        'purposes.basis': 'Processing is performed to provide the service you request, fulfill our agreement with you, comply with applicable legal obligations, and rely on consent where consent is required.',
+        'sharing.title': 'Data sharing',
+        'sharing.platforms': 'At your direction, Vezdepost sends content and necessary data to connected platforms, including Pinterest and the other social networks and messengers you select. Those platforms process the data further under their own policies.',
+        'sharing.providers': 'A limited amount of data may also be processed by providers of infrastructure, file storage, payments, email, analytics, and error monitoring. They receive only the data needed for the relevant function. We may also disclose data in response to a binding lawful request.',
+        'sharing.international': 'Some providers and platforms may be located in other countries. Such transfers are limited to what is needed for the selected function and are handled with regard to applicable requirements.',
+        'retention.title': 'Retention and security',
+        'retention.duration': 'We retain data while your account is active or while it is needed to provide the service. After a deletion request, we delete or anonymize data within a reasonable period, except for information that must be kept for security, dispute resolution, or legal compliance. Backups expire according to their own retention cycle.',
+        'retention.security': 'We use reasonable technical and organizational safeguards, but no method of storing or transmitting data can guarantee absolute security.',
+        'rights.title': 'Your rights',
+        'rights.requests': 'Request access, correction, restriction, or deletion of your personal data, obtain a copy, or withdraw consent previously given. You can revoke a social-platform connection in Vezdepost and in the platform’s own settings.',
+        'rights.verification': 'To delete data or ask a question, contact the operator and include the email address used for your account. We may ask you to verify your identity to protect the account.',
+        'cookies.title': 'Cookies and analytics',
+        'cookies.body': 'Necessary cookies support sign-in, security, and selected settings. Analytics tools help us understand use of the site and application, while monitoring systems help us find errors. You can limit optional cookies in your browser settings, although some features may then work incorrectly.',
+        'changes.title': 'Policy changes',
+        'changes.body': 'We may update this policy when Vezdepost, its providers, or legal requirements change. The current version is always published at this address, with its effective date shown at the top.',
+        'contacts.title': 'Contact',
+        'contacts.body': 'For personal-data requests, including deletion of data and your account, contact <a href="https://t.me/FedrBodr" rel="noopener noreferrer">Telegram @FedrBodr</a>.',
+        'footer.body': '© 2026 Vezdepost · <a href="/">Home</a>'
+      }
+    };
+
+    function languageFromLocale(locale) {
+      if (typeof locale !== 'string' || !locale.trim()) return 'en';
+      var normalized = locale.trim().replace(/_/g, '-');
+      var language = '';
+      var region = '';
+
+      try {
+        if (typeof Intl !== 'undefined' && Intl.Locale) {
+          var parsed = new Intl.Locale(normalized);
+          language = (parsed.language || '').toLowerCase();
+          region = (parsed.region || '').toUpperCase();
+        }
+      } catch (error) {
+        language = '';
+        region = '';
+      }
+
+      if (!language) {
+        var parts = normalized.split('-');
+        if (!/^[A-Za-z]{2,3}$/.test(parts[0] || '')) return 'en';
+        language = parts[0].toLowerCase();
+        for (var index = 1; index < parts.length; index += 1) {
+          if (/^[A-Za-z]{2}$/.test(parts[index])) {
+            region = parts[index].toUpperCase();
+            break;
+          }
+        }
+      }
+
+      return language === 'ru' || RUSSIAN_REGIONS.indexOf(region) !== -1
+        ? 'ru'
+        : 'en';
+    }
+
+    function detectLanguage() {
+      try {
+        var stored = window.localStorage.getItem(STORAGE_KEY);
+        if (stored === 'ru' || stored === 'en') return stored;
+      } catch (error) {}
+
+      var locale = '';
+      if (navigator.languages && navigator.languages.length) {
+        locale = navigator.languages[0];
+      } else {
+        locale = navigator.language || '';
+      }
+      return languageFromLocale(locale);
+    }
+
+    function applyLanguage(language, persist) {
+      var selected = language === 'ru' ? 'ru' : 'en';
+      var dictionary = translations[selected];
+      currentLanguage = selected;
+
+      try {
+        document.documentElement.lang = selected;
+        document.querySelectorAll('[data-i18n]').forEach(function (element) {
+          element.textContent = dictionary[element.getAttribute('data-i18n')];
+        });
+        document.querySelectorAll('[data-i18n-html]').forEach(function (element) {
+          element.innerHTML = dictionary[element.getAttribute('data-i18n-html')];
+        });
+        document.querySelectorAll('[data-i18n-content]').forEach(function (element) {
+          element.setAttribute('content', dictionary[element.getAttribute('data-i18n-content')]);
+        });
+        document.querySelectorAll('[data-i18n-aria-label]').forEach(function (element) {
+          element.setAttribute('aria-label', dictionary[element.getAttribute('data-i18n-aria-label')]);
+        });
+        document.querySelectorAll('[data-language]').forEach(function (button) {
+          button.setAttribute('aria-pressed', button.getAttribute('data-language') === selected ? 'true' : 'false');
+        });
+
+        if (persist) {
+          try {
+            window.localStorage.setItem(STORAGE_KEY, selected);
+          } catch (error) {}
+        }
+      } finally {
+        document.documentElement.classList.remove('i18n-pending');
+      }
+    }
+
+    document.querySelectorAll('[data-language]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        applyLanguage(button.getAttribute('data-language'), true);
+      });
+    });
+
+    window.__privacyI18n = {
+      languageFromLocale: languageFromLocale,
+      detectLanguage: detectLanguage,
+      getCurrentLanguage: function () { return currentLanguage; },
+      applyLanguage: applyLanguage,
+      translations: translations
+    };
+
+    try {
+      applyLanguage(detectLanguage(), false);
+    } catch (error) {
+      applyLanguage('en', false);
+    }
+  })();
+  </script>
 </body>
 </html>
