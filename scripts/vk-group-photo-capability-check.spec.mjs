@@ -835,7 +835,7 @@ describe('VK Group photo capability check', () => {
     ],
     ['multiple post readback results', { verifiedExtraPost: true }],
   ])(
-    'never deletes an ambiguous post with %s',
+    'does not delete an unverified photo when post readback is ambiguous: %s',
     async (_description, verificationOverride) => {
       const fixture = await makeFixture();
       const { fetchImpl, methods } = successfulFetch(
@@ -856,7 +856,8 @@ describe('VK Group photo capability check', () => {
 
       expect(exitCode).toBe(3);
       expect(methods).not.toContain('wall.delete');
-      expect(methods).toContain('photos.delete');
+      expect(methods).not.toContain('photos.delete');
+      expect(methods).not.toContain('photos.getById');
       expect(parseRecords(fixture.output())).toEqual([
         {
           phase: 'verify-authorship',
@@ -902,7 +903,7 @@ describe('VK Group photo capability check', () => {
     expect(fixture.output()).not.toContain('private setup');
   });
 
-  it('serializes SIGTERM cleanup after saved-photo ownership proof', async () => {
+  it('keeps a SIGTERM after photo save pending without deleting the unverified photo', async () => {
     const fixture = await makeFixture();
     const signalExit = vi.fn();
     let signalOutput = '';
@@ -929,7 +930,7 @@ describe('VK Group photo capability check', () => {
       tempRoot: fixture.root,
     });
 
-    expect(exitCode).toBe(143);
+    expect(exitCode).toBe(3);
     expect(signalExit).not.toHaveBeenCalled();
     expect(signalOutput).toBe('');
     expect(methods).toEqual([
@@ -937,11 +938,9 @@ describe('VK Group photo capability check', () => {
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',
-      'photos.delete',
-      'photos.getById',
     ]);
     expect(parseRecords(fixture.output())).toEqual([
-      { phase: 'signal', status: 'NO_GO' },
+      { phase: 'signal', status: 'PENDING_CLEANUP' },
     ]);
     expect(fixture.output()).not.toContain('private-user-oauth-token');
     expect(fixture.output()).not.toContain(fixture.root);
@@ -1048,17 +1047,15 @@ describe('VK Group photo capability check', () => {
     });
 
     expect(signaled).toBe(true);
-    expect(result).toEqual({ code: 143, signal: null });
+    expect(result).toEqual({ code: 3, signal: null });
     expect(parseRecords(output)).toEqual([
-      { phase: 'signal', status: 'NO_GO' },
+      { phase: 'signal', status: 'PENDING_CLEANUP' },
     ]);
     expect((await readFile(callsFile, 'utf8')).trim().split('\n')).toEqual([
       ...authorizationMethods,
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',
-      'photos.delete',
-      'photos.getById',
     ]);
     expect(JSON.parse(await readFile(listenersFile, 'utf8'))).toEqual({
       sigint: 0,
@@ -1115,7 +1112,7 @@ describe('VK Group photo capability check', () => {
     expect(fixture.output()).not.toContain(fixture.root);
   });
 
-  it('keeps a signaled run pending when remote absence cannot be proven', async () => {
+  it('keeps a signaled run pending without deleting the unverified photo', async () => {
     const fixture = await makeFixture();
     const { fetchImpl, methods } = successfulFetch(fixture, {
       photoRemains: true,
@@ -1145,15 +1142,9 @@ describe('VK Group photo capability check', () => {
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',
-      'photos.delete',
-      'photos.getById',
     ]);
     expect(parseRecords(fixture.output())).toEqual([
-      {
-        phase: 'verify-photo-cleanup',
-        method: 'photos.getById',
-        status: 'PENDING_CLEANUP',
-      },
+      { phase: 'signal', status: 'PENDING_CLEANUP' },
     ]);
   });
 
@@ -1191,8 +1182,6 @@ describe('VK Group photo capability check', () => {
       'photos.getWallUploadServer',
       'upload',
       'photos.saveWallPhoto',
-      'photos.delete',
-      'photos.getById',
     ]);
     expect(parseRecords(fixture.output())).toEqual([
       { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
@@ -1267,7 +1256,7 @@ describe('VK Group photo capability check', () => {
     ]);
   });
 
-  it('keeps an unverified wall candidate private when authorship lookup is rejected', async () => {
+  it('keeps an unverified photo private when authorship lookup is rejected', async () => {
     const fixture = await makeFixture();
     const { fetchImpl, methods } = successfulFetch(fixture, {
       verifyErrorCode: 7,
@@ -1286,7 +1275,8 @@ describe('VK Group photo capability check', () => {
 
     expect(exitCode).toBe(3);
     expect(methods).not.toContain('wall.delete');
-    expect(methods).toContain('photos.delete');
+    expect(methods).not.toContain('photos.delete');
+    expect(methods).not.toContain('photos.getById');
     expect(parseRecords(fixture.output())).toEqual([
       {
         phase: 'verify-authorship',
@@ -1479,7 +1469,7 @@ describe('VK Group photo capability check', () => {
     });
   });
 
-  it('marks a lost wall.post response pending even after known photo cleanup', async () => {
+  it('marks a lost wall.post response pending without deleting the unverified photo', async () => {
     const fixture = await makeFixture();
     const { fetchImpl, methods } = successfulFetch(fixture, {
       wallPostTransport: true,
@@ -1503,8 +1493,6 @@ describe('VK Group photo capability check', () => {
       'upload',
       'photos.saveWallPhoto',
       'wall.post',
-      'photos.delete',
-      'photos.getById',
     ]);
     expect(parseRecords(fixture.output())).toEqual([
       {
@@ -1592,7 +1580,7 @@ describe('VK Group photo capability check', () => {
     expect(fixture.output()).not.toContain('private-user-oauth-token');
   });
 
-  it('keeps a malformed wall.post error envelope pending after photo cleanup', async () => {
+  it('keeps a malformed wall.post error envelope pending without deleting the unverified photo', async () => {
     const fixture = await makeFixture();
     const { fetchImpl, methods } = successfulFetch(fixture, {
       wallPostError: { error: 'private malformed wall envelope' },
@@ -1616,8 +1604,6 @@ describe('VK Group photo capability check', () => {
       'upload',
       'photos.saveWallPhoto',
       'wall.post',
-      'photos.delete',
-      'photos.getById',
     ]);
     expect(parseRecords(fixture.output())).toEqual([
       {
