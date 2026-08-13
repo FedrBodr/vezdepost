@@ -44,8 +44,13 @@ case "$*" in
   *"to_regclass('public.mastra_ai_spans')"*)
     printf '%s\n' 'mastra_ai_spans'
     ;;
+  *"information_schema.tables"*"table_schema="*)
+    printf '%s\n' '1'
+    ;;
   *"to_regclass("*".mastra_ai_spans')"*)
-    printf '%s\n' 'mastra_ai_spans'
+    # PostgreSQL folds the unquoted regclass text to lowercase, so a quoted
+    # timestamped schema containing T/Z is not found by this lookup.
+    printf '%s' ''
     ;;
   *"pm2 pid backend"*)
     printf '%s\n' '123'

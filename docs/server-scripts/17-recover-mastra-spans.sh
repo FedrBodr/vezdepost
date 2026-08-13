@@ -104,9 +104,9 @@ done
   exit 1
 }
 
-backup_table=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -Atqc \
-  "select coalesce(to_regclass('$backup_schema.mastra_ai_spans')::text, '');")
-[[ -n "$backup_table" ]] || {
+backup_table_count=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -Atqc \
+  "select count(*) from information_schema.tables where table_schema='$backup_schema' and table_name='mastra_ai_spans';")
+[[ "$backup_table_count" == 1 ]] || {
   echo 'Backup schema verification failed' >&2
   exit 1
 }
