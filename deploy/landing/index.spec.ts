@@ -540,14 +540,22 @@ describe('privacy policy', () => {
     expect(
       document.querySelector('link[rel="canonical"]')?.getAttribute('href')
     ).toBe('https://vezdepost.ru/privacy');
-    for (const language of ['en', 'ru'] as const) {
-      window.__privacyI18n.applyLanguage(language);
-      const text = document.body.textContent || '';
-      expect(text).toContain('Федоренко Дмитрий Александрович');
-      expect(text).toContain('772373964340');
-      expect(document.querySelector('a[href="https://t.me/FedrBodr"]')?.textContent).toContain('@FedrBodr');
-      expect(text).not.toContain('07.08.1987');
-    }
+    window.__privacyI18n.applyLanguage('ru');
+    const operator = document.querySelector('[data-i18n-html="intro.operator"]');
+    expect(operator?.textContent).toContain(
+      'Федоренко Дмитрий Александрович'
+    );
+
+    window.__privacyI18n.applyLanguage('en');
+    expect(operator?.textContent).toContain('Dmitriy Fedorenko');
+    expect(operator?.textContent).not.toContain(
+      'Федоренко Дмитрий Александрович'
+    );
+    expect(operator?.textContent).toContain('772373964340');
+    expect(
+      document.querySelector('a[href="https://t.me/FedrBodr"]')?.textContent
+    ).toContain('@FedrBodr');
+    expect(document.body.textContent).not.toContain('07.08.1987');
   });
 });
 
