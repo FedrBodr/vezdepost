@@ -23,9 +23,7 @@ describe('production configuration', () => {
     expect(example).toContain(
       'NEXT_PUBLIC_POSTHOG_HOST="https://eu.i.posthog.com"'
     );
-    expect(readme).toContain(
-      'https://app.vezdepost.ru/integrations/social/x'
-    );
+    expect(readme).toContain('https://app.vezdepost.ru/integrations/social/x');
     expect(readme).toContain('OAuth 1.0a');
     expect(readme).toContain('Read and write');
   });

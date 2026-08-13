@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const response = (body: Record<string, unknown>) =>
-  ({ json: vi.fn().mockResolvedValue(body) }) as unknown as Response;
+  ({ json: vi.fn().mockResolvedValue(body) } as unknown as Response);
 
 vi.mock(
   '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface',

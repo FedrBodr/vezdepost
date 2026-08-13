@@ -34,10 +34,12 @@
 ### Task 1: Preserve Pinterest refresh-token rotation
 
 **Files:**
+
 - Create: `libraries/nestjs-libraries/src/integrations/social/pinterest.provider.spec.ts`
 - Modify: `libraries/nestjs-libraries/src/integrations/social/pinterest.provider.ts:129-164`
 
 **Interfaces:**
+
 - Consumes: `PinterestProvider.refreshToken(refreshToken: string): Promise<AuthTokenDetails>` and the existing `AuthTokenDetails.refreshToken` field.
 - Produces: the same method signature, returning the response `refresh_token` when present and its input token otherwise.
 
@@ -48,16 +50,20 @@ Create a focused Vitest file with hoisted `fetch` mocks and the same dependency-
 ```ts
 it('returns the rotated refresh token from Pinterest', async () => {
   mocks.fetch
-    .mockResolvedValueOnce(response({
-      access_token: 'new-access-token',
-      refresh_token: 'new-refresh-token',
-      expires_in: 2592000,
-    }))
-    .mockResolvedValueOnce(response({
-      id: 'account-1',
-      username: 'vezdepost',
-      profile_image: 'https://cdn.example/avatar.png',
-    }));
+    .mockResolvedValueOnce(
+      response({
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 2592000,
+      })
+    )
+    .mockResolvedValueOnce(
+      response({
+        id: 'account-1',
+        username: 'vezdepost',
+        profile_image: 'https://cdn.example/avatar.png',
+      })
+    );
 
   await expect(
     new PinterestProvider().refreshToken('old-refresh-token')
@@ -70,15 +76,19 @@ it('returns the rotated refresh token from Pinterest', async () => {
 
 it('keeps the previous refresh token when Pinterest omits a replacement', async () => {
   mocks.fetch
-    .mockResolvedValueOnce(response({
-      access_token: 'new-access-token',
-      expires_in: 2592000,
-    }))
-    .mockResolvedValueOnce(response({
-      id: 'account-1',
-      username: 'vezdepost',
-      profile_image: '',
-    }));
+    .mockResolvedValueOnce(
+      response({
+        access_token: 'new-access-token',
+        expires_in: 2592000,
+      })
+    )
+    .mockResolvedValueOnce(
+      response({
+        id: 'account-1',
+        username: 'vezdepost',
+        profile_image: '',
+      })
+    );
 
   await expect(
     new PinterestProvider().refreshToken('old-refresh-token')
@@ -90,7 +100,7 @@ Set `PINTEREST_CLIENT_ID`, `PINTEREST_CLIENT_SECRET`, and `FRONTEND_URL` to non-
 
 ```ts
 const response = (body: Record<string, unknown>) =>
-  ({ json: vi.fn().mockResolvedValue(body) }) as unknown as Response;
+  ({ json: vi.fn().mockResolvedValue(body) } as unknown as Response);
 ```
 
 - [ ] **Step 2: Run the focused test and verify RED**
@@ -108,7 +118,7 @@ Expected: the rotated-token test fails because the provider returns `old-refresh
 Change only the refresh response destructuring and returned token:
 
 ```ts
-const { access_token, refresh_token, expires_in } = await (
+const { access_token, refresh_token, expires_in } = await(
   await fetch('https://api.pinterest.com/v5/oauth/token', {
     // existing request remains unchanged
   })
@@ -147,11 +157,13 @@ rtk git commit -m 'fix: preserve rotated Pinterest refresh tokens'
 ### Task 2: Track required Pinterest production configuration
 
 **Files:**
+
 - Modify: `deploy/production-config.spec.ts`
 - Modify: `docker-compose.override.yaml`
 - Modify: `deploy/README.md`
 
 **Interfaces:**
+
 - Consumes: untracked `.env` keys `PINTEREST_CLIENT_ID` and `PINTEREST_CLIENT_SECRET`.
 - Produces: required environment values inside every recreated `postiz` container and documented callback `https://app.vezdepost.ru/integrations/social/pinterest`.
 
@@ -193,8 +205,8 @@ Expected: the new test fails because the production override and README do not y
 Add the two variable names to the secret inventory comment and add these entries beside the other social OAuth credentials:
 
 ```yaml
-      PINTEREST_CLIENT_ID: '${PINTEREST_CLIENT_ID:?set in .env}'
-      PINTEREST_CLIENT_SECRET: '${PINTEREST_CLIENT_SECRET:?set in .env}'
+PINTEREST_CLIENT_ID: '${PINTEREST_CLIENT_ID:?set in .env}'
+PINTEREST_CLIENT_SECRET: '${PINTEREST_CLIENT_SECRET:?set in .env}'
 ```
 
 - [ ] **Step 4: Document the production Pinterest flow**
@@ -242,10 +254,12 @@ rtk git commit -m 'ops: require Pinterest production credentials'
 ### Task 3: Add the guarded Pinterest configuration and deployment script
 
 **Files:**
+
 - Create: `docs/server-scripts/19-deploy-pinterest-trial.spec.sh`
 - Create: `docs/server-scripts/19-deploy-pinterest-trial.sh`
 
 **Interfaces:**
+
 - Consumes: one lowercase 40-character expected SHA, hidden stdin values for `PINTEREST_CLIENT_ID` and `PINTEREST_CLIENT_SECRET`, `/root/postiz-app`, the existing autodeploy lock, Docker Compose, and the production `.env`.
 - Produces: backed-up and atomically updated `.env`, exact deployed revision marker, a healthy minimally recreated `postiz`, and status-only output.
 
@@ -377,9 +391,11 @@ rtk git commit -m 'ops: deploy Pinterest trial OAuth safely'
 ### Task 4: Verify the complete local change set
 
 **Files:**
+
 - Verify only; no planned modifications.
 
 **Interfaces:**
+
 - Consumes: Tasks 1-3.
 - Produces: evidence that the exact focused tests and workspace verification pass before production work.
 
@@ -417,10 +433,12 @@ Expected: only intended tracked files changed; tracked files contain variable na
 ### Task 5: Configure and deploy production safely
 
 **Files:**
+
 - Production mutation: `/root/postiz-app/.env`, `/root/postiz-app` checkout, and `postiz-max:local` image.
 - Production backups: timestamped `.env` backup and `postiz-max:pinterest-trial-backup-*` image.
 
 **Interfaces:**
+
 - Consumes: verified local HEAD, hidden Pinterest App ID and App secret, SSH alias `vezdepost`, and fast-forward access to `origin/prod`.
 - Produces: exact production SHA with Pinterest credentials present in only the `postiz` container.
 
@@ -456,9 +474,11 @@ Confirm the server HEAD and deployed-revision marker equal local HEAD; `postiz` 
 ### Task 6: Complete Pinterest Trial OAuth and board validation
 
 **Files:**
+
 - No repository or production configuration modifications expected.
 
 **Interfaces:**
+
 - Consumes: production Vezdepost UI, approved Pinterest Trial application, exact callback, and the user's signed-in Pinterest Business session.
 - Produces: visible Pinterest integration, discovered boards, and a valid unpublished draft.
 

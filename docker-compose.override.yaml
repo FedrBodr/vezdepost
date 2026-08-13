@@ -35,7 +35,7 @@ services:
     # nginx starts right away (clean 502 instead of hanging connects);
     # the app starts only once temporal actually accepts connections —
     # otherwise the backend loses the startup race and dies (2026-07-09 incident)
-    command: ["sh", "-c", "nginx && node /wait-temporal.js && pnpm run pm2"]
+    command: ['sh', '-c', 'nginx && node /wait-temporal.js && pnpm run pm2']
     # host port only for on-server debugging; the internet comes in via caddy
     ports: !override
       - '127.0.0.1:4007:5000'
