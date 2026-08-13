@@ -56,8 +56,13 @@ STUB
 exit 0
 STUB
 
+  cat > "$bin_dir/systemctl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$SYSTEMCTL_CALLS"
+STUB
+
   chmod +x "$bin_dir/git" "$bin_dir/docker" "$bin_dir/curl" \
-    "$bin_dir/flock" "$bin_dir/sleep"
+    "$bin_dir/flock" "$bin_dir/sleep" "$bin_dir/systemctl"
 }
 
 run_success_case() {
@@ -68,6 +73,7 @@ run_success_case() {
   local docker_calls="$case_dir/docker.calls"
   local curl_calls="$case_dir/curl.calls"
   local deployed_rev_file="$case_dir/deployed-rev"
+  local systemctl_calls="$case_dir/systemctl.calls"
   local expected_rev='2222222222222222222222222222222222222222'
 
   mkdir -p "$repo"
@@ -75,11 +81,13 @@ run_success_case() {
   : > "$git_calls"
   : > "$docker_calls"
   : > "$curl_calls"
+  : > "$systemctl_calls"
 
   PATH="$bin_dir:$PATH" \
     GIT_CALLS="$git_calls" \
     DOCKER_CALLS="$docker_calls" \
     CURL_CALLS="$curl_calls" \
+    SYSTEMCTL_CALLS="$systemctl_calls" \
     CURRENT_REV='1111111111111111111111111111111111111111' \
     EXPECTED_REV="$expected_rev" \
     REPO_DIR="$repo" \
@@ -109,6 +117,8 @@ run_success_case() {
     "$docker_calls" || fail 'Temporal workflow poller was not checked'
   [[ "$(cat "$deployed_rev_file")" == "$expected_rev" ]] ||
     fail 'deployed revision marker was not written'
+  [[ ! -s "$systemctl_calls" ]] ||
+    fail 'normal deployment restarted Docker without explicit opt-in'
 }
 
 run_invalid_sha_case() {
@@ -118,17 +128,20 @@ run_invalid_sha_case() {
   local git_calls="$case_dir/git.calls"
   local docker_calls="$case_dir/docker.calls"
   local curl_calls="$case_dir/curl.calls"
+  local systemctl_calls="$case_dir/systemctl.calls"
 
   mkdir -p "$repo"
   make_stubs "$bin_dir"
   : > "$git_calls"
   : > "$docker_calls"
   : > "$curl_calls"
+  : > "$systemctl_calls"
 
   if PATH="$bin_dir:$PATH" \
     GIT_CALLS="$git_calls" \
     DOCKER_CALLS="$docker_calls" \
     CURL_CALLS="$curl_calls" \
+    SYSTEMCTL_CALLS="$systemctl_calls" \
     CURRENT_REV='1111111111111111111111111111111111111111' \
     EXPECTED_REV='2222222222222222222222222222222222222222' \
     REPO_DIR="$repo" \
@@ -142,6 +155,7 @@ run_invalid_sha_case() {
   ! grep -q '^reset ' "$git_calls" || fail 'git reset ran for invalid SHA'
   [[ ! -s "$docker_calls" ]] || fail 'Docker ran for invalid SHA'
   [[ ! -s "$curl_calls" ]] || fail 'curl ran for invalid SHA'
+  [[ ! -s "$systemctl_calls" ]] || fail 'systemctl ran for invalid SHA'
 }
 
 run_rollback_case() {
@@ -151,6 +165,7 @@ run_rollback_case() {
   local git_calls="$case_dir/git.calls"
   local docker_calls="$case_dir/docker.calls"
   local curl_calls="$case_dir/curl.calls"
+  local systemctl_calls="$case_dir/systemctl.calls"
   local current_rev='1111111111111111111111111111111111111111'
   local expected_rev='2222222222222222222222222222222222222222'
 
@@ -159,11 +174,13 @@ run_rollback_case() {
   : > "$git_calls"
   : > "$docker_calls"
   : > "$curl_calls"
+  : > "$systemctl_calls"
 
   if PATH="$bin_dir:$PATH" \
     GIT_CALLS="$git_calls" \
     DOCKER_CALLS="$docker_calls" \
     CURL_CALLS="$curl_calls" \
+    SYSTEMCTL_CALLS="$systemctl_calls" \
     CURRENT_REV="$current_rev" \
     EXPECTED_REV="$expected_rev" \
     FAIL_BUILD=1 \
@@ -185,7 +202,52 @@ run_rollback_case() {
     fail 'failed deployment wrote the deployed revision marker'
 }
 
+run_buildkit_recovery_case() {
+  local case_dir="$TMP_DIR/recovery"
+  local repo="$case_dir/repo"
+  local bin_dir="$case_dir/bin"
+  local git_calls="$case_dir/git.calls"
+  local docker_calls="$case_dir/docker.calls"
+  local curl_calls="$case_dir/curl.calls"
+  local systemctl_calls="$case_dir/systemctl.calls"
+  local expected_rev='2222222222222222222222222222222222222222'
+
+  mkdir -p "$repo"
+  make_stubs "$bin_dir"
+  : > "$git_calls"
+  : > "$docker_calls"
+  : > "$curl_calls"
+  : > "$systemctl_calls"
+
+  PATH="$bin_dir:$PATH" \
+    GIT_CALLS="$git_calls" \
+    DOCKER_CALLS="$docker_calls" \
+    CURL_CALLS="$curl_calls" \
+    SYSTEMCTL_CALLS="$systemctl_calls" \
+    CURRENT_REV='1111111111111111111111111111111111111111' \
+    EXPECTED_REV="$expected_rev" \
+    REPO_DIR="$repo" \
+    DEPLOYED_REV_FILE="$case_dir/deployed-rev" \
+    AUTODEPLOY_LOCK="$case_dir/autodeploy.lock" \
+    RESTART_DOCKER_BEFORE_BUILD=1 \
+    SKIP_DEPLOY_WAIT=1 \
+    bash "$SCRIPT" "$expected_rev" > "$case_dir/output" 2>&1 || {
+      cat "$case_dir/output" >&2
+      fail 'BuildKit recovery deployment case failed'
+    }
+
+  grep -q '^restart docker$' "$systemctl_calls" ||
+    fail 'explicit BuildKit recovery did not restart Docker'
+  grep -q '^is-active --quiet docker$' "$systemctl_calls" ||
+    fail 'Docker service was not checked after restart'
+  grep -q '^info$' "$docker_calls" ||
+    fail 'Docker daemon readiness was not checked before the build'
+  grep -q '^compose build postiz$' "$docker_calls" ||
+    fail 'postiz was not built after BuildKit recovery'
+}
+
 run_success_case
 run_invalid_sha_case
 run_rollback_case
+run_buildkit_recovery_case
 echo 'Tumblr multipart deployment script tests passed'

@@ -15,9 +15,14 @@ POSTIZ_CONTAINER=${POSTIZ_CONTAINER:-postiz}
 POSTGRES_CONTAINER=${POSTGRES_CONTAINER:-postiz-postgres}
 POSTGRES_USER=${POSTGRES_USER:-postiz-user}
 POSTGRES_DB=${POSTGRES_DB:-postiz-db-local}
+RESTART_DOCKER_BEFORE_BUILD=${RESTART_DOCKER_BEFORE_BUILD:-0}
 
 [[ "$EXPECTED_REV" =~ ^[0-9a-f]{40}$ ]] || {
   echo 'Expected one lowercase 40-character production commit SHA' >&2
+  exit 2
+}
+[[ "$RESTART_DOCKER_BEFORE_BUILD" == 0 || "$RESTART_DOCKER_BEFORE_BUILD" == 1 ]] || {
+  echo 'RESTART_DOCKER_BEFORE_BUILD must be 0 or 1' >&2
   exit 2
 }
 
@@ -61,6 +66,26 @@ trap rollback_on_failure EXIT
 
 docker tag "$POSTIZ_IMAGE" "$BACKUP_IMAGE"
 BACKUP_CREATED=1
+
+if [[ "$RESTART_DOCKER_BEFORE_BUILD" == 1 ]]; then
+  systemctl restart docker
+  systemctl is-active --quiet docker
+
+  DOCKER_READY_ATTEMPTS=60
+  [[ "${SKIP_DEPLOY_WAIT:-0}" == 1 ]] && DOCKER_READY_ATTEMPTS=1
+  DOCKER_READY=0
+  for _ in $(seq 1 "$DOCKER_READY_ATTEMPTS"); do
+    if docker info >/dev/null 2>&1; then
+      DOCKER_READY=1
+      break
+    fi
+    [[ "${SKIP_DEPLOY_WAIT:-0}" == 1 ]] || sleep 2
+  done
+  [[ "$DOCKER_READY" -eq 1 ]] || {
+    echo 'Docker daemon did not become ready after BuildKit recovery' >&2
+    exit 1
+  }
+fi
 
 FETCH_ATTEMPTS=60
 [[ "${SKIP_DEPLOY_WAIT:-0}" == 1 ]] && FETCH_ATTEMPTS=1

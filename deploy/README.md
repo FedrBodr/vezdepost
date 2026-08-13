@@ -92,4 +92,11 @@ checks the application ports, public API, Temporal worker, Tumblr environment
 presence, and PostgreSQL attribute capacity. A failed deployment restores the
 previous revision and image. It never publishes a Tumblr post.
 
+If diagnostics confirm that the BuildKit exporter is stuck, and a production
+Docker daemon restart has been explicitly approved, start the same guarded
+deployment with `RESTART_DOCKER_BEFORE_BUILD=1`. This opt-in mode restarts the
+Docker daemon while holding the autodeploy lock, verifies that it is active,
+and waits for the Docker API before fetching or building the expected SHA. The
+default is `0`; ordinary deployments never restart Docker.
+
 This directory lives only on the `prod` branch — do not merge it into `main`.
