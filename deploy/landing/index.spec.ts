@@ -289,6 +289,15 @@ describe('landing brand assets', () => {
 });
 
 describe('landing brand integration', () => {
+  it('links to the public privacy policy from the footer', () => {
+    const { document } = createLanding({ locale: 'ru-RU' });
+
+    expect(
+      document.querySelector<HTMLAnchorElement>('footer a[href="/privacy"]')
+        ?.textContent
+    ).toBe('Политика конфиденциальности');
+  });
+
   it('exposes complete social preview and icon metadata', () => {
     const { document } = createLanding({ locale: 'ru-RU' });
 
@@ -363,6 +372,45 @@ describe('landing brand integration', () => {
     expect(heroLogo?.getAttribute('width')).toBe('112');
     expect(heroLogo?.getAttribute('height')).toBe('112');
     expect(heroLogo?.getAttribute('alt')).toBe('');
+  });
+});
+
+describe('privacy policy', () => {
+  it('publishes the operator details and required policy sections', () => {
+    const privacyPath = join(
+      process.cwd(),
+      'deploy/landing/privacy/index.html'
+    );
+
+    expect(existsSync(privacyPath)).toBe(true);
+    if (!existsSync(privacyPath)) return;
+
+    const privacyHtml = readFileSync(privacyPath, 'utf8');
+    const dom = new JSDOM(privacyHtml, { url: 'https://vezdepost.ru/privacy' });
+    const { document } = dom.window;
+    const text = document.body.textContent || '';
+
+    expect(document.title).toBe('Политика конфиденциальности — Vezdepost');
+    expect(
+      document.querySelector('link[rel="canonical"]')?.getAttribute('href')
+    ).toBe('https://vezdepost.ru/privacy');
+    expect(text).toContain('Федоренко Дмитрий Александрович');
+    expect(text).toContain('772373964340');
+    expect(text).toContain('13 августа 2026 года');
+    expect(text).toContain('Какие данные мы обрабатываем');
+    expect(text).toContain('Для чего используются данные');
+    expect(text).toContain('Передача данных');
+    expect(text).toContain('Хранение и защита');
+    expect(text).toContain('Ваши права');
+    expect(text).toContain('Файлы cookie и аналитика');
+    expect(text).toContain('Изменения политики');
+    expect(text).toContain('Контакты');
+    expect(
+      document.querySelector<HTMLAnchorElement>(
+        'a[href="https://t.me/FedrBodr"]'
+      )?.textContent
+    ).toContain('@FedrBodr');
+    expect(text).not.toContain('07.08.1987');
   });
 });
 

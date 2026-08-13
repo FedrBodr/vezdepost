@@ -46,4 +46,15 @@ describe('production configuration', () => {
       'https://app.vezdepost.ru/integrations/social/linkedin'
     );
   });
+
+  it('forwards required Tumblr credentials into every recreated postiz container', () => {
+    const override = readRootFile('docker-compose.override.yaml');
+
+    expect(override).toContain(
+      "TUMBLR_CLIENT_ID: '${TUMBLR_CLIENT_ID:?set in .env}'"
+    );
+    expect(override).toContain(
+      "TUMBLR_CLIENT_SECRET: '${TUMBLR_CLIENT_SECRET:?set in .env}'"
+    );
+  });
 });
