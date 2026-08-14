@@ -8,6 +8,17 @@ POSTIZ_READINESS_ATTEMPTS=${POSTIZ_READINESS_ATTEMPTS:-90}
 POSTIZ_READINESS_INTERVAL_SECONDS=${POSTIZ_READINESS_INTERVAL_SECONDS:-2}
 LAST_TEMPORAL_OUTPUT='Temporal task queue has not been checked yet.'
 
+validate_config() {
+  if [[ ! "$POSTIZ_READINESS_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+    echo 'POSTIZ_READINESS_ATTEMPTS must be a positive integer' >&2
+    return 1
+  fi
+  if [[ ! "$POSTIZ_READINESS_INTERVAL_SECONDS" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo 'POSTIZ_READINESS_INTERVAL_SECONDS must be a nonnegative number' >&2
+    return 1
+  fi
+}
+
 port_up() {
   local port=$1
   docker exec "$POSTIZ_CONTAINER" sh -c \
@@ -52,6 +63,8 @@ diagnose() {
       2>&1 || true
   done
 }
+
+validate_config || exit 1
 
 for ((attempt = 1; attempt <= POSTIZ_READINESS_ATTEMPTS; attempt++)); do
   if ready; then

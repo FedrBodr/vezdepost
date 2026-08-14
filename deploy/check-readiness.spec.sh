@@ -17,7 +17,11 @@ set -u
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 
 if [[ "$1 $2" == 'inspect -f' ]]; then
-  printf '%s\n' true
+  if [[ "${STOPPED_POSTIZ:-0}" == 1 ]]; then
+    printf '%s\n' false
+  else
+    printf '%s\n' true
+  fi
   exit 0
 fi
 
@@ -38,8 +42,14 @@ if [[ "$*" == *"grep -qE ':3000"* ]]; then
   exit
 fi
 
-if [[ "$*" == *"grep -qE ':4200"* || "$*" == *"grep -qE ':5000"* ]]; then
-  exit 0
+if [[ "$*" == *"grep -qE ':4200"* ]]; then
+  [[ "${MISSING_FRONTEND:-0}" != 1 ]]
+  exit
+fi
+
+if [[ "$*" == *"grep -qE ':5000"* ]]; then
+  [[ "${MISSING_ORCHESTRATOR:-0}" != 1 ]]
+  exit
 fi
 
 if [[ "${FAIL_DIAGNOSTICS:-0}" == 1 && "$*" == *'pm2 '* ]]; then
@@ -86,6 +96,21 @@ if run_probe poller-timeout env POSTIZ_READINESS_ATTEMPTS=1 MISSING_POLLER=1 \
   fail 'missing Temporal poller was accepted'
 fi
 
+if run_probe stopped-postiz env POSTIZ_READINESS_ATTEMPTS=1 STOPPED_POSTIZ=1 \
+  > "$TMP_DIR/stopped-postiz.out" 2>&1; then
+  fail 'stopped Postiz container was accepted'
+fi
+
+if run_probe frontend-timeout env POSTIZ_READINESS_ATTEMPTS=1 MISSING_FRONTEND=1 \
+  > "$TMP_DIR/frontend-timeout.out" 2>&1; then
+  fail 'missing frontend was accepted'
+fi
+
+if run_probe orchestrator-timeout env POSTIZ_READINESS_ATTEMPTS=1 MISSING_ORCHESTRATOR=1 \
+  > "$TMP_DIR/orchestrator-timeout.out" 2>&1; then
+  fail 'missing orchestrator was accepted'
+fi
+
 if run_probe diagnostic-failure env POSTIZ_READINESS_ATTEMPTS=1 \
   MISSING_BACKEND=1 FAIL_DIAGNOSTICS=1 \
   > "$TMP_DIR/diagnostic-failure.out" 2>&1; then
@@ -93,5 +118,23 @@ if run_probe diagnostic-failure env POSTIZ_READINESS_ATTEMPTS=1 \
 fi
 grep -q 'listening ports' "$TMP_DIR/diagnostic-failure.out" ||
   fail 'remaining diagnostics were suppressed'
+
+if run_probe invalid-attempts env POSTIZ_READINESS_ATTEMPTS=0 \
+  > "$TMP_DIR/invalid-attempts.out" 2>&1; then
+  fail 'zero attempts was accepted'
+fi
+grep -q 'POSTIZ_READINESS_ATTEMPTS must be a positive integer' \
+  "$TMP_DIR/invalid-attempts.out" || fail 'invalid attempts message missing'
+[[ ! -s "$TMP_DIR/invalid-attempts/docker.calls" ]] ||
+  fail 'invalid attempts entered the readiness loop'
+
+if run_probe invalid-interval env POSTIZ_READINESS_INTERVAL_SECONDS=-1 \
+  > "$TMP_DIR/invalid-interval.out" 2>&1; then
+  fail 'negative interval was accepted'
+fi
+grep -q 'POSTIZ_READINESS_INTERVAL_SECONDS must be a nonnegative number' \
+  "$TMP_DIR/invalid-interval.out" || fail 'invalid interval message missing'
+[[ ! -s "$TMP_DIR/invalid-interval/docker.calls" ]] ||
+  fail 'invalid interval entered the readiness loop'
 
 echo 'Readiness probe tests passed'
