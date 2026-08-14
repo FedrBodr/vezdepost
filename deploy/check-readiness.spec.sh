@@ -40,6 +40,10 @@ if [[ "$*" == *'127.0.0.1:3002/health/status'* ]]; then
     printf '%s\n' 'orchestrator health unavailable' >&2
     exit 1
   fi
+  if [[ "${STOPPED_MAIN_WORKER:-0}" == 1 ]]; then
+    printf '%s\n' 'main Temporal worker is stopped' >&2
+    exit 1
+  fi
   printf '%s\n' '456@current-host'
   exit 0
 fi
@@ -113,6 +117,17 @@ grep -q '123@current-host' "$TMP_DIR/same-host-stale-poller.out" ||
   fail 'same-host stale Temporal identity was absent from diagnostics'
 grep -q '456@current-host' "$TMP_DIR/same-host-stale-poller.out" ||
   fail 'current orchestrator identity was absent from diagnostics'
+
+if run_probe stopped-main-worker env POSTIZ_READINESS_ATTEMPTS=1 \
+  STOPPED_MAIN_WORKER=1 \
+  > "$TMP_DIR/stopped-main-worker.out" 2>&1; then
+  fail 'stopped main Temporal worker was accepted'
+fi
+grep -q 'main Temporal worker is stopped' \
+  "$TMP_DIR/stopped-main-worker.out" ||
+  fail 'stopped main worker was absent from health diagnostics'
+grep -q '456@current-host' "$TMP_DIR/stopped-main-worker.out" ||
+  fail 'retained exact Temporal identity was absent from diagnostics'
 
 grep -Fq '.Config.Hostname' "$TMP_DIR/immediate/docker.calls" ||
   fail 'current container hostname was not inspected'

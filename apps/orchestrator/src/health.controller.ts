@@ -2,13 +2,38 @@ import { Controller, Get, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { Connection } from '@temporalio/client';
 import { getTemporalWorkerIdentity } from '@gitroom/nestjs-libraries/temporal/temporal.worker.identity';
+import { TemporalService } from 'nestjs-temporal-core';
 
 @Controller('health')
 export class HealthController {
+  constructor(private readonly _temporalService: TemporalService) {}
+
   @Get('/status')
   async getHealthStatus(@Res() res: Response) {
     let connection: Connection | undefined;
     try {
+      const workerStatus =
+        this._temporalService.getWorkerStatusByTaskQueue('main');
+      if (
+        !workerStatus?.isInitialized ||
+        !workerStatus.isRunning ||
+        !workerStatus.isHealthy
+      ) {
+        return res.status(503).json({
+          status: 'error',
+          workerIdentity: getTemporalWorkerIdentity(),
+          worker: workerStatus
+            ? {
+                taskQueue: workerStatus.taskQueue,
+                isInitialized: workerStatus.isInitialized,
+                isRunning: workerStatus.isRunning,
+                isHealthy: workerStatus.isHealthy,
+                lastError: workerStatus.lastError,
+              }
+            : null,
+        });
+      }
+
       const address = process.env.TEMPORAL_ADDRESS || 'localhost:7233';
       connection = await Connection.connect({
         address,

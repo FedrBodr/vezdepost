@@ -93,11 +93,15 @@ A deploy is ready only when nginx (`:5000`), frontend (`:4200`), backend
 (`:3000`), the orchestrator health endpoint (`:3002/health/status`), and a
 workflow poller on Temporal task queue `main` are all present. The health
 endpoint reports the exact `PID@<postiz-container-hostname>` identity configured
-on the Temporal worker. Readiness requires that exact identity, so neither a
-poller from a replaced container nor an old PID retained after an orchestrator
-restart can pass the gate. On timeout the probe prints container state, PM2
-state, listening ports, fresh orchestrator health and Temporal queries, and
-recent process logs. It exits non-zero, so autodeploy leaves
+on the Temporal worker, but only while the installed worker manager reports
+queue `main` initialized, running, and healthy. Its healthy state includes the
+native Temporal worker state and is true only for `RUNNING`; explicit stop and
+run failure update the managed state synchronously. Readiness also requires the
+exact reported identity, so neither a poller from a replaced container, an old
+PID retained after an orchestrator restart, nor a retained exact identity from
+a stopped worker can pass the gate. On timeout the probe prints container
+state, PM2 state, listening ports, fresh orchestrator health and Temporal
+queries, and recent process logs. It exits non-zero, so autodeploy leaves
 `/var/lib/vezdepost-deployed-rev` unchanged and cron retries the revision on its
 next tick.
 
