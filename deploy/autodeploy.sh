@@ -4,11 +4,14 @@
 # Logs to /var/log/vezdepost-autodeploy.log.
 set -euo pipefail
 
-REPO_DIR=/root/postiz-app
-LOG=/var/log/vezdepost-autodeploy.log
+REPO_DIR=${REPO_DIR:-/root/postiz-app}
+LOG=${AUTODEPLOY_LOG:-/var/log/vezdepost-autodeploy.log}
+LOCK=${AUTODEPLOY_LOCK:-/var/lock/vezdepost-autodeploy.lock}
+STATE=${AUTODEPLOY_STATE:-/var/lib/vezdepost-deployed-rev}
+READINESS_SCRIPT=${READINESS_SCRIPT:-$REPO_DIR/deploy/check-readiness.sh}
 
 # a build takes ~10 min; skip silently if a previous run is still going
-exec 9>/var/lock/vezdepost-autodeploy.lock
+exec 9>"$LOCK"
 flock -n 9 || exit 0
 
 cd "$REPO_DIR"
@@ -16,7 +19,6 @@ git fetch --no-recurse-submodules origin prod
 
 # compare against the last SUCCESSFUL deploy, not HEAD: a failed deploy
 # (e.g. image pull error) already moved HEAD and would never be retried
-STATE=/var/lib/vezdepost-deployed-rev
 REMOTE=$(git rev-parse origin/prod)
 DEPLOYED=$(cat "$STATE" 2>/dev/null || echo none)
 [ "$DEPLOYED" = "$REMOTE" ] && exit 0
@@ -27,6 +29,7 @@ DEPLOYED=$(cat "$STATE" 2>/dev/null || echo none)
   # server files (.env, max-extra-ca.pem) are not touched
   git reset --hard "$REMOTE"
   docker compose up -d --build
+  "$READINESS_SCRIPT"
   echo "$REMOTE" > "$STATE"
   echo "$(date -Is) deploy finished"
 } >> "$LOG" 2>&1

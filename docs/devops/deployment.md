@@ -53,6 +53,7 @@ deployed=$(cat /var/lib/app-deployed-rev 2>/dev/null || echo none)
 [ "$remote" = "$deployed" ] && exit 0
 git -C "$REPO" reset --hard "origin/$BRANCH"
 docker compose -f "$REPO/docker-compose.yaml" up -d --build   # >> logfile
+bash "$REPO/deploy/check-readiness.sh"
 echo "$remote" > /var/lib/app-deployed-rev                    # only on SUCCESS
 ```
 
@@ -66,6 +67,29 @@ echo "$remote" > /var/lib/app-deployed-rev                    # only on SUCCESS
   `compose up`), not HEAD — otherwise a failed deploy is marked done and never
   retried. With the marker gated on success, a failed deploy retries next tick.
 - Everything logs to `/var/log/app-autodeploy.log`.
+
+### Readiness gate
+
+Autodeploy does not mark a revision successful immediately after Compose
+starts the replacement container. It runs the repository-owned readiness
+probe first:
+
+```sh
+cd /root/postiz-app
+bash deploy/check-readiness.sh
+```
+
+The probe makes 90 attempts by default, two seconds apart. Operators can
+override those values for a one-off run with
+`POSTIZ_READINESS_ATTEMPTS` and
+`POSTIZ_READINESS_INTERVAL_SECONDS`.
+
+A deploy is ready only when nginx (`:5000`), frontend (`:4200`), backend
+(`:3000`), and a workflow poller on Temporal task queue `main` are all
+present. On timeout the probe prints container state, PM2 state, listening
+ports, Temporal output, and recent process logs. It exits non-zero, so
+autodeploy leaves `/var/lib/vezdepost-deployed-rev` unchanged and cron retries
+the revision on its next tick.
 
 ---
 
