@@ -90,14 +90,16 @@ run with `POSTIZ_READINESS_TIMEOUT_SECONDS`,
 `POSTIZ_READINESS_INTERVAL_SECONDS`.
 
 A deploy is ready only when nginx (`:5000`), frontend (`:4200`), backend
-(`:3000`), and a workflow poller on Temporal task queue `main` are all
-present. The Temporal SDK identifies this worker as
-`PID@<postiz-container-hostname>`; readiness requires the current container's
-hostname so a retained poller from the replaced container cannot pass the
-gate. On timeout the probe prints container state, PM2 state, listening ports,
-a fresh Temporal query, and recent process logs. It exits non-zero, so
-autodeploy leaves `/var/lib/vezdepost-deployed-rev` unchanged and cron retries
-the revision on its next tick.
+(`:3000`), the orchestrator health endpoint (`:3002/health/status`), and a
+workflow poller on Temporal task queue `main` are all present. The health
+endpoint reports the exact `PID@<postiz-container-hostname>` identity configured
+on the Temporal worker. Readiness requires that exact identity, so neither a
+poller from a replaced container nor an old PID retained after an orchestrator
+restart can pass the gate. On timeout the probe prints container state, PM2
+state, listening ports, fresh orchestrator health and Temporal queries, and
+recent process logs. It exits non-zero, so autodeploy leaves
+`/var/lib/vezdepost-deployed-rev` unchanged and cron retries the revision on its
+next tick.
 
 ---
 

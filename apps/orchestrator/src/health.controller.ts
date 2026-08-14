@@ -1,6 +1,7 @@
 import { Controller, Get, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { Connection } from '@temporalio/client';
+import { getTemporalWorkerIdentity } from '@gitroom/nestjs-libraries/temporal/temporal.worker.identity';
 
 @Controller('health')
 export class HealthController {
@@ -24,7 +25,10 @@ export class HealthController {
           setTimeout(() => reject(new Error('timeout')), 10000)
         ),
       ]);
-      return res.status(200).json({ status: 'ok' });
+      return res.status(200).json({
+        status: 'ok',
+        workerIdentity: getTemporalWorkerIdentity(),
+      });
     } catch {
       return res.status(500).json({ status: 'error' });
     } finally {

@@ -1,11 +1,13 @@
 import { TemporalModule } from 'nestjs-temporal-core';
 import { socialIntegrationList } from '@gitroom/nestjs-libraries/integrations/integration.manager';
+import { getTemporalWorkerIdentity } from '@gitroom/nestjs-libraries/temporal/temporal.worker.identity';
 
 export const getTemporalModule = (
   isWorkers: boolean,
   path?: string,
   activityClasses?: any[]
 ) => {
+  const workerIdentity = getTemporalWorkerIdentity();
   // Queues this worker server should NOT run, comma-separated
   // (e.g. EXCLUDE_QUEUE="reddit,x,twitch"). Use it to pin a queue to a single
   // server: exclude it on every server except the one that should own it.
@@ -67,11 +69,13 @@ export const getTemporalModule = (
                 ...(concurrency
                   ? {
                       workerOptions: {
+                        identity: workerIdentity,
                         maxConcurrentActivityTaskExecutions: concurrency,
                       },
                     }
                   : {
                       workerOptions: {
+                        identity: workerIdentity,
                         maxConcurrentActivityTaskExecutions: 1000000,
                       },
                     }),

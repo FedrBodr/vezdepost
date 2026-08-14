@@ -35,13 +35,24 @@ if [[ "$1 $2" == 'inspect -f' ]]; then
   exit 0
 fi
 
+if [[ "$*" == *'127.0.0.1:3002/health/status'* ]]; then
+  if [[ "${MISSING_ORCHESTRATOR:-0}" == 1 ]]; then
+    printf '%s\n' 'orchestrator health unavailable' >&2
+    exit 1
+  fi
+  printf '%s\n' '456@current-host'
+  exit 0
+fi
+
 if [[ "$*" == *'temporal task-queue describe'* ]]; then
   if [[ "${MISSING_POLLER:-0}" == 1 ]]; then
     printf '%s\n' 'Pollers: []'
+  elif [[ "${SAME_HOST_STALE_POLLER:-0}" == 1 ]]; then
+    printf '%s\n' 'Identity 123@current-host'
   elif [[ "${STALE_POLLER:-0}" == 1 ]]; then
     printf '%s\n' 'Identity 123@old-host'
   else
-    printf '%s\n' 'Identity 123@current-host'
+    printf '%s\n' 'Identity 456@current-host'
   fi
   exit 0
 fi
@@ -60,7 +71,7 @@ if [[ "$*" == *"grep -qE ':4200"* ]]; then
 fi
 
 if [[ "$*" == *"grep -qE ':5000"* ]]; then
-  [[ "${MISSING_ORCHESTRATOR:-0}" != 1 ]]
+  [[ "${MISSING_NGINX:-0}" != 1 ]]
   exit
 fi
 
@@ -92,8 +103,22 @@ run_probe immediate env POSTIZ_READINESS_ATTEMPTS=1 \
   > "$TMP_DIR/immediate.out" || fail 'ready stack was rejected'
 grep -q 'readiness passed' "$TMP_DIR/immediate.out" ||
   fail 'success confirmation missing'
+
+if run_probe same-host-stale-poller env POSTIZ_READINESS_ATTEMPTS=1 \
+  SAME_HOST_STALE_POLLER=1 \
+  > "$TMP_DIR/same-host-stale-poller.out" 2>&1; then
+  fail 'same-host stale Temporal poller was accepted'
+fi
+grep -q '123@current-host' "$TMP_DIR/same-host-stale-poller.out" ||
+  fail 'same-host stale Temporal identity was absent from diagnostics'
+grep -q '456@current-host' "$TMP_DIR/same-host-stale-poller.out" ||
+  fail 'current orchestrator identity was absent from diagnostics'
+
 grep -Fq '.Config.Hostname' "$TMP_DIR/immediate/docker.calls" ||
   fail 'current container hostname was not inspected'
+grep -Fq '127.0.0.1:3002/health/status' \
+  "$TMP_DIR/immediate/docker.calls" ||
+  fail 'current orchestrator health was not checked'
 
 run_probe delayed env POSTIZ_READINESS_ATTEMPTS=2 BACKEND_FAILS=1 \
   > "$TMP_DIR/delayed.out" || fail 'delayed backend never became ready'
@@ -121,7 +146,7 @@ if run_probe stopped-postiz env POSTIZ_READINESS_ATTEMPTS=1 STOPPED_POSTIZ=1 \
   > "$TMP_DIR/stopped-postiz.out" 2>&1; then
   fail 'stopped Postiz container was accepted'
 fi
-grep -q '123@current-host' "$TMP_DIR/stopped-postiz.out" ||
+grep -q '456@current-host' "$TMP_DIR/stopped-postiz.out" ||
   fail 'Temporal evidence was not collected after an earlier signal failed'
 
 if run_probe frontend-timeout env POSTIZ_READINESS_ATTEMPTS=1 MISSING_FRONTEND=1 \
@@ -132,6 +157,13 @@ fi
 if run_probe orchestrator-timeout env POSTIZ_READINESS_ATTEMPTS=1 MISSING_ORCHESTRATOR=1 \
   > "$TMP_DIR/orchestrator-timeout.out" 2>&1; then
   fail 'missing orchestrator was accepted'
+fi
+grep -q -- '--- orchestrator health ---' "$TMP_DIR/orchestrator-timeout.out" ||
+  fail 'orchestrator health diagnostics were missing'
+
+if run_probe nginx-timeout env POSTIZ_READINESS_ATTEMPTS=1 MISSING_NGINX=1 \
+  > "$TMP_DIR/nginx-timeout.out" 2>&1; then
+  fail 'missing nginx was accepted'
 fi
 
 if run_probe diagnostic-failure env POSTIZ_READINESS_ATTEMPTS=1 \
