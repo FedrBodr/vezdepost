@@ -6,21 +6,41 @@ import { LoadToolsService } from '@gitroom/nestjs-libraries/chat/load.tools.serv
 
 @Injectable()
 export class MastraService {
-  static mastra: Mastra;
-  constructor(private _loadToolsService: LoadToolsService) {}
-  async mastra() {
-    MastraService.mastra =
-      MastraService.mastra ||
-      new Mastra({
-        storage: pStore,
-        agents: {
-          postiz: await this._loadToolsService.agent(),
-        },
-        logger: new ConsoleLogger({
-          level: 'info',
-        }),
-      });
+  static mastra?: Mastra;
+  private static mastraPromise?: Promise<Mastra>;
 
-    return MastraService.mastra;
+  constructor(private _loadToolsService: LoadToolsService) {}
+
+  async mastra(): Promise<Mastra> {
+    if (MastraService.mastra) {
+      return MastraService.mastra;
+    }
+
+    if (!MastraService.mastraPromise) {
+      const attempt = this.createMastra();
+      MastraService.mastraPromise = attempt;
+      void attempt.catch(() => {
+        if (MastraService.mastraPromise === attempt) {
+          MastraService.mastraPromise = undefined;
+        }
+      });
+    }
+
+    return MastraService.mastraPromise!;
+  }
+
+  private async createMastra(): Promise<Mastra> {
+    await pStore.init();
+    const mastra = new Mastra({
+      storage: pStore,
+      agents: {
+        postiz: await this._loadToolsService.agent(),
+      },
+      logger: new ConsoleLogger({
+        level: 'info',
+      }),
+    });
+    MastraService.mastra = mastra;
+    return mastra;
   }
 }
