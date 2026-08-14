@@ -79,15 +79,23 @@ cd /root/postiz-app
 bash deploy/check-readiness.sh
 ```
 
-The probe makes 90 attempts by default, two seconds apart. Operators can
-override those values for a one-off run with
-`POSTIZ_READINESS_ATTEMPTS` and
+The probe has a 180-second wall-clock deadline, makes at most 90 attempts, and
+waits two seconds between attempts by default. Every Docker/Temporal check is
+also bounded to five seconds, and every timeout diagnostic is collected with
+its own five-second bound. Operators can override those values for a one-off
+run with `POSTIZ_READINESS_TIMEOUT_SECONDS`,
+`POSTIZ_READINESS_COMMAND_TIMEOUT_SECONDS`,
+`POSTIZ_READINESS_DIAGNOSTIC_TIMEOUT_SECONDS`,
+`POSTIZ_READINESS_ATTEMPTS`, and
 `POSTIZ_READINESS_INTERVAL_SECONDS`.
 
 A deploy is ready only when nginx (`:5000`), frontend (`:4200`), backend
 (`:3000`), and a workflow poller on Temporal task queue `main` are all
-present. On timeout the probe prints container state, PM2 state, listening
-ports, Temporal output, and recent process logs. It exits non-zero, so
+present. The Temporal SDK identifies this worker as
+`PID@<postiz-container-hostname>`; readiness requires the current container's
+hostname so a retained poller from the replaced container cannot pass the
+gate. On timeout the probe prints container state, PM2 state, listening ports,
+a fresh Temporal query, and recent process logs. It exits non-zero, so
 autodeploy leaves `/var/lib/vezdepost-deployed-rev` unchanged and cron retries
 the revision on its next tick.
 

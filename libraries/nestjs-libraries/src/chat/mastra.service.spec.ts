@@ -55,6 +55,7 @@ describe('MastraService', () => {
     const first = service.mastra();
     const second = service.mastra();
 
+    expect(first).toBe(second);
     expect(mocks.init).toHaveBeenCalledTimes(1);
     expect(mocks.agent).not.toHaveBeenCalled();
 

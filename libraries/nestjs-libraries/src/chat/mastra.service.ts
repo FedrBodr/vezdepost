@@ -11,13 +11,11 @@ export class MastraService {
 
   constructor(private _loadToolsService: LoadToolsService) {}
 
-  async mastra(): Promise<Mastra> {
-    if (MastraService.mastra) {
-      return MastraService.mastra;
-    }
-
+  mastra(): Promise<Mastra> {
     if (!MastraService.mastraPromise) {
-      const attempt = this.createMastra();
+      const attempt = MastraService.mastra
+        ? Promise.resolve(MastraService.mastra)
+        : this.createMastra();
       MastraService.mastraPromise = attempt;
       void attempt.catch(() => {
         if (MastraService.mastraPromise === attempt) {
