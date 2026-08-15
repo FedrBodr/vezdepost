@@ -23,6 +23,9 @@ import useCookie from 'react-use-cookie';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { expandPostsList, expandPosts } from '@gitroom/helpers/utils/posts.list.minify';
+import {
+  PlatformCapabilities,
+} from '@gitroom/helpers/utils/platform.capabilities';
 extend(isoWeek);
 extend(weekOfYear);
 
@@ -92,6 +95,7 @@ export interface Integrations {
   disabled?: boolean;
   inBetweenSteps: boolean;
   editor: 'none' | 'normal' | 'markdown' | 'html';
+  capabilities: PlatformCapabilities;
   stripLinks?: boolean;
   display: string;
   identifier: string;

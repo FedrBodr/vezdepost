@@ -1,6 +1,10 @@
 import 'reflect-metadata';
 
 import { Injectable } from '@nestjs/common';
+import {
+  getPlatformCapabilities,
+  PlatformCapabilities,
+} from '@gitroom/helpers/utils/platform.capabilities';
 import { XProvider } from '@gitroom/nestjs-libraries/integrations/social/x.provider';
 import { SocialProvider } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { LinkedinProvider } from '@gitroom/nestjs-libraries/integrations/social/linkedin.provider';
@@ -90,6 +94,7 @@ export class IntegrationManager {
           identifier: p.identifier,
           toolTip: p.toolTip,
           editor: p.editor,
+          capabilities: this.getCapabilities(p.identifier),
           isExternal: !!p.externalUrl,
           isWeb3: !!p.isWeb3,
           isChromeExtension: !!p.isChromeExtension,
@@ -177,6 +182,16 @@ export class IntegrationManager {
 
   getAllowedSocialsIntegrations() {
     return socialIntegrationList.map((p) => p.identifier);
+  }
+  getCapabilities(providerName: string): PlatformCapabilities {
+    const provider = this.getSocialIntegration(providerName);
+    return (
+      provider.capabilities ||
+      getPlatformCapabilities(providerName, {
+        editor: provider.editor,
+        maximumCharacters: provider.maxLength(),
+      })
+    );
   }
   getSocialIntegration(integration: string): SocialProvider {
     return socialIntegrationList.find((i) => i.identifier === integration)!;

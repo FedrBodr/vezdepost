@@ -1,4 +1,7 @@
 import { Integration } from '@prisma/client';
+import {
+  PlatformCapabilities,
+} from '@gitroom/helpers/utils/platform.capabilities';
 
 export interface ClientInformation {
   client_id: string;
@@ -163,6 +166,7 @@ export interface SocialProvider
   extends IAuthenticator,
     ISocialMediaIntegration {
   identifier: string;
+  capabilities?: PlatformCapabilities;
   refreshWait?: boolean;
   convertToJPEG?: boolean;
   stripLinks?: () => boolean;

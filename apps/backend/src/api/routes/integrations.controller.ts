@@ -102,6 +102,9 @@ export class IntegrationsController {
             internalId: p.internalId,
             disabled: p.disabled,
             editor: findIntegration.editor,
+            capabilities: this._integrationManager.getCapabilities(
+              p.providerIdentifier
+            ),
             stripLinks: !!findIntegration?.stripLinks?.(),
             picture: p.picture || '/no-picture.jpg',
             identifier: p.providerIdentifier,

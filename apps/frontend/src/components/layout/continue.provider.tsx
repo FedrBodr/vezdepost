@@ -8,6 +8,7 @@ import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { continueProviderList } from '@gitroom/frontend/components/new-launch/providers/continue-provider/list';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 export const Null: FC<{
   onSave: (data: any) => Promise<void>;
   existingId: string[];
@@ -91,6 +92,7 @@ const ModalContent: FC<{
         allIntegrations: [],
         integration: {
           editor: 'normal',
+          capabilities: getPlatformCapabilities(added),
           additionalSettings: '',
           display: '',
           time: [
