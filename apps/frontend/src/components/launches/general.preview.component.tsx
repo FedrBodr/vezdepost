@@ -21,11 +21,11 @@ const escapeHtml = (content: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const mentionMarkup = (content: string) =>
+const mentionMarkup = (content: string, labelsAreSerialized = false) =>
   content.replace(/\[\[\[([.\s\S]*?)]]]/g, (_match, label) => {
     return (
       '<span class="font-bold font-[arial] text-[#ae8afc]">' +
-      escapeHtml(label) +
+      (labelsAreSerialized ? label : escapeHtml(label)) +
       '</span>'
     );
   });
@@ -137,7 +137,11 @@ export const GeneralPreviewComponent: FC<{
             integrationType: integration?.identifier || '',
             maximumCharacters,
           })
-        : mentionMarkup(effectiveContent.normalized);
+        : mentionMarkup(
+            effectiveContent.normalized,
+            integration?.identifier === 'telegram' ||
+              integration?.identifier === 'max'
+          );
 
     return { text: sanitizePostContent(finalValue), images: p.image };
   });

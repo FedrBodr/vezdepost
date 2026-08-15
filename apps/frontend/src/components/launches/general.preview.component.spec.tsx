@@ -117,6 +117,49 @@ describe('GeneralPreviewComponent content safety', () => {
 
     expect(preview.querySelector('b')?.textContent).toBe('safe bold');
   });
+
+  it.each([
+    ['telegram', 'b'],
+    ['max', 'strong'],
+  ])(
+    'renders %s escaped markup as inert visible text beside real formatting',
+    (identifier, realFormattingTag) => {
+      previewContext.identifier = identifier;
+      previewContext.maximumCharacters = 1_000;
+
+      const preview = renderPreview(
+        '<p><strong>real</strong> &lt;b&gt;literal&lt;/b&gt; ' +
+          '&lt;script&gt;alert&lt;/script&gt; &amp; &copy;</p>'
+      );
+
+      expect(preview.textContent).toBe(
+        'real <b>literal</b> <script>alert</script> & ©'
+      );
+      expect(preview.querySelector(realFormattingTag)?.textContent).toBe(
+        'real'
+      );
+      expect(preview.querySelectorAll(realFormattingTag)).toHaveLength(1);
+      expect(preview.querySelector('script')).toBeNull();
+    }
+  );
+
+  it.each(['telegram', 'max'])(
+    'renders %s mention labels with special characters exactly once',
+    (identifier) => {
+      previewContext.identifier = identifier;
+      previewContext.maximumCharacters = 1_000;
+
+      const preview = renderPreview(
+        '<p>Hello <span data-mention-id="1">@AT&amp;T &lt;B&gt;</span></p>'
+      );
+
+      expect(preview.textContent).toBe('Hello @AT&T <B>');
+      expect(preview.querySelector('.font-bold')?.textContent).toBe(
+        '@AT&T <B>'
+      );
+      expect(preview.querySelector('b')).toBeNull();
+    }
+  );
 });
 
 describe('GeneralPreviewComponent visible-length cropping', () => {
@@ -189,4 +232,23 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
     expect(preview.querySelector('mark')?.textContent).toBe('@Ada');
     expect(preview.innerHTML).not.toContain('https://');
   });
+
+  it.each(['telegram', 'max'])(
+    'crops %s mention labels with special characters exactly once',
+    (identifier) => {
+      previewContext.identifier = identifier;
+      previewContext.maximumCharacters = 6;
+
+      const preview = renderPreview(
+        '<p>Hello <span data-mention-id="1">@AT&amp;T &lt;B&gt;</span></p>'
+      );
+
+      expect(preview.textContent).toBe('Hello @AT&T <B>');
+      expect(preview.querySelector('mark .font-bold')?.textContent).toBe(
+        '@AT&T <B>'
+      );
+      expect(preview.querySelector('mark')?.textContent).toBe('@AT&T <B>');
+      expect(preview.querySelector('b')).toBeNull();
+    }
+  );
 });

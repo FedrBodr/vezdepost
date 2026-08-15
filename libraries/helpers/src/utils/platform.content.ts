@@ -4,10 +4,7 @@ import { weightedLength } from './count.length';
 import { convertHtmlStructureToText } from './html.structure';
 import { stripHtmlValidation } from './strip.html.validation';
 import { getHttpUrlRanges, stripLinks, type HttpUrlRange } from './strip.links';
-import {
-  getTelegramVisibleTextLength,
-  normalizeTelegramHtml,
-} from './telegram.constraints';
+import { normalizeVerifiedHtml } from './verified.html.normalization';
 import {
   ContentMessageSeverity,
   intersectPlatformCapabilities,
@@ -43,6 +40,18 @@ export const normalizePlatformContent = (
   capabilities: PlatformCapabilities,
   convertMentionFunction?: (idOrHandle: string, name: string) => string
 ): string => {
+  if (
+    capabilities.verified &&
+    (capabilities.identifier === 'telegram' ||
+      capabilities.identifier === 'max')
+  ) {
+    return normalizeVerifiedHtml(
+      content,
+      capabilities.identifier,
+      convertMentionFunction
+    ).normalized;
+  }
+
   if (!/<\/?[a-z][\s\S]*>/i.test(content)) {
     return content;
   }
@@ -58,12 +67,7 @@ export const normalizePlatformContent = (
     );
   }
 
-  const canonicalContent =
-    capabilities.identifier === 'telegram'
-      ? content
-          .replace(/<b(?=[\s>])/gi, '<strong')
-          .replace(/<\/b>/gi, '</strong>')
-      : content;
+  const canonicalContent = content;
   const requiresStructuralFallback =
     capabilities.formatting.lists !== 'native' ||
     capabilities.formatting.headings !== 'native';
@@ -78,9 +82,6 @@ export const normalizePlatformContent = (
     false,
     convertMentionFunction
   );
-  if (capabilities.identifier === 'telegram') {
-    return normalizeTelegramHtml(html);
-  }
   if (capabilities.output === 'html') {
     return striptags(html, ['p', 'strong', 'u', 'a']);
   }
@@ -290,16 +291,26 @@ export const resolveEffectivePlatformContent = ({
   capabilities: PlatformCapabilities;
   convertMentionFunction?: (idOrHandle: string, name: string) => string;
 }) => {
-  const normalized = normalizePlatformContent(
-    content,
-    capabilities,
-    convertMentionFunction
-  );
+  const verifiedHtml =
+    capabilities.verified &&
+    (capabilities.identifier === 'telegram' ||
+      capabilities.identifier === 'max')
+      ? normalizeVerifiedHtml(
+          content,
+          capabilities.identifier,
+          convertMentionFunction
+        )
+      : undefined;
+  const normalized =
+    verifiedHtml !== undefined
+      ? verifiedHtml.normalized
+      : normalizePlatformContent(content, capabilities, convertMentionFunction);
   if (!capabilities.delivery.stripRawUrls) {
     return {
       normalized,
       rawUrlRemoved: false,
-      visibleText: getDecodedVisibleText(normalized),
+      visibleText:
+        verifiedHtml?.visibleText ?? getDecodedVisibleText(normalized),
     };
   }
 
@@ -325,10 +336,7 @@ export const analyzePlatformContent = ({
     rawUrlRemoved,
     visibleText: plainText,
   } = resolveEffectivePlatformContent({ content, capabilities });
-  const rawVisibleLength =
-    capabilities.identifier === 'telegram'
-      ? getTelegramVisibleTextLength(normalized)
-      : plainText.length;
+  const rawVisibleLength = plainText.length;
   const visibleLength =
     capabilities.identifier === 'x'
       ? Math.max(weightedLength(plainText), rawVisibleLength)

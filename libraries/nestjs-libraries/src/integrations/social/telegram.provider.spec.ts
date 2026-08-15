@@ -108,6 +108,23 @@ describe('TelegramProvider media captions', () => {
     expect(result[0].releaseURL).toContain('/42');
   });
 
+  it('safely normalizes text again before Telegram HTML parse mode', async () => {
+    const { bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+
+    await provider.post(
+      'channel',
+      '-1001',
+      details('AT&T < launch > &copy; &lt;b&gt;literal&lt;/b&gt; &nbsp;', [])
+    );
+
+    expect(bot.sendMessage).toHaveBeenCalledWith(
+      '-1001',
+      'AT&amp;T &lt; launch &gt; © &lt;b&gt;literal&lt;/b&gt; &#160;',
+      { parse_mode: 'HTML' }
+    );
+  });
+
   it('keeps short text attached to a single media item', async () => {
     const { calls, bot } = makeBot();
     const provider = new TelegramProvider(bot as any);
@@ -178,10 +195,10 @@ describe('TelegramProvider media captions', () => {
       details(overBoundaryText)
     );
 
-    expect(attached.calls).toEqual([`photo:${boundaryText}`]);
+    expect(attached.calls).toEqual([`photo:${'😀'.repeat(512)}`]);
     expect(split.calls).toEqual([
       'photo:undefined',
-      `text:${overBoundaryText}`,
+      `text:${'😀'.repeat(513)}`,
     ]);
   });
 

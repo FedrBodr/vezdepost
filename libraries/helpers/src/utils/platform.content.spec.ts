@@ -4,6 +4,7 @@ import {
   analyzePlatformContent,
   analyzeSelectedPlatformContent,
   normalizePlatformContent,
+  resolveEffectivePlatformContent,
 } from './platform.content';
 import { stripLinks } from './strip.links';
 
@@ -66,7 +67,6 @@ describe('platform content normalization', () => {
   );
 
   it.each([
-    ['telegram', undefined],
     ['linkedin', undefined],
     ['legacy-html', { editor: 'html' as const, maximumCharacters: 1000 }],
     ['legacy-normal', { editor: 'normal' as const, maximumCharacters: 1000 }],
@@ -89,6 +89,20 @@ describe('platform content normalization', () => {
         )
       ).toBe(content);
       expect(convertMention).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['telegram', 'max'])(
+    '%s safely serializes tagless text for HTML parse mode',
+    (identifier) => {
+      const capabilities = getPlatformCapabilities(identifier);
+      const content = 'AT&T < launch > landing &copy; &nbsp;';
+      const normalized = normalizePlatformContent(content, capabilities);
+
+      expect(normalized).toBe('AT&amp;T &lt; launch &gt; landing © &#160;');
+      expect(normalizePlatformContent(normalized, capabilities)).toBe(
+        normalized
+      );
     }
   );
 
@@ -121,6 +135,158 @@ describe('platform content normalization', () => {
     expect(
       normalizePlatformContent(once, getPlatformCapabilities('telegram'))
     ).toBe(once);
+  });
+
+  it.each([
+    [
+      'telegram',
+      '<b>real</b> label plain &lt;strong&gt;literal&lt;/strong&gt; ' +
+        '&lt;custom&gt;custom&lt;/custom&gt; &amp; ©',
+    ],
+    [
+      'max',
+      '<strong>real</strong> <a href="https://example.com">label</a> plain ' +
+        '&lt;strong&gt;literal&lt;/strong&gt; ' +
+        '&lt;custom&gt;custom&lt;/custom&gt; &amp; ©',
+    ],
+  ])(
+    '%s keeps escaped markup inert and real supported markup active',
+    (identifier, expected) => {
+      const content =
+        '<p><strong>real</strong> ' +
+        '<a href="https://example.com">label</a> <em>plain</em> ' +
+        '&lt;strong&gt;literal&lt;/strong&gt; ' +
+        '&lt;custom&gt;custom&lt;/custom&gt; &amp; &copy;</p>';
+      const capabilities = getPlatformCapabilities(identifier);
+      const once = normalizePlatformContent(content, capabilities);
+
+      expect(once).toBe(expected);
+      expect(normalizePlatformContent(once, capabilities)).toBe(once);
+    }
+  );
+
+  it.each(['telegram', 'max'])(
+    '%s counts escaped tag text and entities exactly once',
+    (identifier) => {
+      const content =
+        '<p>real &lt;b&gt;literal&lt;/b&gt; &amp; &copy; &#65; &#x1F600;</p>';
+      const analysis = analyzePlatformContent({
+        content,
+        media: [],
+        capabilities: getPlatformCapabilities(identifier),
+      });
+
+      expect(analysis.visibleLength).toBe(
+        'real <b>literal</b> & © A 😀'.length
+      );
+    }
+  );
+
+  it.each(['telegram', 'max'])(
+    '%s unwraps unsupported template markup without dropping its text',
+    (identifier) => {
+      const capabilities = getPlatformCapabilities(identifier);
+      const once = normalizePlatformContent(
+        '<p>before <template><strong>kept</strong></template> after</p>',
+        capabilities
+      );
+
+      expect(once).toContain('before ');
+      expect(once).toContain('kept');
+      expect(once).toContain(' after');
+      expect(once).not.toContain('<template');
+      expect(normalizePlatformContent(once, capabilities)).toBe(once);
+    }
+  );
+
+  it.each(['telegram', 'max'])(
+    '%s derives visible text from decoded nodes with structural parity',
+    (identifier) => {
+      const capabilities = getPlatformCapabilities(identifier);
+      const content =
+        '<h2>Head</h2><ul><li><p>One&nbsp;</p></li>' +
+        '<li><p>Two<br>line</p></li></ul><p>Last\n</p>';
+      const resolved = resolveEffectivePlatformContent({
+        content,
+        capabilities,
+      });
+
+      expect(resolved.normalized).toBe(
+        'Head\n- One&#160;\n- Two\nline\nLast\n'
+      );
+      expect(resolved.visibleText).toBe(
+        'Head\n- One\u00a0\n- Two\nline\nLast\n'
+      );
+      expect(normalizePlatformContent(resolved.normalized, capabilities)).toBe(
+        resolved.normalized
+      );
+    }
+  );
+
+  it.each([
+    ['telegram', '<strong><p>A</p>B</strong>', '<b>\nA\nB</b>', '\nA\nB'],
+    ['telegram', '<u><h2>A</h2>B</u>', '<u>\nA\nB</u>', '\nA\nB'],
+    ['max', '<strong><p>A</p>B</strong>', '<strong>\nA\nB</strong>', '\nA\nB'],
+    [
+      'max',
+      '<a href="max://chat/1"><p>A</p>B</a>',
+      '<a href="max://chat/1">\nA\nB</a>',
+      '\nA\nB',
+    ],
+    ['max', '<u><ul><li>One</li></ul>B</u>', '<u>\n- One\nB</u>', '\n- One\nB'],
+  ])(
+    '%s preserves structural edge whitespace inside retained inline markup',
+    (identifier, content, expectedNormalized, expectedVisibleText) => {
+      const capabilities = getPlatformCapabilities(identifier);
+      const first = resolveEffectivePlatformContent({
+        content,
+        capabilities,
+      });
+      const second = resolveEffectivePlatformContent({
+        content: first.normalized,
+        capabilities,
+      });
+
+      expect(first.normalized).toBe(expectedNormalized);
+      expect(first.visibleText).toBe(expectedVisibleText);
+      expect(second).toEqual(first);
+    }
+  );
+
+  it('preserves MAX link attributes and schemes for the provider', () => {
+    expect(
+      normalizePlatformContent(
+        '<p><a href="javascript:alert(1)" data-track="kept">unsafe</a> ' +
+          '<a href="max://chat/1" title="deep">deep</a></p>',
+        getPlatformCapabilities('max')
+      )
+    ).toBe(
+      '<a href="javascript:alert(1)" data-track="kept">unsafe</a> ' +
+        '<a href="max://chat/1" title="deep">deep</a>'
+    );
+  });
+
+  it('uses escaped literal tag text at the Telegram media-caption boundary', () => {
+    const capabilities = getPlatformCapabilities('telegram');
+    const literalTag = '&lt;b&gt;x&lt;/b&gt;';
+    const atBoundary = analyzePlatformContent({
+      content: `<p>${'a'.repeat(1016)}${literalTag}</p>`,
+      media: [{ type: 'image' }],
+      capabilities,
+    });
+    const aboveBoundary = analyzePlatformContent({
+      content: `<p>${'a'.repeat(1017)}${literalTag}</p>`,
+      media: [{ type: 'image' }],
+      capabilities,
+    });
+
+    expect(atBoundary.visibleLength).toBe(1024);
+    expect(atBoundary.messages).not.toContainEqual(
+      expect.objectContaining({ code: 'media-text-split' })
+    );
+    expect(aboveBoundary.messages).toContainEqual(
+      expect.objectContaining({ code: 'media-text-split' })
+    );
   });
 
   it('reports Telegram long-media split as information', () => {

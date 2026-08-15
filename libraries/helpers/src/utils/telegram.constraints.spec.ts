@@ -57,6 +57,29 @@ describe('Telegram HTML caption length', () => {
     );
   });
 
+  it('keeps escaped markup inert while preserving real formatting, entities, and trailing newlines idempotently', () => {
+    const input =
+      '<p><strong>real bold</strong> <u>real underline</u> ' +
+      '&lt;b&gt;literal bold&lt;/b&gt; ' +
+      '&lt;script&gt;literal script&lt;/script&gt; ' +
+      '&amp; &copy; &#65; &#x1F600;</p>\n';
+    const once = normalizeTelegramHtml(input);
+
+    expect(once).toBe(
+      '<b>real bold</b> <u>real underline</u> ' +
+        '&lt;b&gt;literal bold&lt;/b&gt; ' +
+        '&lt;script&gt;literal script&lt;/script&gt; ' +
+        '&amp; © A 😀\n'
+    );
+    expect(normalizeTelegramHtml(once)).toBe(once);
+    expect(getTelegramVisibleTextLength(once)).toBe(
+      'real bold real underline '.length +
+        '<b>literal bold</b> '.length +
+        '<script>literal script</script> '.length +
+        '& © A 😀\n'.length
+    );
+  });
+
   it('counts formatting text without counting tags', () => {
     expect(
       getTelegramVisibleTextLength(`<p><strong>${'x'.repeat(600)}</strong></p>`)
@@ -73,6 +96,10 @@ describe('Telegram HTML caption length', () => {
 
   it('decodes supported named and numeric entities using UTF-16 length', () => {
     expect(getTelegramVisibleTextLength('&amp;'.repeat(1024))).toBe(1024);
+    expect(getTelegramVisibleTextLength('&copy;'.repeat(1024))).toBe(1024);
+    expect(
+      getTelegramVisibleTextLength('<p>&nbsp;&euro;&NewLine;&copy;</p>')
+    ).toBe('\u00a0€\n©'.length);
     expect(getTelegramVisibleTextLength('&#128512;'.repeat(512))).toBe(1024);
     expect(getTelegramVisibleTextLength('&#x1F600;'.repeat(513))).toBe(1026);
   });
