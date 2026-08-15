@@ -3,10 +3,15 @@ import striptags from 'striptags';
 export const TELEGRAM_MEDIA_CAPTION_MAX_LENGTH = 1024;
 
 export const normalizeTelegramHtml = (value: string): string =>
-  striptags(value, ['u', 'strong', 'p'])
+  striptags(
+    value
+      .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gis, '$1\n')
+      .replace(/<a[^>]*>(.*?)<\/a>/gis, '$1'),
+    ['u', 'strong', 'b', 'p']
+  )
     .replace(/<strong>/g, '<b>')
     .replace(/<\/strong>/g, '</b>')
-    .replace(/<p>(.*?)<\/p>/g, '$1\n');
+    .replace(/<p>(.*?)<\/p>/gs, '$1\n');
 
 const decodeTelegramHtmlEntities = (value: string) =>
   value.replace(
