@@ -8,15 +8,10 @@ import SafeImage from '@gitroom/react/helpers/safe.image';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import {
   analyzePlatformContent,
-  normalizePlatformContent,
+  resolveEffectivePlatformContent,
 } from '@gitroom/helpers/utils/platform.content';
 import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-
-const mentionMarkup = (content: string) =>
-  content.replace(/\[\[\[([.\s\S]*?)]]]/g, (_match, label) => {
-    return `<span class="font-bold font-[arial] text-[#ae8afc]">${label}</span>`;
-  });
 
 const escapeHtml = (content: string) =>
   content
@@ -25,6 +20,59 @@ const escapeHtml = (content: string) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+
+const mentionMarkup = (content: string) =>
+  content.replace(/\[\[\[([.\s\S]*?)]]]/g, (_match, label) => {
+    return (
+      '<span class="font-bold font-[arial] text-[#ae8afc]">' +
+      escapeHtml(label) +
+      '</span>'
+    );
+  });
+
+const mentionTokens = (content: string) => {
+  const tokens: Array<{ text: string; mention: boolean }> = [];
+  const matcher = /\[\[\[([.\s\S]*?)]]]/g;
+  let cursor = 0;
+  for (const match of content.matchAll(matcher)) {
+    const start = match.index;
+    if (start > cursor) {
+      tokens.push({ text: content.slice(cursor, start), mention: false });
+    }
+    tokens.push({ text: match[1], mention: true });
+    cursor = start + match[0].length;
+  }
+  if (cursor < content.length) {
+    tokens.push({ text: content.slice(cursor), mention: false });
+  }
+  return tokens;
+};
+
+const renderMentionRange = (
+  tokens: ReturnType<typeof mentionTokens>,
+  rangeStart: number,
+  rangeEnd: number
+) => {
+  let offset = 0;
+  return tokens
+    .map((token) => {
+      const tokenStart = offset;
+      const tokenEnd = tokenStart + token.text.length;
+      offset = tokenEnd;
+      const start = Math.max(rangeStart, tokenStart);
+      const end = Math.min(rangeEnd, tokenEnd);
+      if (start >= end) {
+        return '';
+      }
+      const text = escapeHtml(
+        token.text.slice(start - tokenStart, end - tokenStart)
+      );
+      return token.mention
+        ? `<span class="font-bold font-[arial] text-[#ae8afc]">${text}</span>`
+        : text;
+    })
+    .join('');
+};
 
 const croppedMarkup = ({
   content,
@@ -35,7 +83,8 @@ const croppedMarkup = ({
   integrationType: string;
   maximumCharacters: number;
 }) => {
-  const plainText = stripHtmlValidation('none', content);
+  const tokens = mentionTokens(content);
+  const plainText = tokens.map(({ text }) => text).join('');
   const { start, end } = textSlicer(
     integrationType,
     maximumCharacters,
@@ -43,10 +92,10 @@ const croppedMarkup = ({
   );
 
   return (
-    escapeHtml(plainText.slice(start, end)) +
+    renderMentionRange(tokens, start, end) +
     '<mark class="bg-red-500" data-tooltip-id="tooltip" ' +
     'data-tooltip-content="This text will be cropped">' +
-    escapeHtml(plainText.slice(end)) +
+    renderMentionRange(tokens, end, plainText.length) +
     '</mark>'
   );
 };
@@ -71,21 +120,24 @@ export const GeneralPreviewComponent: FC<{
           normalized: p.content,
           visibleLength: stripHtmlValidation('none', p.content).length,
         };
-    const normalizedContent = integration
-      ? normalizePlatformContent(
-          p.content,
-          integration.capabilities,
-          (_id, label) => `[[[${label}]]]`
-        )
-      : p.content;
+    const effectiveContent = integration
+      ? resolveEffectivePlatformContent({
+          content: p.content,
+          capabilities: integration.capabilities,
+          convertMentionFunction: (_id, label) => `[[[${label}]]]`,
+        })
+      : {
+          normalized: p.content,
+          visibleText: stripHtmlValidation('none', p.content),
+        };
     const finalValue =
       analysis.visibleLength > maximumCharacters
         ? croppedMarkup({
-            content: analysis.normalized,
+            content: effectiveContent.visibleText,
             integrationType: integration?.identifier || '',
             maximumCharacters,
           })
-        : mentionMarkup(normalizedContent);
+        : mentionMarkup(effectiveContent.normalized);
 
     return { text: sanitizePostContent(finalValue), images: p.image };
   });

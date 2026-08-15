@@ -5,6 +5,7 @@ import {
   analyzeSelectedPlatformContent,
   normalizePlatformContent,
 } from './platform.content';
+import { stripLinks } from './strip.links';
 
 describe('platform content normalization', () => {
   it.each(['linkedin', 'vk'])(
@@ -186,7 +187,181 @@ describe('platform content normalization', () => {
       code: 'raw-url-removed',
       text: 'Raw HTTP(S) URLs will be removed before publishing.',
     });
+    expect(analysis.normalized).toBe('Read before publishing.');
+    expect(analysis.visibleLength).toBe('Read before publishing.'.length);
     expect(analysis.blocking).toBe(false);
+  });
+
+  it('treats a URL-only payload as empty after effective stripping with or without media', () => {
+    const capabilities = getPlatformCapabilities('x', {
+      editor: 'normal',
+      maximumCharacters: 280,
+      stripRawUrls: true,
+    });
+    const withoutMedia = analyzePlatformContent({
+      content: '<p>https://example.com/path</p>',
+      media: [],
+      capabilities,
+    });
+    const withMedia = analyzePlatformContent({
+      content: '<p>https://example.com/path</p>',
+      media: [{ type: 'image' }],
+      capabilities,
+    });
+
+    expect(withoutMedia.normalized).toBe('');
+    expect(withoutMedia.visibleLength).toBe(0);
+    expect(withMedia.normalized).toBe('');
+    expect(withMedia.visibleLength).toBe(0);
+    expect(withMedia.blocking).toBe(false);
+  });
+
+  it('detects a raw URL joined by normalization across harmless markup', () => {
+    const analysis = analyzePlatformContent({
+      content: '<p>https://exa<span>mple</span>.com/path</p>',
+      media: [],
+      capabilities: getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+        stripRawUrls: true,
+      }),
+    });
+
+    expect(analysis.normalized).toBe('');
+    expect(analysis.visibleLength).toBe(0);
+    expect(analysis.messages).toContainEqual(
+      expect.objectContaining({ code: 'raw-url-removed' })
+    );
+  });
+
+  it('removes a URL range across retained nested markup and decoded entities', () => {
+    const max = getPlatformCapabilities('max');
+    const analysis = analyzePlatformContent({
+      content:
+        '<p>Before https://exa<strong>mple</strong>.com?a=1&amp;b=2 after</p>',
+      media: [],
+      capabilities: {
+        ...max,
+        delivery: { ...max.delivery, stripRawUrls: true },
+      },
+    });
+
+    expect(analysis.normalized).toBe('Before after');
+    expect(analysis.visibleLength).toBe('Before after'.length);
+    expect(analysis.messages).toContainEqual(
+      expect.objectContaining({ code: 'raw-url-removed' })
+    );
+  });
+
+  it('counts decoded visible entities after stripping a separate URL', () => {
+    const max = getPlatformCapabilities('max');
+    const analysis = analyzePlatformContent({
+      content: '<p>A &amp; <strong>B</strong> https://example.com/path</p>',
+      media: [],
+      capabilities: {
+        ...max,
+        delivery: { ...max.delivery, stripRawUrls: true },
+      },
+    });
+
+    expect(analysis.normalized).toBe('A &amp; <strong>B</strong>');
+    expect(analysis.visibleLength).toBe('A & B'.length);
+  });
+
+  it('preserves authored newlines outside the removed URL range', () => {
+    const max = getPlatformCapabilities('max');
+    const analysis = analyzePlatformContent({
+      content: '<p>A <strong>\nB</strong> https://example.com/path</p>',
+      media: [],
+      capabilities: {
+        ...max,
+        delivery: { ...max.delivery, stripRawUrls: true },
+      },
+    });
+
+    expect(analysis.normalized).toBe('A <strong>\nB</strong>');
+    expect(analysis.visibleLength).toBe('A \nB'.length);
+  });
+
+  it.each([
+    [
+      'spaces on both sides',
+      'Read  https://example.com/path  before',
+      'Read before',
+    ],
+    [
+      'spaces only on the right',
+      'See:https://example.com/path  before',
+      'See: before',
+    ],
+    [
+      'spaces only on the left',
+      'See  https://example.com/path,before',
+      'See ,before',
+    ],
+    [
+      'content glued on both sides',
+      'See:https://example.com/path,before',
+      'See:,before',
+    ],
+    [
+      'multiple URLs separated by horizontal whitespace',
+      'Ahttps://one.com  https://two.com B',
+      'A B',
+    ],
+    ['a URL on a new line', 'A \n https://example.com/path after', 'A\n after'],
+    [
+      'a URL before a line break',
+      'Before https://example.com/path  \nAfter',
+      'Before\nAfter',
+    ],
+  ])('matches provider defense with %s', (_case, content, expected) => {
+    const analysis = analyzePlatformContent({
+      content: `<p>${content}</p>`,
+      media: [],
+      capabilities: getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+        stripRawUrls: true,
+      }),
+    });
+
+    expect(analysis.normalized).toBe(expected);
+    expect(stripLinks(analysis.normalized)).toBe(analysis.normalized);
+  });
+
+  it('keeps provider defense idempotent for URL-free authored whitespace', () => {
+    const content = 'A  B \n C';
+    const analysis = analyzePlatformContent({
+      content,
+      media: [],
+      capabilities: getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+        stripRawUrls: true,
+      }),
+    });
+
+    expect(analysis.normalized).toBe(content);
+    expect(stripLinks(analysis.normalized)).toBe(content);
+  });
+
+  it('does not warn for a URL that remains only in retained anchor metadata', () => {
+    const max = getPlatformCapabilities('max');
+    const analysis = analyzePlatformContent({
+      content: '<p><a href="https://example.com/path">Read more</a></p>',
+      media: [],
+      capabilities: {
+        ...max,
+        delivery: { ...max.delivery, stripRawUrls: true },
+      },
+    });
+
+    expect(analysis.normalized).toContain('>Read more</a>');
+    expect(analysis.visibleLength).toBe('Read more'.length);
+    expect(analysis.messages).not.toContainEqual(
+      expect.objectContaining({ code: 'raw-url-removed' })
+    );
   });
 
   it.each([

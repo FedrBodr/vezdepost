@@ -9,6 +9,7 @@ const previewContext = vi.hoisted(() => ({
   current: 'integration',
   identifier: 'max',
   maximumCharacters: 10,
+  stripRawUrls: false,
   value: [] as Array<{
     content: string;
     image: Array<{ id: string; path: string }>;
@@ -18,19 +19,26 @@ const previewContext = vi.hoisted(() => ({
 vi.mock(
   '@gitroom/frontend/components/launches/helpers/use.integration',
   () => ({
-    useIntegration: () => ({
-      value: previewContext.value,
-      integration: {
-        identifier: previewContext.identifier,
-        name: 'MAX',
-        display: '@account',
-        picture: '/account.jpg',
-        capabilities: {
-          ...getPlatformCapabilities(previewContext.identifier),
-          text: { max: previewContext.maximumCharacters },
+    useIntegration: () => {
+      const capabilities = getPlatformCapabilities(previewContext.identifier);
+      return {
+        value: previewContext.value,
+        integration: {
+          identifier: previewContext.identifier,
+          name: 'MAX',
+          display: '@account',
+          picture: '/account.jpg',
+          capabilities: {
+            ...capabilities,
+            text: { max: previewContext.maximumCharacters },
+            delivery: {
+              ...capabilities.delivery,
+              stripRawUrls: previewContext.stripRawUrls,
+            },
+          },
         },
-      },
-    }),
+      };
+    },
   })
 );
 vi.mock('@gitroom/react/helpers/use.media.directory', () => ({
@@ -61,6 +69,7 @@ beforeEach(() => {
   previewContext.current = 'integration';
   previewContext.identifier = 'max';
   previewContext.maximumCharacters = 10;
+  previewContext.stripRawUrls = false;
   previewContext.value = [];
 });
 
@@ -138,5 +147,46 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
     expect(preview.textContent).toBe('abcdefghijk');
     expect(preview.querySelector('mark')?.textContent).toBe('k');
     expect(preview.innerHTML).toMatch(/^abcdefghij<mark/);
+  });
+
+  it('uses effective stripped content in the non-cropped preview while preserving mentions', () => {
+    previewContext.identifier = 'x';
+    previewContext.maximumCharacters = 100;
+    previewContext.stripRawUrls = true;
+
+    const preview = renderPreview(
+      '<p>Hello <span data-mention-id="ada">@Ada</span> https://example.com/path</p>'
+    );
+
+    expect(preview.textContent).toBe('Hello @Ada');
+    expect(preview.querySelector('.font-bold')?.textContent).toBe('@Ada');
+    expect(preview.innerHTML).not.toContain('https://');
+  });
+
+  it('uses effective stripped content before rendering the crop marker', () => {
+    previewContext.identifier = 'x';
+    previewContext.maximumCharacters = 10;
+    previewContext.stripRawUrls = true;
+
+    const preview = renderPreview('abcdefghijk https://example.com/path');
+
+    expect(preview.textContent).toBe('abcdefghijk');
+    expect(preview.querySelector('mark')?.textContent).toBe('k');
+    expect(preview.innerHTML).not.toContain('https://');
+  });
+
+  it('preserves mention decoration when effective content is cropped', () => {
+    previewContext.identifier = 'x';
+    previewContext.maximumCharacters = 10;
+    previewContext.stripRawUrls = true;
+
+    const preview = renderPreview(
+      '<p>abcdefghij<span data-mention-id="ada">@Ada</span> https://example.com/path</p>'
+    );
+
+    expect(preview.textContent).toBe('abcdefghij@Ada');
+    expect(preview.querySelector('mark .font-bold')?.textContent).toBe('@Ada');
+    expect(preview.querySelector('mark')?.textContent).toBe('@Ada');
+    expect(preview.innerHTML).not.toContain('https://');
   });
 });

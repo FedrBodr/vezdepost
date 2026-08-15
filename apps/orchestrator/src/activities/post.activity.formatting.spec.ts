@@ -123,4 +123,84 @@ describe('PostActivity platform formatting', () => {
     );
     expect(mentionFormat).not.toHaveBeenCalled();
   });
+
+  it('passes mention-normalized effective URL-stripped posts and comments to transport', async () => {
+    vi.stubEnv('STRIPE_SECRET_KEY', '');
+    const mentionFormat = vi.fn((idOrHandle: string) => `@${idOrHandle}`);
+    const provider = {
+      post: vi.fn().mockResolvedValue([]),
+      comment: vi.fn().mockResolvedValue([]),
+      editor: 'normal',
+      mentionFormat,
+      convertToJPEG: false,
+    };
+    const postService = {
+      updateTags: vi.fn().mockResolvedValue([
+        {
+          id: 'post-1',
+          content:
+            '<p>Hello <span data-mention-id="ada">@Ada</span> ' +
+            'https://exa<span>mple</span>.com/path</p>',
+          settings: '{}',
+          image: '[]',
+        },
+      ]),
+      updateMedia: vi.fn().mockResolvedValue([]),
+    };
+    const integrationManager = {
+      getSocialIntegration: vi.fn().mockReturnValue(provider),
+      getCapabilities: vi.fn().mockReturnValue(
+        getPlatformCapabilities('x', {
+          editor: 'normal',
+          maximumCharacters: 280,
+          stripRawUrls: true,
+        })
+      ),
+    };
+    const activity = new PostActivity(
+      postService as any,
+      {} as any,
+      integrationManager as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    const integration = {
+      id: 'integration-1',
+      internalId: 'profile',
+      token: 'token',
+      providerIdentifier: 'x',
+      organizationId: 'org-1',
+    } as any;
+    const posts = [{ id: 'post-1' } as any];
+
+    await activity.postSocial(integration, posts);
+    await activity.postComment(
+      'remote-post',
+      'remote-last',
+      integration,
+      posts
+    );
+
+    expect(provider.post).toHaveBeenCalledWith(
+      'profile',
+      'token',
+      [expect.objectContaining({ message: 'Hello @ada' })],
+      expect.objectContaining({ id: 'integration-1' })
+    );
+    expect(provider.comment).toHaveBeenCalledWith(
+      'profile',
+      'remote-post',
+      'remote-last',
+      'token',
+      [expect.objectContaining({ message: 'Hello @ada' })],
+      expect.objectContaining({ id: 'integration-1' })
+    );
+    expect(mentionFormat).toHaveBeenCalledTimes(2);
+    expect(mentionFormat).toHaveBeenCalledWith('ada', '@Ada');
+  });
 });

@@ -10,7 +10,7 @@ import {
   NotificationType,
 } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { Integration, Post, State } from '@prisma/client';
-import { normalizePlatformContent } from '@gitroom/helpers/utils/platform.content';
+import { resolveEffectivePlatformContent } from '@gitroom/helpers/utils/platform.content';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { AuthTokenDetails } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
@@ -196,11 +196,11 @@ export class PostActivity {
       await Promise.all(
         (newPosts || []).map(async (p) => ({
           id: p.id,
-          message: normalizePlatformContent(
-            p.content,
+          message: resolveEffectivePlatformContent({
+            content: p.content,
             capabilities,
-            getIntegration.mentionFormat
-          ),
+            convertMentionFunction: getIntegration.mentionFormat,
+          }).normalized,
           settings: JSON.parse(p.settings || '{}'),
           media: await this._postService.updateMedia(
             p.id,
@@ -243,11 +243,11 @@ export class PostActivity {
       await Promise.all(
         (newPosts || []).map(async (p) => ({
           id: p.id,
-          message: normalizePlatformContent(
-            p.content,
+          message: resolveEffectivePlatformContent({
+            content: p.content,
             capabilities,
-            getIntegration.mentionFormat
-          ),
+            convertMentionFunction: getIntegration.mentionFormat,
+          }).normalized,
           settings: JSON.parse(p.settings || '{}'),
           media: await this._postService.updateMedia(
             p.id,

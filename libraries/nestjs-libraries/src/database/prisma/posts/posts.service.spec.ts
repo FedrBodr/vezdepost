@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
+import { selectPostValidationFailure } from './post.validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PostsService } from './posts.service';
 
@@ -13,18 +14,20 @@ const createService = ({
   integrationManager = {},
   integrationService = {},
   mediaService = {},
+  shortLinkService = {},
 }: {
   repository?: object;
   integrationManager?: object;
   integrationService?: object;
   mediaService?: object;
+  shortLinkService?: object;
 } = {}) =>
   new PostsService(
     repository as any,
     integrationManager as any,
     integrationService as any,
     mediaService as any,
-    {} as any,
+    shortLinkService as any,
     {} as any,
     {} as any,
     {} as any
@@ -193,6 +196,72 @@ describe('PostsService.validatePosts', () => {
     );
     expect(result.contentError).toBe('');
   });
+
+  it('authoritatively rejects an effective URL-only X post without media', async () => {
+    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
+    const service = createService({
+      integrationManager: new IntegrationManager(),
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue({
+          id: 'x-1',
+          providerIdentifier: 'x',
+          name: 'X',
+          additionalSettings: '[]',
+        }),
+      },
+    });
+
+    const [result] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'x-1' },
+        value: [{ content: '<p>https://example.com/path</p>', image: [] }],
+      },
+    ]);
+
+    expect(result.emptyContent).toBe(true);
+    expect(selectPostValidationFailure([result], false)?.category).toBe(
+      'empty-content'
+    );
+  });
+
+  it('allows effective empty text when media remains and keeps surrounding text non-empty', async () => {
+    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
+    const service = createService({
+      integrationManager: new IntegrationManager(),
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue({
+          id: 'x-1',
+          providerIdentifier: 'x',
+          name: 'X',
+          additionalSettings: '[]',
+        }),
+      },
+    });
+
+    const [withMedia, withText] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'x-1' },
+        value: [
+          {
+            content: '<p>https://example.com/path</p>',
+            image: [{ path: 'image.jpg', type: 'image' }],
+          },
+        ],
+      },
+      {
+        integration: { id: 'x-1' },
+        value: [
+          {
+            content: '<p>Before https://example.com/path after</p>',
+            image: [],
+          },
+        ],
+      },
+    ]);
+
+    expect(withMedia.emptyContent).toBe(false);
+    expect(withText.emptyContent).toBe(false);
+  });
 });
 
 describe('PostsService.updateMedia', () => {
@@ -257,6 +326,70 @@ describe('PostsService.updateMedia', () => {
     expect(normalized[0].type).toBe('video');
     expect(axiosMock).not.toHaveBeenCalled();
   });
+});
+
+describe('PostsService.createPost authored persistence', () => {
+  it.each(['draft', 'now'] as const)(
+    'preserves media authored HTML byte-for-byte for %s posts while skipping short links',
+    async (type) => {
+      const content =
+        '<p>Draft https://example.com/path and ' +
+        'https://exa<span>mple</span>.org/other</p>';
+      const repository = {
+        createOrUpdatePost: vi.fn().mockResolvedValue({
+          posts: [{ id: 'post-1', state: 'DRAFT' }],
+        }),
+      };
+      const shortLinkService = { convertTextToShortLinks: vi.fn() };
+      const service = createService({
+        repository,
+        shortLinkService,
+        integrationManager: {
+          getSocialIntegration: vi.fn().mockReturnValue({
+            stripLinks: () => true,
+          }),
+        },
+      });
+      vi.spyOn(service as any, 'startWorkflow').mockResolvedValue(undefined);
+
+      await service.createPost(
+        'org-1',
+        {
+          type,
+          shortLink: true,
+          date: '2026-08-16T12:00:00Z',
+          tags: [],
+          posts: [
+            {
+              integration: { id: 'x-1' },
+              group: 'group-1',
+              settings: { __type: 'x' } as any,
+              value: [
+                {
+                  content,
+                  id: 'post-1',
+                  delay: 0,
+                  image: [
+                    {
+                      id: 'image-1',
+                      path: 'image.jpg',
+                      type: 'image',
+                    } as any,
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        'WEB'
+      );
+
+      expect(repository.createOrUpdatePost.mock.calls[0][3].value[0]).toEqual(
+        expect.objectContaining({ content })
+      );
+      expect(shortLinkService.convertTextToShortLinks).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe('PostsService.changePostStatus validation', () => {

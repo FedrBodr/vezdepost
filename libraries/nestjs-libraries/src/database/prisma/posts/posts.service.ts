@@ -48,7 +48,6 @@ import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
-import { stripLinks } from '@gitroom/helpers/utils/strip.links';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { analyzePlatformContent } from '@gitroom/helpers/utils/platform.content';
@@ -925,7 +924,7 @@ export class PostsService {
 
       post.value = (post.value || []).map((p, i) => ({
         ...p,
-        content: removeLinks ? stripLinks(updateContent[i]) : updateContent[i],
+        content: updateContent[i],
       }));
 
       const { posts } = await this._postRepository.createOrUpdatePost(

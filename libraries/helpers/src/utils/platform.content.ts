@@ -1,8 +1,9 @@
 import striptags from 'striptags';
+import { parseFragment, serialize } from 'parse5';
 import { weightedLength } from './count.length';
 import { convertHtmlStructureToText } from './html.structure';
 import { stripHtmlValidation } from './strip.html.validation';
-import { hasLinks } from './strip.links';
+import { getHttpUrlRanges, stripLinks, type HttpUrlRange } from './strip.links';
 import {
   getTelegramVisibleTextLength,
   normalizeTelegramHtml,
@@ -97,6 +98,219 @@ export const normalizePlatformContent = (
   );
 };
 
+type HtmlNode = {
+  nodeName: string;
+  tagName?: string;
+  value?: string;
+  childNodes?: HtmlNode[];
+};
+
+type TextNodeRange = {
+  node: HtmlNode;
+  start: number;
+  end: number;
+};
+
+const collectVisibleText = (root: HtmlNode) => {
+  const textNodes: TextNodeRange[] = [];
+  let visibleText = '';
+  const visit = (node: HtmlNode) => {
+    if (node.nodeName === '#text') {
+      const value = node.value || '';
+      const start = visibleText.length;
+      visibleText += value;
+      textNodes.push({ node, start, end: start + value.length });
+      return;
+    }
+    node.childNodes?.forEach(visit);
+  };
+  visit(root);
+  return { textNodes, visibleText };
+};
+
+const getDecodedVisibleText = (normalized: string) => {
+  if (!/<\/?[a-z][\s\S]*>/i.test(normalized)) {
+    return normalized;
+  }
+
+  const fragment = parseFragment(normalized) as unknown as HtmlNode;
+  return collectVisibleText(fragment).visibleText;
+};
+
+const expandRemovalRanges = (
+  text: string,
+  ranges: HttpUrlRange[]
+): HttpUrlRange[] => {
+  const clusters = ranges.reduce<HttpUrlRange[]>((grouped, range) => {
+    const previous = grouped[grouped.length - 1];
+    if (previous && /^[ \t]*$/.test(text.slice(previous.end, range.start))) {
+      previous.end = range.end;
+    } else {
+      grouped.push({ ...range });
+    }
+    return grouped;
+  }, []);
+  const expanded = clusters.map((range) => {
+    let horizontalStart = range.start;
+    let horizontalEnd = range.end;
+    while (horizontalStart > 0 && /[ \t]/.test(text[horizontalStart - 1])) {
+      horizontalStart--;
+    }
+    while (horizontalEnd < text.length && /[ \t]/.test(text[horizontalEnd])) {
+      horizontalEnd++;
+    }
+
+    const hasContentBefore = horizontalStart > 0;
+    const hasContentAfter = horizontalEnd < text.length;
+    if (!hasContentBefore || !hasContentAfter) {
+      return { start: horizontalStart, end: horizontalEnd };
+    }
+    if (/\r|\n/.test(text[horizontalEnd])) {
+      return { start: horizontalStart, end: horizontalEnd };
+    }
+    if (horizontalStart < range.start) {
+      return { start: horizontalStart + 1, end: horizontalEnd };
+    }
+    if (horizontalEnd > range.end) {
+      return { start: range.start, end: horizontalEnd - 1 };
+    }
+    return range;
+  });
+
+  return expanded.reduce<HttpUrlRange[]>((merged, range) => {
+    const previous = merged[merged.length - 1];
+    if (!previous || range.start > previous.end) {
+      merged.push({ ...range });
+    } else {
+      previous.end = Math.max(previous.end, range.end);
+    }
+    return merged;
+  }, []);
+};
+
+const removeRangesFromTextNode = (
+  textNode: TextNodeRange,
+  ranges: HttpUrlRange[]
+) => {
+  const value = textNode.node.value || '';
+  let cursor = 0;
+  let stripped = '';
+  let affected = false;
+  for (const range of ranges) {
+    const removalStart = Math.max(range.start, textNode.start);
+    const removalEnd = Math.min(range.end, textNode.end);
+    if (removalStart >= removalEnd) {
+      continue;
+    }
+    affected = true;
+    const localStart = removalStart - textNode.start;
+    const localEnd = removalEnd - textNode.start;
+    stripped += value.slice(cursor, localStart);
+    cursor = localEnd;
+  }
+  if (affected) {
+    textNode.node.value = stripped + value.slice(cursor);
+  }
+  return affected;
+};
+
+const stripVisibleRawUrls = (normalized: string) => {
+  if (!/<\/?[a-z][\s\S]*>/i.test(normalized)) {
+    const ranges = getHttpUrlRanges(normalized);
+    const content = ranges.length ? stripLinks(normalized) : normalized;
+    return {
+      content,
+      removed: ranges.length > 0,
+      visibleText: content,
+    };
+  }
+
+  const parsedFragment = parseFragment(normalized);
+  const fragment = parsedFragment as unknown as HtmlNode;
+  const { textNodes, visibleText } = collectVisibleText(fragment);
+
+  const ranges = getHttpUrlRanges(visibleText);
+  if (!ranges.length) {
+    return { content: normalized, removed: false, visibleText };
+  }
+
+  const removalRanges = expandRemovalRanges(visibleText, ranges);
+  const affectedTextNodes = new Set(
+    textNodes
+      .filter((textNode) => removeRangesFromTextNode(textNode, removalRanges))
+      .map(({ node }) => node)
+  );
+
+  const emptyInlineTags = new Set(['a', 'strong', 'u']);
+  const affectedBranches = new Map<HtmlNode, boolean>();
+  const pruneEmptyInlineFormatting = (node: HtmlNode): boolean => {
+    let affected = affectedTextNodes.has(node);
+    node.childNodes?.forEach((child) => {
+      affected = pruneEmptyInlineFormatting(child) || affected;
+    });
+    affectedBranches.set(node, affected);
+    if (!node.childNodes) {
+      return affected;
+    }
+    node.childNodes = node.childNodes.filter((child) => {
+      if (
+        !child.tagName ||
+        !emptyInlineTags.has(child.tagName) ||
+        !affectedBranches.get(child)
+      ) {
+        return true;
+      }
+      return collectVisibleText(child).visibleText.trim().length > 0;
+    });
+    return affected;
+  };
+  pruneEmptyInlineFormatting(fragment);
+
+  const surviving = collectVisibleText(fragment);
+  if (!surviving.visibleText.trim()) {
+    surviving.textNodes.forEach(({ node }) => {
+      node.value = '';
+    });
+  }
+
+  const effectiveVisibleText = collectVisibleText(fragment).visibleText;
+  return {
+    content: serialize(parsedFragment),
+    removed: true,
+    visibleText: effectiveVisibleText,
+  };
+};
+
+export const resolveEffectivePlatformContent = ({
+  content,
+  capabilities,
+  convertMentionFunction,
+}: {
+  content: string;
+  capabilities: PlatformCapabilities;
+  convertMentionFunction?: (idOrHandle: string, name: string) => string;
+}) => {
+  const normalized = normalizePlatformContent(
+    content,
+    capabilities,
+    convertMentionFunction
+  );
+  if (!capabilities.delivery.stripRawUrls) {
+    return {
+      normalized,
+      rawUrlRemoved: false,
+      visibleText: getDecodedVisibleText(normalized),
+    };
+  }
+
+  const effective = stripVisibleRawUrls(normalized);
+  return {
+    normalized: effective.content,
+    rawUrlRemoved: effective.removed,
+    visibleText: effective.visibleText,
+  };
+};
+
 export const analyzePlatformContent = ({
   content,
   media,
@@ -106,8 +320,11 @@ export const analyzePlatformContent = ({
   media: Array<{ type?: 'image' | 'video' }>;
   capabilities: PlatformCapabilities;
 }): PlatformContentAnalysis => {
-  const normalized = normalizePlatformContent(content, capabilities);
-  const plainText = striptags(normalized);
+  const {
+    normalized,
+    rawUrlRemoved,
+    visibleText: plainText,
+  } = resolveEffectivePlatformContent({ content, capabilities });
   const rawVisibleLength =
     capabilities.identifier === 'telegram'
       ? getTelegramVisibleTextLength(normalized)
@@ -134,7 +351,7 @@ export const analyzePlatformContent = ({
       text: 'Some formatting will be converted to plain text.',
     });
   }
-  if (capabilities.delivery.stripRawUrls && hasLinks(content)) {
+  if (rawUrlRemoved) {
     messages.push({
       severity: 'warning',
       code: 'raw-url-removed',
@@ -240,10 +457,10 @@ export const analyzeSelectedPlatformContent = ({
     }))
   );
   return {
-    normalized: normalizePlatformContent(
+    normalized: resolveEffectivePlatformContent({
       content,
-      intersectPlatformCapabilities(capabilities)
-    ),
+      capabilities: intersectPlatformCapabilities(capabilities),
+    }).normalized,
     visibleLength: Math.max(...analyses.map((item) => item.visibleLength), 0),
     blocking: messages.some((item) => item.severity === 'error'),
     messages,
