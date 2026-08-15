@@ -11,6 +11,7 @@ import {
 } from 'vitest';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { VkGroupProvider } from '@gitroom/nestjs-libraries/integrations/social/vk.group.provider';
+import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { PostActivity } from './post.activity';
 
 vi.mock('axios', () => ({
@@ -109,6 +110,9 @@ function createHarness({
   };
   const integrationManager = {
     getSocialIntegration: vi.fn().mockReturnValue(provider),
+    getCapabilities: vi
+      .fn()
+      .mockReturnValue(getPlatformCapabilities(provider.identifier)),
   };
   const postsService = new PostsService(
     repository as any,
