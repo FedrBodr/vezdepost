@@ -173,3 +173,20 @@ Compose file, creates `caddy-edge` and the empty imported-site placeholder,
 migrates the isolated database, and requires loopback liveness/readiness. A
 failed replacement restores the previous KSY files and restarts its previous
 image without touching Vezdepost or rolling migrations back.
+
+After the shared-edge commit is the successful deployed `prod` revision and
+both authoritative nameservers return `201.51.7.50`, activate the route:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/21-enable-ksy-route.sh \
+  vezdepost:/tmp/21-enable-ksy-route.sh
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/21-enable-ksy-route.sh || status=$?; rm -f /tmp/21-enable-ksy-route.sh; exit "$status"'
+```
+
+Script 21 accepts only the exact authoritative A record, requires loopback and
+Caddy-network readiness, installs only `/etc/caddy/sites/ksy-deals.caddy`, and
+validates/reloads Caddy. It then requires KSY HTTPS `200` and the unchanged
+Vezdepost `200/200/401` probes. Any failed acceptance restores the previous KSY
+site state and reloads the last valid Caddy configuration.
