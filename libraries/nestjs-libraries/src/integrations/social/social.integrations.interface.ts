@@ -1,7 +1,5 @@
 import { Integration } from '@prisma/client';
-import {
-  PlatformCapabilities,
-} from '@gitroom/helpers/utils/platform.capabilities';
+import { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 
 export interface ClientInformation {
   client_id: string;
@@ -35,7 +33,7 @@ export interface IAuthenticator {
     integrationId: string,
     accessToken: string,
     postId: string,
-    fromDate: number,
+    fromDate: number
   ): Promise<AnalyticsData[]>;
   changeNickname?(
     id: string,
@@ -58,7 +56,6 @@ export interface AnalyticsData {
   data: Array<{ total: string; date: string }>;
   percentageChange: number;
 }
-
 
 export type GenerateAuthUrlResponse = {
   url: string;

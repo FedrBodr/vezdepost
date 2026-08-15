@@ -146,10 +146,9 @@ export const ProviderPreviewComponent: FC<ProviderPreviewProps> = ({
   useEffect(() => {
     if (!controlRef) return;
     const resolveAdditionalSettings = (): unknown[] => {
-      const additional = (integration?.additionalSettings as
-        | string
-        | unknown[]
-        | undefined) ?? '[]';
+      const additional =
+        (integration?.additionalSettings as string | unknown[] | undefined) ??
+        '[]';
       if (Array.isArray(additional)) return additional;
       try {
         const parsed = JSON.parse(additional || '[]');
@@ -203,7 +202,7 @@ export const ProviderPreviewComponent: FC<ProviderPreviewProps> = ({
       allIntegrations: [],
       value: [],
     }),
-    [provider, integration],
+    [provider, integration]
   );
 
   if (!meta) {
