@@ -63,7 +63,7 @@ describe('adaptive crossposting chat rules', () => {
       'Не выдумывай факты, цифры, цитаты, ссылки и результаты'
     );
     expect(rules).toContain('Причина адаптации');
-    expect(rules).toContain('не публикуй автоматически');
+    expect(rules).toContain('Не публикуй автоматически');
   });
 
   it('contains verified active-platform limits', () => {

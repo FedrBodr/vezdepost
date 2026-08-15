@@ -509,6 +509,16 @@ describe('platform content normalization', () => {
     ).toBe('Title\n<b>Bold</b> Link\n');
   });
 
+  it('keeps Telegram normalization idempotent', () => {
+    const once = normalizePlatformContent(
+      '<p><strong>Bold</strong></p>',
+      getPlatformCapabilities('telegram')
+    );
+    expect(
+      normalizePlatformContent(once, getPlatformCapabilities('telegram'))
+    ).toBe(once);
+  });
+
   it('reports Telegram long-media split as information', () => {
     const analysis = analyzePlatformContent({
       content: `<p>${'a'.repeat(1025)}</p>`,
@@ -780,7 +790,7 @@ export const normalizeTelegramHtml = (value: string): string =>
     value
       .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gis, '$1\n')
       .replace(/<a[^>]*>(.*?)<\/a>/gis, '$1'),
-    ['u', 'strong', 'p']
+    ['u', 'strong', 'b', 'p']
   )
     .replace(/<strong>/g, '<b>')
     .replace(/<\/strong>/g, '</b>')
