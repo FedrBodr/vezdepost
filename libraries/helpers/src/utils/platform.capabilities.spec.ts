@@ -36,7 +36,24 @@ describe('platform capability registry', () => {
         lists: 'native',
         headings: 'native',
       },
+      delivery: {
+        longMediaText: 'not-applicable',
+        stripRawUrls: false,
+      },
     });
+  });
+
+  it('models raw URL stripping explicitly for legacy providers', () => {
+    expect(
+      getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+        stripRawUrls: true,
+      }).delivery.stripRawUrls
+    ).toBe(true);
+    expect(getPlatformCapabilities('telegram').delivery.stripRawUrls).toBe(
+      false
+    );
   });
 
   it('intersects selected platforms and keeps the strictest limit', () => {
@@ -49,5 +66,19 @@ describe('platform capability registry', () => {
     expect(universal.text.max).toBe(4096);
     expect(universal.formatting.bold).toBe('unicode');
     expect(universal.formatting.links).toBe('unsupported');
+    expect(universal.delivery.stripRawUrls).toBe(false);
+  });
+
+  it('intersects URL removal when any selected platform strips raw URLs', () => {
+    const universal = intersectPlatformCapabilities([
+      getPlatformCapabilities('telegram'),
+      getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+        stripRawUrls: true,
+      }),
+    ]);
+
+    expect(universal.delivery.stripRawUrls).toBe(true);
   });
 });

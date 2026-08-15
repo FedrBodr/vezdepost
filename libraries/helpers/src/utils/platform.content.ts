@@ -2,6 +2,7 @@ import striptags from 'striptags';
 import { weightedLength } from './count.length';
 import { convertHtmlStructureToText } from './html.structure';
 import { stripHtmlValidation } from './strip.html.validation';
+import { hasLinks } from './strip.links';
 import {
   getTelegramVisibleTextLength,
   normalizeTelegramHtml,
@@ -24,7 +25,8 @@ export interface PlatformContentMessage {
     | 'too-many-images'
     | 'too-many-videos'
     | 'video-cover-required'
-    | 'media-text-split';
+    | 'media-text-split'
+    | 'raw-url-removed';
   text: string;
 }
 
@@ -130,6 +132,13 @@ export const analyzePlatformContent = ({
       severity: 'warning',
       code: 'formatting-loss',
       text: 'Some formatting will be converted to plain text.',
+    });
+  }
+  if (capabilities.delivery.stripRawUrls && hasLinks(content)) {
+    messages.push({
+      severity: 'warning',
+      code: 'raw-url-removed',
+      text: 'Raw HTTP(S) URLs will be removed before publishing.',
     });
   }
 

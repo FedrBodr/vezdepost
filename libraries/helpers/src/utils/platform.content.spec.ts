@@ -170,6 +170,63 @@ describe('platform content normalization', () => {
     expect(analysis.blocking).toBe(true);
   });
 
+  it('warns without blocking when transport removes a raw HTTP URL', () => {
+    const analysis = analyzePlatformContent({
+      content: '<p>Read https://example.com/path before publishing.</p>',
+      media: [],
+      capabilities: getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+        stripRawUrls: true,
+      }),
+    });
+
+    expect(analysis.messages).toContainEqual({
+      severity: 'warning',
+      code: 'raw-url-removed',
+      text: 'Raw HTTP(S) URLs will be removed before publishing.',
+    });
+    expect(analysis.blocking).toBe(false);
+  });
+
+  it.each([
+    [
+      'URL stripping is disabled',
+      '<p>Read https://example.com/path.</p>',
+      getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+      }),
+    ],
+    [
+      'content has no raw URL',
+      '<p>There is no link here.</p>',
+      getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+        stripRawUrls: true,
+      }),
+    ],
+    [
+      'Telegram only lacks hidden-link formatting',
+      '<p>Read https://example.com/path.</p>',
+      getPlatformCapabilities('telegram'),
+    ],
+  ])(
+    'does not warn about URL removal when %s',
+    (_reason, content, capabilities) => {
+      const analysis = analyzePlatformContent({
+        content,
+        media: [],
+        capabilities,
+      });
+
+      expect(analysis.messages).not.toContainEqual(
+        expect.objectContaining({ code: 'raw-url-removed' })
+      );
+    }
+  );
+
   it('retains platform identity when universal content has platform-specific delivery', () => {
     const analyses = analyzeSelectedPlatformContent({
       content: `<p>${'a'.repeat(1025)}</p>`,

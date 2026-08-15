@@ -44,6 +44,25 @@ describe('PlatformContentNotice', () => {
     expect(screen.getByRole('alert').textContent).toContain('requires media');
   });
 
+  it('renders raw URL removal as a nonblocking warning', () => {
+    render(
+      <PlatformContentNotice
+        messages={[
+          {
+            severity: 'warning',
+            code: 'raw-url-removed',
+            text: 'Raw HTTP(S) URLs will be removed before publishing.',
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'removed before publishing'
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('uses the exact target account while keeping the provider label readable', () => {
     const onCustomize = vi.fn();
     render(

@@ -188,13 +188,20 @@ export class IntegrationManager {
     providerSettings?: any
   ): PlatformCapabilities {
     const provider = this.getSocialIntegration(providerName);
-    return (
+    const stripRawUrls = !!provider.stripLinks?.();
+    const capabilities =
       provider.capabilities ||
       getPlatformCapabilities(providerName, {
         editor: provider.editor,
         maximumCharacters: provider.maxLength(providerSettings),
-      })
-    );
+        stripRawUrls,
+      });
+    return stripRawUrls && !capabilities.delivery.stripRawUrls
+      ? {
+          ...capabilities,
+          delivery: { ...capabilities.delivery, stripRawUrls: true },
+        }
+      : capabilities;
   }
   getSocialIntegration(integration: string): SocialProvider {
     return socialIntegrationList.find((i) => i.identifier === integration)!;

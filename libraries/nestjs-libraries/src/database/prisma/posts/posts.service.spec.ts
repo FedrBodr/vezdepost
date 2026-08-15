@@ -1,8 +1,12 @@
 import axios from 'axios';
 import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PostsService } from './posts.service';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const createService = ({
   repository = {},
@@ -155,6 +159,38 @@ describe('PostsService.validatePosts', () => {
 
     expect(result.maximumCharacters).toBe(4000);
     expect(result.tooLong).toBe(false);
+    expect(result.contentError).toBe('');
+  });
+
+  it('returns a nonblocking warning when X strips raw URLs', async () => {
+    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
+    const service = createService({
+      integrationManager: new IntegrationManager(),
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue({
+          id: 'x-1',
+          providerIdentifier: 'x',
+          name: 'X',
+          additionalSettings: '[]',
+        }),
+      },
+    });
+
+    const [result] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'x-1' },
+        value: [
+          { content: '<p>Read https://example.com/path.</p>', image: [] },
+        ],
+      },
+    ]);
+
+    expect(result.contentMessages).toContainEqual(
+      expect.objectContaining({
+        severity: 'warning',
+        code: 'raw-url-removed',
+      })
+    );
     expect(result.contentError).toBe('');
   });
 });

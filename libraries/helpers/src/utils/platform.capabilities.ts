@@ -25,12 +25,14 @@ export interface PlatformCapabilities {
   specialFields: Array<{ key: string; required: boolean }>;
   delivery: {
     longMediaText: 'caption' | 'split-after-media' | 'not-applicable';
+    stripRawUrls: boolean;
   };
 }
 
 export interface LegacyCapabilityFallback {
   editor: EditorMode;
   maximumCharacters: number;
+  stripRawUrls?: boolean;
 }
 
 const plainFormatting = {
@@ -56,7 +58,7 @@ const activeProfiles: Record<string, PlatformCapabilities> = {
     text: { max: 4096, mediaCaptionMax: 1024 },
     media: { required: false, images: true, videos: true },
     specialFields: [],
-    delivery: { longMediaText: 'split-after-media' },
+    delivery: { longMediaText: 'split-after-media', stripRawUrls: false },
   },
   max: {
     identifier: 'max',
@@ -72,7 +74,7 @@ const activeProfiles: Record<string, PlatformCapabilities> = {
     text: { max: 4000 },
     media: { required: false, images: true, videos: false },
     specialFields: [],
-    delivery: { longMediaText: 'caption' },
+    delivery: { longMediaText: 'caption', stripRawUrls: false },
   },
   linkedin: {
     identifier: 'linkedin',
@@ -82,7 +84,7 @@ const activeProfiles: Record<string, PlatformCapabilities> = {
     text: { max: 3000 },
     media: { required: false, images: true, videos: true, maxVideos: 1 },
     specialFields: [],
-    delivery: { longMediaText: 'not-applicable' },
+    delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
   },
   tumblr: {
     identifier: 'tumblr',
@@ -103,7 +105,7 @@ const activeProfiles: Record<string, PlatformCapabilities> = {
       { key: 'sourceUrl', required: false },
       { key: 'tags', required: false },
     ],
-    delivery: { longMediaText: 'not-applicable' },
+    delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
   },
   pinterest: {
     identifier: 'pinterest',
@@ -124,7 +126,7 @@ const activeProfiles: Record<string, PlatformCapabilities> = {
       { key: 'link', required: false },
       { key: 'board', required: true },
     ],
-    delivery: { longMediaText: 'not-applicable' },
+    delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
   },
   vk: {
     identifier: 'vk',
@@ -134,7 +136,7 @@ const activeProfiles: Record<string, PlatformCapabilities> = {
     text: { max: 16384 },
     media: { required: false, images: true, videos: true },
     specialFields: [],
-    delivery: { longMediaText: 'not-applicable' },
+    delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
   },
   'vk-group': {
     identifier: 'vk-group',
@@ -150,7 +152,7 @@ const activeProfiles: Record<string, PlatformCapabilities> = {
       maxVideos: 0,
     },
     specialFields: [],
-    delivery: { longMediaText: 'not-applicable' },
+    delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
   },
 };
 
@@ -201,7 +203,10 @@ export const getPlatformCapabilities = (
     text: { max: fallback.maximumCharacters },
     media: { required: false, images: true, videos: true },
     specialFields: [],
-    delivery: { longMediaText: 'not-applicable' },
+    delivery: {
+      longMediaText: 'not-applicable',
+      stripRawUrls: fallback.stripRawUrls ?? false,
+    },
   };
 
 export const intersectPlatformCapabilities = (
@@ -238,6 +243,9 @@ export const intersectPlatformCapabilities = (
       ),
     },
     specialFields: [],
-    delivery: { longMediaText: 'not-applicable' },
+    delivery: {
+      longMediaText: 'not-applicable',
+      stripRawUrls: selected.some((item) => item.delivery.stripRawUrls),
+    },
   };
 };
