@@ -506,7 +506,7 @@ describe('platform content normalization', () => {
         '<h1>Title</h1><p><strong>Bold</strong> <a href="https://x.test">Link</a></p>',
         getPlatformCapabilities('telegram')
       )
-    ).toBe('Title\n<b>Bold</b> Link\n');
+    ).toBe('Title\n<b>Bold</b> Link');
   });
 
   it('keeps Telegram normalization idempotent', () => {
@@ -794,7 +794,8 @@ export const normalizeTelegramHtml = (value: string): string =>
   )
     .replace(/<strong>/g, '<b>')
     .replace(/<\/strong>/g, '</b>')
-    .replace(/<p>(.*?)<\/p>/gs, '$1\n');
+    .replace(/<p>(.*?)<\/p>/gs, '$1\n')
+    .replace(/\n$/, '');
 ```
 
 - [ ] **Step 4: Run content and existing Telegram tests**

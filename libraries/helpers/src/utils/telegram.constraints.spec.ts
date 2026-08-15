@@ -12,13 +12,19 @@ describe('Telegram HTML caption length', () => {
       normalizeTelegramHtml(
         '<p><strong>bold</strong> <a href="https://example.com">label</a></p>'
       )
-    ).toBe('<b>bold</b> label\n');
+    ).toBe('<b>bold</b> label');
+  });
+
+  it('retains paragraph separators and an intentional trailing newline', () => {
+    expect(normalizeTelegramHtml('<p>First</p><p>Second\n</p>')).toBe(
+      'First\nSecond\n'
+    );
   });
 
   it('counts formatting text without counting tags', () => {
     expect(
       getTelegramVisibleTextLength(`<p><strong>${'x'.repeat(600)}</strong></p>`)
-    ).toBe(601);
+    ).toBe(600);
   });
 
   it('counts link labels instead of URLs', () => {

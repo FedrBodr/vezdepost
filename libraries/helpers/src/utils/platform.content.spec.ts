@@ -13,7 +13,7 @@ describe('platform content normalization', () => {
         '<h1>Title</h1><p><strong>Bold</strong> <a href="https://x.test">Link</a></p>',
         getPlatformCapabilities('telegram')
       )
-    ).toBe('Title\n<b>Bold</b> Link\n');
+    ).toBe('Title\n<b>Bold</b> Link');
   });
 
   it('keeps Telegram normalization idempotent', () => {

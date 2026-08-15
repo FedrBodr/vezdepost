@@ -57,7 +57,7 @@ describe('PostActivity platform formatting', () => {
     expect(provider.post).toHaveBeenCalledWith(
       'channel',
       'chat-id',
-      [expect.objectContaining({ message: 'Title\n<b>Body</b> Link\n' })],
+      [expect.objectContaining({ message: 'Title\n<b>Body</b> Link' })],
       expect.objectContaining({ id: 'integration-1' })
     );
   });

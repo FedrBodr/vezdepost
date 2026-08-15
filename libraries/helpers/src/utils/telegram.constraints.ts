@@ -11,7 +11,8 @@ export const normalizeTelegramHtml = (value: string): string =>
   )
     .replace(/<strong>/g, '<b>')
     .replace(/<\/strong>/g, '</b>')
-    .replace(/<p>(.*?)<\/p>/gs, '$1\n');
+    .replace(/<p>(.*?)<\/p>/gs, '$1\n')
+    .replace(/\n$/, '');
 
 const decodeTelegramHtmlEntities = (value: string) =>
   value.replace(
