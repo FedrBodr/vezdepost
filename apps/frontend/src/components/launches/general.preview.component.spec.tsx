@@ -112,4 +112,14 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
       'This text will be cropped'
     );
   });
+
+  it('crops only the eleventh ASCII character for X at a limit of ten', () => {
+    previewContext.identifier = 'x';
+
+    const preview = renderPreview('abcdefghijk');
+
+    expect(preview.textContent).toBe('abcdefghijk');
+    expect(preview.querySelector('mark')?.textContent).toBe('k');
+    expect(preview.innerHTML).toMatch(/^abcdefghij<mark/);
+  });
 });

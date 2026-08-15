@@ -16,16 +16,14 @@ const ALLOWED_TAGS = [
   'mark',
 ];
 
-const ALLOWED_ATTR = [
-  'href',
-  'target',
-  'rel',
-  'class',
+const ALLOWED_DATA_ATTR = [
   'data-mention-id',
   'data-mention-label',
   'data-tooltip-id',
   'data-tooltip-content',
 ];
+
+const ALLOWED_ATTR = ['href', 'target', 'rel', 'class', ...ALLOWED_DATA_ATTR];
 
 export const sanitizePostContent = (value: unknown): string => {
   if (typeof value !== 'string' || !value) {
@@ -35,6 +33,8 @@ export const sanitizePostContent = (value: unknown): string => {
   return DOMPurify.sanitize(value, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
+    ADD_URI_SAFE_ATTR: ALLOWED_DATA_ATTR,
+    ALLOW_DATA_ATTR: false,
     ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|\/|#)/i,
   });
 };
