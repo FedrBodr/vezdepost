@@ -62,11 +62,27 @@ vi.mock('react-dropzone', () => ({
   }),
 }));
 vi.mock('@uppy/react', () => ({ Dashboard: (): null => null }));
-vi.mock('@gitroom/frontend/components/signature', () => ({
-  SignatureBox: (): null => null,
-}));
+vi.mock('@gitroom/frontend/components/signature', async () => {
+  const ReactModule = await import('react');
+  return {
+    SignatureBox: ({ editor }: { editor?: any }) =>
+      ReactModule.createElement(
+        'button',
+        {
+          onClick: () => {
+            editor?.commands.focus('end');
+            editor?.commands.insertContent(' edited');
+          },
+        },
+        'Insert test signature'
+      ),
+  };
+});
 vi.mock('@gitroom/frontend/components/media/media.component', () => ({
-  MultiMediaComponent: (): null => null,
+  MultiMediaComponent: ({ toolBar }: { toolBar?: any }) => {
+    const children = toolBar?.props?.children;
+    return Array.isArray(children) ? children[0] : children || null;
+  },
 }));
 vi.mock('@gitroom/frontend/components/launches/up.down.arrow', () => ({
   UpDownArrow: (): null => null,
@@ -133,6 +149,98 @@ const renderPlainEditor = (value = '<p></p>') =>
   renderEditor(getPlatformCapabilities('linkedin'), value);
 
 describe('canonical editor schema and creation policy', () => {
+  it('switches exact same-provider owners before emitting the first edit', async () => {
+    const capabilities = getPlatformCapabilities('linkedin');
+    const first = {
+      integration: {
+        id: 'linkedin-first',
+        identifier: 'linkedin',
+        name: 'First LinkedIn',
+        capabilities,
+      },
+      settings: {},
+    } as any;
+    const second = {
+      integration: {
+        id: 'linkedin-second',
+        identifier: 'linkedin',
+        name: 'Second LinkedIn',
+        capabilities,
+      },
+      settings: {},
+    } as any;
+    launchStoreState.current = first.integration.id;
+    launchStoreState.selectedIntegrations = [first, second];
+    launchStoreState.global = [
+      {
+        id: 'shared-post-id',
+        content: '<p>Global content</p>',
+        delay: 0,
+        media: [],
+      },
+    ];
+    launchStoreState.internal = [
+      {
+        integration: first.integration,
+        integrationValue: [
+          {
+            id: 'shared-post-id',
+            content: '<p>First account</p>',
+            delay: 0,
+            media: [],
+          },
+        ],
+      },
+      {
+        integration: second.integration,
+        integrationValue: [
+          {
+            id: 'shared-post-id',
+            content: '<p>Second account</p>',
+            delay: 0,
+            media: [],
+          },
+        ],
+      },
+    ];
+
+    const view = render(<EditorWrapper totalPosts={1} value="" />);
+    await screen.findByText('First account');
+
+    launchStoreState.current = second.integration.id;
+    view.rerender(<EditorWrapper totalPosts={1} value="" />);
+
+    const editable = await waitFor(() => {
+      const element = view.container.querySelector<HTMLElement>(
+        '[contenteditable="true"]'
+      );
+      expect(element).toBeTruthy();
+      return element!;
+    });
+    expect.soft(editable.textContent).toBe('Second account');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Insert test signature' })
+    );
+
+    await waitFor(() =>
+      expect(launchStoreState.setInternalValueText).toHaveBeenCalled()
+    );
+    expect(launchStoreState.setInternalValueText).toHaveBeenLastCalledWith(
+      'linkedin-second',
+      0,
+      '<p>Second account edited</p>'
+    );
+
+    launchStoreState.internal[1].integrationValue[0].content =
+      '<p>Second account edited</p>';
+    view.rerender(<EditorWrapper totalPosts={1} value="" />);
+
+    expect(
+      view.container.querySelector<HTMLElement>('[contenteditable="true"]')
+    ).toBe(editable);
+  });
+
   it('customizes the exact global account when duplicate providers are selected', async () => {
     const first = {
       integration: {

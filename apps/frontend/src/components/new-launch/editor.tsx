@@ -4,6 +4,7 @@ import React, {
   FC,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -452,6 +453,8 @@ export const EditorWrapper: FC<{
                 comments={comments}
                 editorType={editor}
                 identifier={current}
+                contentOwnerId={current}
+                postId={g.id}
                 capabilities={capabilities}
                 allValues={items}
                 onChange={changeValue(index)}
@@ -549,6 +552,8 @@ export const EditorWrapper: FC<{
 export const Editor: FC<{
   editorType?: 'none' | 'normal' | 'markdown' | 'html';
   identifier?: string;
+  contentOwnerId?: string;
+  postId?: string;
   capabilities?: PlatformCapabilities;
   totalPosts: number;
   value: string;
@@ -631,6 +636,7 @@ export const Editor: FC<{
   const t = useT();
   const toaster = useToaster();
   const editorRef = useRef<undefined | { editor: any }>(undefined);
+  const [activeEditor, setActiveEditor] = useState<any>();
   const [loading, setLoading] = useState(false);
 
   const uppy = useUppyUploader({
@@ -733,10 +739,10 @@ export const Editor: FC<{
 
   const addText = useCallback(
     (emoji: string) => {
-      editorRef?.current?.editor?.commands?.insertContent(emoji);
-      editorRef?.current?.editor?.commands?.focus();
+      activeEditor?.commands?.insertContent(emoji);
+      activeEditor?.commands?.focus();
     },
-    [props.value, id]
+    [activeEditor]
   );
 
   const [loadedEditor, setLoadedEditor] = useState(editorType);
@@ -783,10 +789,15 @@ export const Editor: FC<{
             </div>
             <div className="px-[10px] pt-[10px] bg-newBgColorInner rounded-t-[6px] relative z-[99]">
               <OnlyEditor
-                key={editorCreationPolicyKey}
+                key={JSON.stringify([
+                  props.contentOwnerId ?? props.identifier ?? 'standalone',
+                  props.postId ?? id,
+                  editorCreationPolicyKey,
+                ])}
                 value={props.value}
                 capabilities={capabilities}
                 onChange={props.onChange}
+                onEditorChange={setActiveEditor}
                 paste={paste}
                 ref={editorRef}
               />
@@ -846,34 +857,34 @@ export const Editor: FC<{
                   }
                   toolBar={
                     <div className="flex gap-[5px]">
-                      <SignatureBox editor={editorRef?.current?.editor} />
+                      <SignatureBox editor={activeEditor} />
                       {formattingControls.includes('underline') && (
                         <UText
-                          editor={editorRef?.current?.editor}
+                          editor={activeEditor}
                           currentValue={props.value!}
                         />
                       )}
                       {formattingControls.includes('bold') && (
                         <BoldText
-                          editor={editorRef?.current?.editor}
+                          editor={activeEditor}
                           currentValue={props.value!}
                         />
                       )}
                       {formattingControls.includes('link') && (
                         <AComponent
-                          editor={editorRef?.current?.editor}
+                          editor={activeEditor}
                           currentValue={props.value!}
                         />
                       )}
                       {formattingControls.includes('list') && (
                         <Bullets
-                          editor={editorRef?.current?.editor}
+                          editor={activeEditor}
                           currentValue={props.value!}
                         />
                       )}
                       {formattingControls.includes('heading') && (
                         <HeadingComponent
-                          editor={editorRef?.current?.editor}
+                          editor={activeEditor}
                           currentValue={props.value!}
                         />
                       )}
@@ -938,9 +949,10 @@ export const OnlyEditor = forwardRef<
     capabilities: PlatformCapabilities;
     value: string;
     onChange: (value: string) => void;
+    onEditorChange?: (editor: any) => void;
     paste?: (event: ClipboardEvent | File[]) => void;
   }
->(({ capabilities, value, onChange, paste }, ref) => {
+>(({ capabilities, value, onChange, onEditorChange, paste }, ref) => {
   const t = useT();
   const fetch = useFetch();
   const canonicalEditorExtensions = useMemo(
@@ -1033,6 +1045,11 @@ export const OnlyEditor = forwardRef<
   useImperativeHandle(ref, () => ({
     editor,
   }));
+
+  useLayoutEffect(() => {
+    onEditorChange?.(editor);
+    return () => onEditorChange?.(undefined);
+  }, [editor, onEditorChange]);
 
   return <EditorContent editor={editor} />;
 });

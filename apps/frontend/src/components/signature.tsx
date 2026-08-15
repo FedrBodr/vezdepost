@@ -1,12 +1,13 @@
 import { FC, useCallback } from 'react';
 import { SignaturesComponent } from '@gitroom/frontend/components/settings/signatures.component';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import { plainTextToParagraphs } from '@gitroom/frontend/components/new-launch/plain-text-paste.extension';
 export const SignatureBox: FC<{
   editor: any;
 }> = ({ editor }) => {
   const modals = useModals();
   const appendValue = (val: string) => {
-    editor?.commands?.insertContent('\n\n' + val);
+    editor?.commands?.insertContent(plainTextToParagraphs('\n\n' + val));
     editor?.commands?.focus();
   };
 

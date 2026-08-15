@@ -85,6 +85,14 @@ export const InformationComponent: FC<{
     return !analysis.blocking;
   }, [analysis.blocking, isPicture, totalChars]);
 
+  if (
+    isGlobal &&
+    selectedIntegrations.length > 0 &&
+    globalTargets.length === 0
+  ) {
+    return null;
+  }
+
   return (
     <div
       className={clsx(
