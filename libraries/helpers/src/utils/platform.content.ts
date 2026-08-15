@@ -60,10 +60,12 @@ export const normalizePlatformContent = (
           .replace(/<b(?=[\s>])/gi, '<strong')
           .replace(/<\/b>/gi, '</strong>')
       : content;
-  const structuredContent =
-    capabilities.output === 'html'
-      ? convertHtmlStructureToText(canonicalContent)
-      : canonicalContent;
+  const requiresStructuralFallback =
+    capabilities.formatting.lists !== 'native' ||
+    capabilities.formatting.headings !== 'native';
+  const structuredContent = requiresStructuralFallback
+    ? convertHtmlStructureToText(canonicalContent)
+    : canonicalContent;
   const html = stripHtmlValidation(
     'html',
     structuredContent,
@@ -78,9 +80,13 @@ export const normalizePlatformContent = (
   if (capabilities.output === 'html') {
     return striptags(html, ['p', 'strong', 'u', 'a']);
   }
+  const outputContent =
+    capabilities.output === 'normal' && requiresStructuralFallback
+      ? `<p>${structuredContent}</p>`
+      : structuredContent;
   return stripHtmlValidation(
     capabilities.output,
-    content,
+    outputContent,
     true,
     false,
     false,

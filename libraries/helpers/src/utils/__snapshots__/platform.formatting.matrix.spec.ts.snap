@@ -4,8 +4,7 @@ exports[`linkedin formatting matrix > normalizes deterministically and stays und
 "Launch
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
 - One
-- Two
-"
+- Two"
 `;
 
 exports[`max formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
@@ -19,8 +18,7 @@ exports[`pinterest formatting matrix > normalizes deterministically and stays un
 "Launch
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
 - One
-- Two
-"
+- Two"
 `;
 
 exports[`telegram formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
@@ -34,22 +32,19 @@ exports[`tumblr formatting matrix > normalizes deterministically and stays under
 "Launch
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
 - One
-- Two
-"
+- Two"
 `;
 
 exports[`vk formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
 - One
-- Two
-"
+- Two"
 `;
 
 exports[`vk-group formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
 - One
-- Two
-"
+- Two"
 `;

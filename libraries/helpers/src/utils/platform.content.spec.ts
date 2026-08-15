@@ -7,6 +7,31 @@ import {
 } from './platform.content';
 
 describe('platform content normalization', () => {
+  it.each(['linkedin', 'vk'])(
+    '%s preserves adjacent heading boundaries and inline fallback formatting',
+    (identifier) => {
+      expect(
+        normalizePlatformContent(
+          '<h1>One <strong>Bold</strong></h1><h2>Two <u>Under</u> <a href="https://x.test">Label</a></h2>',
+          getPlatformCapabilities(identifier)
+        )
+      ).toBe('One 𝗕𝗼𝗹𝗱\nTwo U̲n̲d̲e̲r̲ https://x.test');
+    }
+  );
+
+  it.each(['linkedin', 'vk'])(
+    '%s preserves explicit break boundaries without leaking HTML',
+    (identifier) => {
+      const normalized = normalizePlatformContent(
+        '<p>First<br>Second <strong>Bold</strong></p>',
+        getPlatformCapabilities(identifier)
+      );
+
+      expect(normalized).toBe('First\nSecond 𝗕𝗼𝗹𝗱');
+      expect(normalized).not.toMatch(/<\/?(?:p|br|strong)\b/i);
+    }
+  );
+
   it.each(['telegram', 'max'])(
     '%s preserves readable list boundaries',
     (identifier) => {
