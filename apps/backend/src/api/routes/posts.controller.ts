@@ -213,6 +213,9 @@ export class PostsController {
         if (item.errors !== true) {
           fail(item, item.errors as string);
         }
+        if (item.contentError) {
+          fail(item, item.contentError);
+        }
         if (item.tooLong) {
           fail(item, 'post is too long, please fix it');
         }
