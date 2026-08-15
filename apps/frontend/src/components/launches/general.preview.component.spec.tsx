@@ -10,6 +10,8 @@ const previewContext = vi.hoisted(() => ({
   identifier: 'max',
   maximumCharacters: 10,
   stripRawUrls: false,
+  hasCapabilities: true,
+  editor: 'html' as 'none' | 'normal' | 'markdown' | 'html',
   value: [] as Array<{
     content: string;
     image: Array<{ id: string; path: string }>;
@@ -25,17 +27,23 @@ vi.mock(
         value: previewContext.value,
         integration: {
           identifier: previewContext.identifier,
+          editor: previewContext.editor,
+          stripLinks: previewContext.stripRawUrls,
           name: 'MAX',
           display: '@account',
           picture: '/account.jpg',
-          capabilities: {
-            ...capabilities,
-            text: { max: previewContext.maximumCharacters },
-            delivery: {
-              ...capabilities.delivery,
-              stripRawUrls: previewContext.stripRawUrls,
-            },
-          },
+          ...(previewContext.hasCapabilities
+            ? {
+                capabilities: {
+                  ...capabilities,
+                  text: { max: previewContext.maximumCharacters },
+                  delivery: {
+                    ...capabilities.delivery,
+                    stripRawUrls: previewContext.stripRawUrls,
+                  },
+                },
+              }
+            : {}),
         },
       };
     },
@@ -59,9 +67,11 @@ import { GeneralPreviewComponent } from './general.preview.component';
 
 vi.stubGlobal('React', React);
 
-const renderPreview = (content: string) => {
+const renderPreview = (content: string, maximumCharacters?: number) => {
   previewContext.value = [{ content, image: [] }];
-  const { container } = render(<GeneralPreviewComponent />);
+  const { container } = render(
+    <GeneralPreviewComponent maximumCharacters={maximumCharacters} />
+  );
   return container.querySelector<HTMLElement>('.preview')!;
 };
 
@@ -70,10 +80,38 @@ beforeEach(() => {
   previewContext.identifier = 'max';
   previewContext.maximumCharacters = 10;
   previewContext.stripRawUrls = false;
+  previewContext.hasCapabilities = true;
+  previewContext.editor = 'html';
   previewContext.value = [];
 });
 
 describe('GeneralPreviewComponent content safety', () => {
+  it('uses an active profile safely when serialized capabilities are missing', () => {
+    previewContext.identifier = 'telegram';
+    previewContext.hasCapabilities = false;
+    previewContext.editor = 'none';
+
+    const preview = renderPreview('<p><strong>safe bold</strong></p>', 5);
+
+    expect(preview.querySelector('b')?.textContent).toBe('safe bold');
+    expect(preview.querySelector('mark')).toBeNull();
+  });
+
+  it('uses the supplied legacy maximum and sanitizes when capabilities are missing', () => {
+    previewContext.identifier = 'legacy-html';
+    previewContext.hasCapabilities = false;
+    previewContext.editor = 'html';
+
+    const preview = renderPreview(
+      '<p onclick="alert(1)"><strong>abcdefghijk</strong></p>',
+      10
+    );
+
+    expect(preview.textContent).toBe('abcdefghijk');
+    expect(preview.querySelector('mark')?.textContent).toBe('k');
+    expect(preview.querySelector('[onclick]')).toBeNull();
+  });
+
   it('sanitizes hostile attributes and URL protocols after normalization', () => {
     previewContext.maximumCharacters = 1_000;
     const preview = renderPreview(

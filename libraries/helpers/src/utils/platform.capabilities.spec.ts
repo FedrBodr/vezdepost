@@ -2,9 +2,72 @@ import { describe, expect, it } from 'vitest';
 import {
   getPlatformCapabilities,
   intersectPlatformCapabilities,
+  resolveIntegrationCapabilities,
 } from './platform.capabilities';
 
 describe('platform capability registry', () => {
+  it('returns serialized capabilities unchanged when they are present', () => {
+    const capabilities = getPlatformCapabilities('linkedin');
+
+    expect(
+      resolveIntegrationCapabilities(
+        {
+          identifier: 'legacy-provider',
+          editor: 'none',
+          stripLinks: true,
+          capabilities,
+        },
+        12
+      )
+    ).toBe(capabilities);
+  });
+
+  it('keeps an active verified profile authoritative without serialized capabilities', () => {
+    const resolved = resolveIntegrationCapabilities(
+      {
+        identifier: 'telegram',
+        editor: 'none',
+        stripLinks: true,
+      },
+      12
+    );
+
+    expect(resolved.verified).toBe(true);
+    expect(resolved.output).toBe('html');
+    expect(resolved.text.max).toBe(4096);
+    expect(resolved.delivery.stripRawUrls).toBe(false);
+  });
+
+  it('preserves unaudited legacy behavior without mutating the integration', () => {
+    const integration = Object.freeze({
+      identifier: 'legacy-html',
+      editor: 'html' as const,
+      stripLinks: true,
+    });
+
+    const resolved = resolveIntegrationCapabilities(integration, 321);
+
+    expect(resolved.verified).toBe(false);
+    expect(resolved.output).toBe('html');
+    expect(resolved.text.max).toBe(321);
+    expect(resolved.delivery.stripRawUrls).toBe(true);
+    expect(integration).toEqual({
+      identifier: 'legacy-html',
+      editor: 'html',
+      stripLinks: true,
+    });
+    expect('capabilities' in integration).toBe(false);
+  });
+
+  it('uses the conservative fallback until a legacy maximum is populated', () => {
+    expect(
+      resolveIntegrationCapabilities({
+        identifier: 'legacy-normal',
+        editor: 'normal',
+      }).text.max
+    ).toBe(1_000_000);
+  });
+
   it('describes the seven active destinations with backend limits', () => {
     expect(getPlatformCapabilities('telegram').text).toEqual({
       max: 4096,

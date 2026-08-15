@@ -35,6 +35,15 @@ export interface LegacyCapabilityFallback {
   stripRawUrls?: boolean;
 }
 
+export interface IntegrationCapabilitySource {
+  identifier: string;
+  editor: EditorMode;
+  capabilities?: PlatformCapabilities;
+  stripLinks?: boolean;
+}
+
+export const LEGACY_CAPABILITY_SAFE_MAXIMUM = 1_000_000;
+
 const plainFormatting = {
   bold: 'unicode',
   underline: 'unicode',
@@ -208,6 +217,17 @@ export const getPlatformCapabilities = (
       stripRawUrls: fallback.stripRawUrls ?? false,
     },
   };
+
+export const resolveIntegrationCapabilities = (
+  integration: IntegrationCapabilitySource,
+  legacyMaximum?: number
+): PlatformCapabilities =>
+  integration.capabilities ??
+  getPlatformCapabilities(integration.identifier, {
+    editor: integration.editor,
+    maximumCharacters: legacyMaximum ?? LEGACY_CAPABILITY_SAFE_MAXIMUM,
+    stripRawUrls: !!integration.stripLinks,
+  });
 
 export const intersectPlatformCapabilities = (
   profiles: PlatformCapabilities[]

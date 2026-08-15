@@ -43,6 +43,7 @@ import { useHasScroll } from '@gitroom/frontend/components/ui/is.scroll.hook';
 import { useShortlinkPreference } from '@gitroom/frontend/components/settings/shortlink-preference.component';
 import dayjs from 'dayjs';
 import { Button } from '@gitroom/react/form/button';
+import { selectDashboardContentValidationFailure } from '@gitroom/frontend/components/new-launch/dashboard.validation';
 
 export const ManageModal: FC<AddEditModalProps> = (props) => {
   const t = useT();
@@ -337,18 +338,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               return;
             }
 
-            if (item.contentError) {
-              toaster.show(
-                `${item.name} (${item.identifier}): ${item.contentError}`,
-                'warning'
-              );
-              focus(item.id, 'preview');
-              setLoading(false);
-              setShowSettings(false);
-              return;
-            }
-
-            if (item.tooLong) {
+            const contentFailure =
+              selectDashboardContentValidationFailure(item);
+            if (contentFailure?.category === 'too-long') {
               toaster.show(
                 `${item.name} (${item.identifier}) ${t(
                   'post_is_too_long',
@@ -358,6 +350,17 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               );
               focus(item.id, 'preview');
               setLoading(false);
+              return;
+            }
+
+            if (contentFailure?.category === 'content-error') {
+              toaster.show(
+                `${item.name} (${item.identifier}): ${contentFailure.message}`,
+                'warning'
+              );
+              focus(item.id, 'preview');
+              setLoading(false);
+              setShowSettings(false);
               return;
             }
           }

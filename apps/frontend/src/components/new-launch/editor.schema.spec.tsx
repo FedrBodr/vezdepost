@@ -508,4 +508,34 @@ describe('canonical editor schema and creation policy', () => {
       screen.queryByText('Some formatting will be converted to plain text.')
     ).toBeNull();
   });
+
+  it('analyzes a global legacy target without serialized capabilities', () => {
+    const legacy = {
+      integration: {
+        id: 'legacy-account',
+        identifier: 'legacy-provider',
+        name: 'Legacy Provider',
+        editor: 'normal',
+        stripLinks: false,
+      },
+      settings: {},
+    } as any;
+
+    render(
+      <Editor
+        identifier="global"
+        comments={true}
+        chars={{ 'legacy-account': 5 }}
+        selectedIntegration={[legacy]}
+        onChange={() => undefined}
+        value="abcdef"
+        totalPosts={1}
+        dummy={false}
+      />
+    );
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      'legacy-provider: Text exceeds the 5-character limit.'
+    );
+  });
 });

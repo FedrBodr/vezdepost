@@ -1,6 +1,7 @@
 import type { Internal, SelectedIntegrations } from './store';
 import {
   intersectPlatformCapabilities,
+  resolveIntegrationCapabilities,
   type PlatformCapabilities,
 } from '@gitroom/helpers/utils/platform.capabilities';
 import { deriveGlobalTargets } from './global.targets';
@@ -15,20 +16,29 @@ export type FormattingControl =
 export const resolveEditorCapabilities = (
   current: string,
   selected: SelectedIntegrations[],
-  internal: Internal[] = []
+  internal: Internal[] = [],
+  legacyMaximumByIntegration: Record<string, number> = {}
 ): PlatformCapabilities => {
   if (current === 'global') {
     return intersectPlatformCapabilities(
-      deriveGlobalTargets(selected, internal).map(
-        (item) => item.integration.capabilities
+      deriveGlobalTargets(selected, internal).map((item) =>
+        resolveIntegrationCapabilities(
+          item.integration,
+          legacyMaximumByIntegration[item.integration.id]
+        )
       )
     );
   }
 
-  return (
-    selected.find((item) => item.integration.id === current)?.integration
-      .capabilities || intersectPlatformCapabilities([])
-  );
+  const integration = selected.find(
+    (item) => item.integration.id === current
+  )?.integration;
+  return integration
+    ? resolveIntegrationCapabilities(
+        integration,
+        legacyMaximumByIntegration[integration.id]
+      )
+    : intersectPlatformCapabilities([]);
 };
 
 export const getFormattingControls = (

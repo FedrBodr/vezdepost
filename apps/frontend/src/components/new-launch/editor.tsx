@@ -67,7 +67,10 @@ import {
   createCanonicalEditorExtensions,
   getEditorCreationPolicyKey,
 } from '@gitroom/frontend/components/new-launch/platform.editor.extensions';
-import type { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import {
+  resolveIntegrationCapabilities,
+  type PlatformCapabilities,
+} from '@gitroom/helpers/utils/platform.capabilities';
 import {
   analyzePlatformContent,
   analyzeSelectedPlatformContent,
@@ -181,8 +184,13 @@ export const EditorWrapper: FC<{
 
   const capabilities = useMemo(
     () =>
-      resolveEditorCapabilities(current, selectedIntegration, internalChannels),
-    [current, selectedIntegration, internalChannels]
+      resolveEditorCapabilities(
+        current,
+        selectedIntegration,
+        internalChannels,
+        chars
+      ),
+    [current, selectedIntegration, internalChannels, chars]
   );
 
   const customizePlatform = useCallback(
@@ -588,8 +596,8 @@ export const Editor: FC<{
   const capabilities = useMemo(
     () =>
       props.capabilities ||
-      resolveEditorCapabilities('global', props.selectedIntegration),
-    [props.capabilities, props.selectedIntegration]
+      resolveEditorCapabilities('global', props.selectedIntegration, [], chars),
+    [props.capabilities, props.selectedIntegration, chars]
   );
   const formattingControls = useMemo(
     () => getFormattingControls(capabilities),
@@ -606,8 +614,11 @@ export const Editor: FC<{
           ? analyzeSelectedPlatformContent({
               content: props.value || '',
               media: props.pictures || [],
-              capabilities: props.selectedIntegration.map(
-                (item) => item.integration.capabilities
+              capabilities: props.selectedIntegration.map((item) =>
+                resolveIntegrationCapabilities(
+                  item.integration,
+                  chars[item.integration.id]
+                )
               ),
               targetIntegrationIds: props.selectedIntegration.map(
                 (item) => item.integration.id
@@ -629,6 +640,7 @@ export const Editor: FC<{
       props.pictures,
       props.selectedIntegration,
       capabilities,
+      chars,
     ]
   );
   const [id] = useState(makeId(10));

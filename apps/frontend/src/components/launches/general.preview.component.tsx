@@ -12,6 +12,7 @@ import {
 } from '@gitroom/helpers/utils/platform.content';
 import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+import { resolveIntegrationCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 
 const escapeHtml = (content: string) =>
   content
@@ -106,24 +107,27 @@ export const GeneralPreviewComponent: FC<{
   const { value: topValue, integration } = useIntegration();
   const current = useLaunchStore((state) => state.current);
   const mediaDir = useMediaDirectory();
+  const capabilities = integration
+    ? resolveIntegrationCapabilities(integration, props.maximumCharacters)
+    : undefined;
 
   const renderContent = topValue.map((p) => {
     const maximumCharacters =
-      integration?.capabilities.text.max ?? props.maximumCharacters ?? 10000;
-    const analysis = integration
+      capabilities?.text.max ?? props.maximumCharacters ?? 10000;
+    const analysis = capabilities
       ? analyzePlatformContent({
           content: p.content,
           media: p.image?.map(() => ({})) || [],
-          capabilities: integration.capabilities,
+          capabilities,
         })
       : {
           normalized: p.content,
           visibleLength: stripHtmlValidation('none', p.content).length,
         };
-    const effectiveContent = integration
+    const effectiveContent = capabilities
       ? resolveEffectivePlatformContent({
           content: p.content,
-          capabilities: integration.capabilities,
+          capabilities,
           convertMentionFunction: (_id, label) => `[[[${label}]]]`,
         })
       : {

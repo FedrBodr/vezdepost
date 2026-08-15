@@ -96,7 +96,7 @@ export interface Integrations {
   disabled?: boolean;
   inBetweenSteps: boolean;
   editor: 'none' | 'normal' | 'markdown' | 'html';
-  capabilities: PlatformCapabilities;
+  capabilities?: PlatformCapabilities;
   stripLinks?: boolean;
   display: string;
   identifier: string;
