@@ -16,11 +16,15 @@
 - `pnpm exec vitest run apps/backend/src/api/routes/posts.controller.spec.ts libraries/nestjs-libraries/src/database/prisma/posts/posts.service.spec.ts --reporter=verbose`
   - 2 test files passed, 10 tests passed.
 - `pnpm exec prettier --write apps/backend/src/api/routes/posts.controller.ts apps/backend/src/api/routes/posts.controller.spec.ts`
-  - Completed successfully. An unrelated pre-existing controller signature reflow was restored to keep the remediation diff bounded.
+  - Completed successfully.
 - `pnpm --filter ./apps/backend run build`
   - Passed. pnpm emitted the existing Node engine warning (`v23.7.0`; project requests `>=22.12.0 <23.0.0`).
 - `git diff --check`
   - Passed.
+- Final verification re-ran Prettier in check mode. It exposed an existing
+  controller signature reflow that had been restored after formatting; the
+  controller is now kept in Prettier's canonical form and the format check
+  passes.
 
 ## Files
 
