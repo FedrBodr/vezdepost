@@ -190,3 +190,21 @@ Caddy-network readiness, installs only `/etc/caddy/sites/ksy-deals.caddy`, and
 validates/reloads Caddy. It then requires KSY HTTPS `200` and the unchanged
 Vezdepost `200/200/401` probes. Any failed acceptance restores the previous KSY
 site state and reloads the last valid Caddy configuration.
+
+Install KSY backup automation only after the private stack is ready:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/22-install-ksy-backup.sh \
+  vezdepost:/tmp/22-install-ksy-backup.sh
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/22-install-ksy-backup.sh || status=$?; rm -f /tmp/22-install-ksy-backup.sh; exit "$status"'
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  '/usr/local/sbin/ksy-deals-backup'
+```
+
+Script 22 refuses missing, placeholder or non-private KSY/B2 env files. The
+installed wrapper calls only the `ksy-deals` maintenance backup service and
+uploads only the new encrypted `.dump.gpg` to the separate B2 `ksy-deals/`
+prefix. Acceptance still requires a disposable `ksy_deals_restore` restore;
+upload success alone is insufficient.
