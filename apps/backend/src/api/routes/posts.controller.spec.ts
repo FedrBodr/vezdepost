@@ -45,6 +45,28 @@ describe('PostsController.createPost shared content validation', () => {
     expect(postsService.createPost).not.toHaveBeenCalled();
   });
 
+  it('preserves the legacy too-long error when the shared diagnostic also reports it', async () => {
+    const { controller, postsService } = createController([
+      {
+        ...sharedInvalidItem,
+        contentError: 'Your post exceeds 500 characters.',
+        tooLong: true,
+      },
+    ]);
+
+    await expect(
+      controller.createPost(org, { type: 'post', posts: [{ content: 'Pin' }] })
+    ).rejects.toMatchObject({
+      response: {
+        provider: 'pinterest',
+        name: 'Pinterest',
+        error: 'post is too long, please fix it',
+      },
+    });
+    expect(postsService.mapTypeToPost).not.toHaveBeenCalled();
+    expect(postsService.createPost).not.toHaveBeenCalled();
+  });
+
   it('allows drafts with shared content errors under the existing draft policy', async () => {
     const { controller, postsService } = createController([sharedInvalidItem]);
 

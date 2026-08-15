@@ -2,7 +2,7 @@
 
 ## Result
 
-`PostsController.createPost()` now rejects non-draft posts when validation returns a non-empty `contentError`. The existing draft policy is unchanged, and the check runs before the legacy too-long check. The exact provider identifier, provider name, and shared error text are passed through `PostValidationException`.
+`PostsController.createPost()` now rejects non-draft posts when validation returns a non-empty `contentError`. The existing draft policy is unchanged, and the check runs after the legacy too-long check so the established length error remains unchanged. The exact provider identifier, provider name, and shared error text are passed through `PostValidationException` for shared-only violations.
 
 ## TDD evidence
 
@@ -35,3 +35,12 @@
 
 - The build environment is running Node 23.7.0 despite the repository engine constraint. The backend build still passed.
 - No public API or service behavior was changed.
+
+## Follow-up: legacy too-long precedence
+
+- RED: a controller regression with `tooLong: true` and a matching shared
+  `contentError` failed because the generic shared text replaced the legacy
+  `post is too long, please fix it` response.
+- GREEN: moving the `contentError` gate after `tooLong` restores that legacy
+  response while the existing media-required/shared-only test continues to
+  assert the exact shared error.
