@@ -98,16 +98,14 @@ describe('TelegramPreview', () => {
     integration.value = [];
   });
 
-  it('renders the approved warning when media text will be split', () => {
+  it('renders the generic information notice when media text will be split', () => {
     integration.value = [post('x'.repeat(1025), [{ path: 'photo.jpg' }])];
 
     const markup = renderToStaticMarkup(createElement(TelegramPreview));
 
+    expect(markup).toContain('role="status"');
     expect(markup).toContain(
-      'Telegram ограничивает подпись к медиа 1024 символами.'
-    );
-    expect(markup).toContain(
-      'Медиа и текст будут опубликованы двумя отдельными сообщениями.'
+      'Media will be published first, followed by the full text as a separate message.'
     );
   });
 });

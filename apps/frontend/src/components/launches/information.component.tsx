@@ -7,7 +7,7 @@ import clsx from 'clsx';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { capitalize } from 'lodash';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
-import { hasLinks } from '@gitroom/helpers/utils/strip.links';
+import type { PlatformContentAnalysis } from '@gitroom/helpers/utils/platform.content';
 
 const Valid: FC = () => {
   return (
@@ -56,40 +56,20 @@ const Invalid: FC = () => {
   );
 };
 export const InformationComponent: FC<{
+  analysis: PlatformContentAnalysis;
   chars: Record<string, number>;
   totalChars: number;
   totalAllowedChars: number;
   isPicture: boolean;
-  text?: string;
-}> = ({ totalChars, totalAllowedChars, chars, isPicture, text }) => {
+}> = ({ analysis, totalChars, totalAllowedChars, chars, isPicture }) => {
   const t = useT();
-  const { isGlobal, selectedIntegrations, internal, currentIntegration } =
-    useLaunchStore(
-      useShallow((state) => ({
-        isGlobal: state.current === 'global',
-        selectedIntegrations: state.selectedIntegrations,
-        internal: state.internal,
-        currentIntegration: state.integrations.find(
-          (p) => p.id === state.current
-        ),
-      }))
-    );
-
-  const stripLinkNames = useMemo(() => {
-    if (!hasLinks(text)) {
-      return [] as string[];
-    }
-
-    if (!isGlobal) {
-      return currentIntegration?.stripLinks ? [currentIntegration.name] : [];
-    }
-
-    return selectedIntegrations
-      .filter((p) => p.integration.stripLinks)
-      .map((p) => p.integration.name);
-  }, [text, isGlobal, currentIntegration, selectedIntegrations]);
-
-  const showStripLinkWarning = stripLinkNames.length > 0;
+  const { isGlobal, selectedIntegrations, internal } = useLaunchStore(
+    useShallow((state) => ({
+      isGlobal: state.current === 'global',
+      selectedIntegrations: state.selectedIntegrations,
+      internal: state.internal,
+    }))
+  );
 
   const isInternal = useMemo(() => {
     if (!isGlobal) {
@@ -105,68 +85,12 @@ export const InformationComponent: FC<{
   }, [isGlobal, internal, selectedIntegrations]);
 
   const isValid = useMemo(() => {
-    if (showStripLinkWarning) {
-      return false;
-    }
-
     if (!isPicture && !totalChars) {
       return false;
     }
 
-    if (totalChars > totalAllowedChars && !isGlobal) {
-      return false;
-    }
-
-    if (totalChars <= totalAllowedChars && !isGlobal) {
-      return true;
-    }
-
-    if (
-      selectedIntegrations.some((p, index) => {
-        if (isInternal[index]) {
-          return false;
-        }
-
-        return totalChars > (chars?.[p.integration.id] || 0);
-      })
-    ) {
-      return false;
-    }
-
-    return true;
-  }, [
-    totalAllowedChars,
-    totalChars,
-    isInternal,
-    isPicture,
-    chars,
-    showStripLinkWarning,
-  ]);
-
-  const globalDisplayLimit = useMemo(() => {
-    if (!isGlobal || !selectedIntegrations.length) {
-      return null;
-    }
-
-    // Get all limits from non-internal integrations, sorted ascending
-    const limits = selectedIntegrations
-      .map((p, index) => ({
-        limit: chars?.[p.integration.id] || 0,
-        isInternal: isInternal[index],
-      }))
-      .filter((item) => !item.isInternal && item.limit > 0)
-      .map((item) => item.limit)
-      .sort((a, b) => a - b);
-
-    if (!limits.length) {
-      return null;
-    }
-
-    // Find the smallest limit that hasn't been exceeded yet
-    // If all are exceeded, show the smallest one
-    const validLimit = limits.find((limit) => totalChars <= limit);
-    return validLimit ?? limits[0];
-  }, [isGlobal, selectedIntegrations, chars, isInternal, totalChars]);
+    return !analysis.blocking;
+  }, [analysis.blocking, isPicture, totalChars]);
 
   return (
     <div
@@ -178,13 +102,23 @@ export const InformationComponent: FC<{
       {isValid ? <Valid /> : <Invalid />}
 
       {!isGlobal && (
-        <div className={clsx("text-[10px] font-[600] flex justify-center items-center", !isValid && 'text-white')}>
+        <div
+          className={clsx(
+            'text-[10px] font-[600] flex justify-center items-center',
+            !isValid && 'text-white'
+          )}
+        >
           {totalChars}/{totalAllowedChars}
         </div>
       )}
-      {isGlobal && globalDisplayLimit !== null && (
-        <div className={clsx("text-[10px] font-[600] flex justify-center items-center", !isValid && 'text-white')}>
-          {totalChars}/{globalDisplayLimit}
+      {isGlobal && !!selectedIntegrations.length && (
+        <div
+          className={clsx(
+            'text-[10px] font-[600] flex justify-center items-center',
+            !isValid && 'text-white'
+          )}
+        >
+          {totalChars}/{totalAllowedChars}
         </div>
       )}
       {((isGlobal && selectedIntegrations.length) || !isValid) && (
@@ -216,7 +150,10 @@ export const InformationComponent: FC<{
                 isGlobal && selectedIntegrations.length && 'mb-[12px]'
               )}
             >
-              {t('your_post_should_have_at_least_one_character_or_one_image', 'Your post should have at least one character or one image.')}
+              {t(
+                'your_post_should_have_at_least_one_character_or_one_image',
+                'Your post should have at least one character or one image.'
+              )}
             </div>
           )}
           {isGlobal && (
@@ -261,19 +198,6 @@ export const InformationComponent: FC<{
                   </div>
                 </Fragment>
               ))}
-            </div>
-          )}
-          {showStripLinkWarning && (
-            <div
-              className={clsx(
-                'text-sm text-[#FF3F3F] whitespace-nowrap',
-                ((isGlobal && selectedIntegrations.length) ||
-                  (!isPicture && !totalChars)) &&
-                  'mt-[12px]'
-              )}
-            >
-              {t('links_will_be_removed_from', 'Links will be removed from')}:{' '}
-              {stripLinkNames.join(', ')}
             </div>
           )}
         </div>

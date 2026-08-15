@@ -74,6 +74,11 @@ import {
   resolveEditorCapabilities,
 } from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
 import type { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import {
+  analyzePlatformContent,
+  analyzeSelectedPlatformContent,
+} from '@gitroom/helpers/utils/platform.content';
+import { PlatformContentNotice } from '@gitroom/frontend/components/new-launch/platform.content.notice';
 
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
 
@@ -115,8 +120,10 @@ export const EditorWrapper: FC<{
     setInternalValueText,
     addRemoveInternal,
     internal,
+    internalChannels,
     global,
     current,
+    setCurrent,
     addInternalValue,
     addGlobalValue,
     setInternalValueMedia,
@@ -143,9 +150,11 @@ export const EditorWrapper: FC<{
   } = useLaunchStore(
     useShallow((state) => ({
       internal: state.internal.find((p) => p.integration.id === state.current),
+      internalChannels: state.internal,
       global: state.global,
       comments: state.comments,
       current: state.current,
+      setCurrent: state.setCurrent,
       addRemoveInternal: state.addRemoveInternal,
       dummy: state.dummy,
       setInternalValueText: state.setInternalValueText,
@@ -193,6 +202,24 @@ export const EditorWrapper: FC<{
   const capabilities = useMemo(
     () => resolveEditorCapabilities(current, selectedIntegration),
     [current, selectedIntegration]
+  );
+
+  const customizePlatform = useCallback(
+    (identifier: string) => {
+      const target = selectedIntegration.find(
+        (item) => item.integration.identifier === identifier
+      );
+      if (!target) return;
+      if (
+        !internalChannels.some(
+          (item) => item.integration.id === target.integration.id
+        )
+      ) {
+        addRemoveInternal(target.integration.id);
+      }
+      setCurrent(target.integration.id);
+    },
+    [selectedIntegration, internalChannels, addRemoveInternal, setCurrent]
   );
 
   const items = useMemo(() => {
@@ -444,6 +471,7 @@ export const EditorWrapper: FC<{
               <Editor
                 comments={comments}
                 editorType={editor}
+                identifier={current}
                 capabilities={capabilities}
                 allValues={items}
                 onChange={changeValue(index)}
@@ -459,6 +487,9 @@ export const EditorWrapper: FC<{
                 appendImages={appendImages(index)}
                 dummy={dummy}
                 selectedIntegration={selectedIntegration}
+                onCustomize={
+                  current === 'global' ? customizePlatform : undefined
+                }
                 chars={chars}
                 childButton={
                   <>
@@ -535,6 +566,7 @@ export const EditorWrapper: FC<{
 
 export const Editor: FC<{
   editorType?: 'none' | 'normal' | 'markdown' | 'html';
+  identifier?: string;
   capabilities?: PlatformCapabilities;
   totalPosts: number;
   value: string;
@@ -551,6 +583,7 @@ export const Editor: FC<{
   selectedIntegration: SelectedIntegrations[];
   dummy: boolean;
   chars: Record<string, number>;
+  onCustomize?: (platform: string) => void;
   childButton?: React.ReactNode;
 }> = (props) => {
   const {
@@ -578,6 +611,29 @@ export const Editor: FC<{
   const parserExtensionKey = useMemo(
     () => getControlDependentEditorExtensions(capabilities).join(':'),
     [capabilities]
+  );
+  const analysis = useMemo(
+    () =>
+      props.identifier === 'global'
+        ? analyzeSelectedPlatformContent({
+            content: props.value || '',
+            media: props.pictures || [],
+            capabilities: props.selectedIntegration.map(
+              (item) => item.integration.capabilities
+            ),
+          })
+        : analyzePlatformContent({
+            content: props.value || '',
+            media: props.pictures || [],
+            capabilities,
+          }),
+    [
+      props.identifier,
+      props.value,
+      props.pictures,
+      props.selectedIntegration,
+      capabilities,
+    ]
   );
   const [id] = useState(makeId(10));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -790,11 +846,11 @@ export const Editor: FC<{
                   name="image"
                   information={
                     <InformationComponent
+                      analysis={analysis}
                       isPicture={pictures?.length > 0}
                       chars={chars}
-                      totalChars={valueWithoutHtml.length}
-                      totalAllowedChars={props.totalChars}
-                      text={valueWithoutHtml}
+                      totalChars={analysis.visibleLength}
+                      totalAllowedChars={capabilities.text.max}
                     />
                   }
                   toolBar={
@@ -875,6 +931,12 @@ export const Editor: FC<{
           </div>
         </div>
       </div>
+      {!!analysis.messages.length && (
+        <PlatformContentNotice
+          messages={analysis.messages}
+          onCustomize={props.onCustomize}
+        />
+      )}
     </div>
   );
 };

@@ -1,0 +1,39 @@
+import React from 'react';
+import type { PlatformContentMessage } from '@gitroom/helpers/utils/platform.content';
+
+export const PlatformContentNotice = ({
+  messages,
+  onCustomize,
+}: {
+  messages: PlatformContentMessage[];
+  onCustomize?: (platform: string) => void;
+}) => (
+  <div className="flex flex-col gap-2">
+    {messages.map((message) => (
+      <div
+        key={`${message.platform || 'current'}-${message.severity}-${
+          message.code
+        }`}
+        role={message.severity === 'error' ? 'alert' : 'status'}
+        className={
+          message.severity === 'error'
+            ? 'rounded-md border border-red-400/40 bg-red-400/10 p-3 text-sm text-red-200'
+            : message.severity === 'warning'
+            ? 'rounded-md border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200'
+            : 'rounded-md border border-blue-400/40 bg-blue-400/10 p-3 text-sm text-blue-200'
+        }
+      >
+        {message.text}
+        {message.platform && message.severity === 'warning' && onCustomize && (
+          <button
+            type="button"
+            className="ms-2 underline"
+            onClick={() => onCustomize(message.platform!)}
+          >
+            Customize for {message.platform}
+          </button>
+        )}
+      </div>
+    ))}
+  </div>
+);

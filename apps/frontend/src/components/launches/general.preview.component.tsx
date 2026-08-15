@@ -6,7 +6,7 @@ import { FC } from 'react';
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
-import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+import { normalizePlatformContent } from '@gitroom/helpers/utils/platform.content';
 
 export const GeneralPreviewComponent: FC<{
   maximumCharacters?: number;
@@ -16,20 +16,17 @@ export const GeneralPreviewComponent: FC<{
   const mediaDir = useMediaDirectory();
 
   const renderContent = topValue.map((p) => {
-    const newContent = stripHtmlValidation(
-      'normal',
-      p.content.replace(
-        /<span.*?data-mention-id="([.\s\S]*?)"[.\s\S]*?>([.\s\S]*?)<\/span>/gi,
-        (match, match1, match2) => {
-          return `[[[${match2}]]]`;
-        }
-      ),
-      true
+    const canonicalContent = p.content.replace(
+      /<span.*?data-mention-id="([.\s\S]*?)"[.\s\S]*?>([.\s\S]*?)<\/span>/gi,
+      (_match, _id, label) => `[[[${label}]]]`
     );
+    const newContent = integration
+      ? normalizePlatformContent(canonicalContent, integration.capabilities)
+      : canonicalContent;
 
     const { start, end } = textSlicer(
       integration?.identifier || '',
-      props.maximumCharacters || 10000,
+      integration?.capabilities.text.max ?? props.maximumCharacters ?? 10000,
       newContent
     );
 
