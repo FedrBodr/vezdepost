@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { describe, expect, it, vi } from 'vitest';
 import { PostsService } from './posts.service';
 
@@ -128,6 +129,33 @@ describe('PostsService.validatePosts', () => {
       },
     ]);
     expect(result.contentError).toBe('This platform requires media.');
+  });
+
+  it('uses the premium X limit from integration settings', async () => {
+    const service = createService({
+      integrationManager: new IntegrationManager(),
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue({
+          id: 'x-1',
+          providerIdentifier: 'x',
+          name: 'X Premium',
+          additionalSettings: JSON.stringify([
+            { title: 'Verified', value: true },
+          ]),
+        }),
+      },
+    });
+
+    const [result] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'x-1' },
+        value: [{ content: `<p>${'a'.repeat(300)}</p>`, image: [] }],
+      },
+    ]);
+
+    expect(result.maximumCharacters).toBe(4000);
+    expect(result.tooLong).toBe(false);
+    expect(result.contentError).toBe('');
   });
 });
 

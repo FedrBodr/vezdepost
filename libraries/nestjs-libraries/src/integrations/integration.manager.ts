@@ -183,13 +183,16 @@ export class IntegrationManager {
   getAllowedSocialsIntegrations() {
     return socialIntegrationList.map((p) => p.identifier);
   }
-  getCapabilities(providerName: string): PlatformCapabilities {
+  getCapabilities(
+    providerName: string,
+    providerSettings?: any
+  ): PlatformCapabilities {
     const provider = this.getSocialIntegration(providerName);
     return (
       provider.capabilities ||
       getPlatformCapabilities(providerName, {
         editor: provider.editor,
-        maximumCharacters: provider.maxLength(),
+        maximumCharacters: provider.maxLength(providerSettings),
       })
     );
   }

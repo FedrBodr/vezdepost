@@ -837,7 +837,8 @@ export class PostsService {
         }
 
         const capabilities = this._integrationManager.getCapabilities(
-          integration.providerIdentifier
+          integration.providerIdentifier,
+          additionalSettings
         );
         const contentAnalyses = (post.value || []).map((item) =>
           analyzePlatformContent({

@@ -96,6 +96,12 @@ export class IntegrationsController {
           const findIntegration = this._integrationManager.getSocialIntegration(
             p.providerIdentifier
           );
+          let additionalSettings: any[] = [];
+          try {
+            additionalSettings = JSON.parse(p.additionalSettings || '[]');
+          } catch {
+            additionalSettings = [];
+          }
           return {
             name: p.name,
             id: p.id,
@@ -103,7 +109,8 @@ export class IntegrationsController {
             disabled: p.disabled,
             editor: findIntegration.editor,
             capabilities: this._integrationManager.getCapabilities(
-              p.providerIdentifier
+              p.providerIdentifier,
+              additionalSettings
             ),
             stripLinks: !!findIntegration?.stripLinks?.(),
             picture: p.picture || '/no-picture.jpg',
