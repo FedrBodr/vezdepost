@@ -46,6 +46,20 @@ probe() {
   [[ -z "$expected_type" || "$result" == "$expected_code|$expected_type"* ]]
 }
 
+wait_for_probe() {
+  local url=$1
+  local expected_code=$2
+  local expected_type=${3:-}
+  local attempt
+  for attempt in $(seq 1 30); do
+    if probe "$url" "$expected_code" "$expected_type"; then
+      return 0
+    fi
+    [[ "$TEST_MODE" == 1 ]] || sleep 2
+  done
+  return 1
+}
+
 [[ "$TEST_MODE" == 1 || $EUID -eq 0 ]] || fail ROOT_REQUIRED
 command -v dig >/dev/null 2>&1 || fail DIG_REQUIRED
 [[ -d "$CADDY_SITES_DIR" ]] || fail CADDY_SITES_DIR_MISSING
@@ -102,7 +116,7 @@ if ! docker exec caddy caddy reload --config /etc/caddy/Caddyfile \
   fail CADDY_RELOAD_FAILED
 fi
 
-if ! probe https://ksy-deals.fedrbodr.com/ 200 ||
+if ! wait_for_probe https://ksy-deals.fedrbodr.com/ 200 ||
   ! probe https://vezdepost.ru/ 200 text/html ||
   ! probe https://vezdepost.ru/assets/vezdepost-og.png 200 image/png ||
   ! probe https://app.vezdepost.ru/api/user/self 401; then

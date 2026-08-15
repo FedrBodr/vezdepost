@@ -154,11 +154,9 @@ Stage the reviewed KSY Compose file and script 20 before the shared-edge commit
 reaches `prod`:
 
 ```bash
-rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
-  'mkdir -p /tmp/ksy-deals-release'
 rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
   /Users/d.fedorenko/IdeaProjects/fedrbodr/ksy-deals/infra/docker-compose.yml \
-  vezdepost:/tmp/ksy-deals-release/docker-compose.yml
+  vezdepost:/tmp/ksy-deals-docker-compose.yml
 rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
   docs/server-scripts/20-provision-ksy-staging.sh \
   vezdepost:/tmp/20-provision-ksy-staging.sh

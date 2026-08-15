@@ -40,7 +40,12 @@ STUB
 printf '%s\n' "$*" >> "$CURL_CALLS"
 [[ "${CURL_FAIL:-0}" != 1 ]]
 STUB
-  chmod +x "$bin_dir/docker" "$bin_dir/curl"
+  cat > "$bin_dir/node" <<'STUB'
+#!/usr/bin/env bash
+echo 'host Node must not be required by the provisioner' >&2
+exit 97
+STUB
+  chmod +x "$bin_dir/docker" "$bin_dir/curl" "$bin_dir/node"
 }
 
 write_staged_compose() {

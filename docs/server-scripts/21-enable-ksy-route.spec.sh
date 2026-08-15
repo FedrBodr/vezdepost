@@ -34,6 +34,16 @@ if [[ "$url" == 'http://127.0.0.1:4300/health/ready' ]]; then
   [[ "${READY_FAIL:-0}" != 1 ]]
   exit
 fi
+if [[ "$url" == 'https://ksy-deals.fedrbodr.com/' &&
+  "${PUBLIC_TRANSIENT_FAILURES:-0}" -gt 0 ]]; then
+  count=0
+  [[ -f "$PUBLIC_COUNTER" ]] && count=$(cat "$PUBLIC_COUNTER")
+  if [[ "$count" -lt "$PUBLIC_TRANSIENT_FAILURES" ]]; then
+    printf '%s' "$((count + 1))" > "$PUBLIC_COUNTER"
+    printf '%s' '503|text/plain'
+    exit
+  fi
+fi
 if [[ "${PUBLIC_FAIL:-0}" == 1 && "$url" == 'https://ksy-deals.fedrbodr.com/' ]]; then
   printf '%s' '503|text/plain'
   exit
@@ -55,6 +65,7 @@ run_case() {
   local dns_mode=${3:-ok}
   local ready_fail=${4:-0}
   local public_fail=${5:-0}
+  local transient_failures=${6:-0}
   local bin_dir="$case_dir/bin"
   mkdir -p "$case_dir/sites"
   make_stubs "$bin_dir"
@@ -62,6 +73,7 @@ run_case() {
   : > "$case_dir/curl.calls"
   PATH="$bin_dir:$PATH" \
     DNS_MODE="$dns_mode" READY_FAIL="$ready_fail" PUBLIC_FAIL="$public_fail" \
+    PUBLIC_TRANSIENT_FAILURES="$transient_failures" PUBLIC_COUNTER="$case_dir/public.counter" \
     DOCKER_CALLS="$case_dir/docker.calls" CURL_CALLS="$case_dir/curl.calls" \
     KSY_ROUTE_TEST_MODE=1 CADDY_SITES_DIR="$case_dir/sites" \
     bash "$SCRIPT" > "$output" 2>&1
@@ -97,7 +109,7 @@ test_activates_exact_route_idempotently() {
   local case_dir="$TMP_DIR/success"
   local output="$case_dir/output"
   mkdir -p "$case_dir"
-  run_case "$case_dir" "$output"
+  run_case "$case_dir" "$output" ok 0 0 2
   cp "$case_dir/sites/ksy-deals.caddy" "$case_dir/site.before"
   run_case "$case_dir" "$case_dir/output-second"
 

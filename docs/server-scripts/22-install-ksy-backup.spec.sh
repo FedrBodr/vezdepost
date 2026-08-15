@@ -74,6 +74,7 @@ run_wrapper() {
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     B2_ENV_FILE="$case_dir/root/vezdepost-backup.env" \
     LOG_FILE="$case_dir/var/log/ksy-deals-backup.log" \
+    KSY_BACKUP_TEST_MODE=1 \
     bash "$case_dir/usr/local/sbin/ksy-deals-backup" > "$output" 2>&1
 }
 
@@ -126,6 +127,10 @@ test_installs_and_uploads_only_encrypted_backup_idempotently() {
     fail 'cron timezone is missing'
   grep -q '^37 3 \* \* \* root ' "$case_dir/etc/cron.d/ksy-deals-backup" ||
     fail 'independent daily schedule is missing'
+  grep -q 'KSY_BACKUP_ENV_OWNER_INVALID' "$case_dir/usr/local/sbin/ksy-deals-backup" ||
+    fail 'wrapper does not revalidate KSY env ownership'
+  grep -q 'B2_ENV_OWNER_INVALID' "$case_dir/usr/local/sbin/ksy-deals-backup" ||
+    fail 'wrapper does not revalidate B2 env ownership'
   grep -q '^compose --project-name ksy-deals .* --profile maintenance run --rm backup$' \
     "$case_dir/docker.calls" || fail 'KSY maintenance backup service was not invoked'
   grep -q '^copy .*ksy-deals-.*\.dump\.gpg B2:vezdepost-pg-backups/ksy-deals/ --no-traverse$' \

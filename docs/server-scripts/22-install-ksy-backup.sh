@@ -73,9 +73,14 @@ LOG_FILE=${LOG_FILE:-/var/log/ksy-deals-backup.log}
 KSY_ENV_FILE="$KSY_ROOT/.env"
 COMPOSE_FILE="$KSY_ROOT/docker-compose.yml"
 REMOTE_KEEP_DAYS=90
+TEST_MODE=${KSY_BACKUP_TEST_MODE:-0}
 
 file_mode() {
   stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+}
+
+file_owner() {
+  stat -f '%Su:%Sg' "$1" 2>/dev/null || stat -c '%U:%G' "$1"
 }
 
 log() {
@@ -90,6 +95,16 @@ log() {
   log 'ERROR configuration file mode invalid'
   exit 1
 }
+if [[ "$TEST_MODE" != 1 ]]; then
+  [[ "$(file_owner "$KSY_ENV_FILE")" == root:root ]] || {
+    log 'ERROR KSY_BACKUP_ENV_OWNER_INVALID'
+    exit 1
+  }
+  [[ "$(file_owner "$B2_ENV_FILE")" == root:root ]] || {
+    log 'ERROR B2_ENV_OWNER_INVALID'
+    exit 1
+  }
+fi
 
 set -a
 # shellcheck disable=SC1090

@@ -8,7 +8,7 @@ umask 077
 KSY_ROOT=${KSY_ROOT:-/opt/ksy-deals}
 KSY_BACKUP_DIR=${KSY_BACKUP_DIR:-/var/backups/ksy-deals}
 CADDY_SITES_DIR=${CADDY_SITES_DIR:-/etc/caddy/sites}
-STAGED_COMPOSE=${STAGED_COMPOSE:-/tmp/ksy-deals-release/docker-compose.yml}
+STAGED_COMPOSE=${STAGED_COMPOSE:-/tmp/ksy-deals-docker-compose.yml}
 ENV_FILE="$KSY_ROOT/.env"
 COMPOSE_FILE="$KSY_ROOT/docker-compose.yml"
 EVIDENCE_FILE="$KSY_ROOT/deployment-evidence.json"
@@ -117,7 +117,7 @@ safe_token "$PLATPRICES_API_KEY" || fail PLATPRICES_API_KEY_INVALID
 [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]] ||
   fail ADMIN_TELEGRAM_IDS_DUPLICATE
 
-encoded_password=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$POSTGRES_PASSWORD")
+encoded_password=$POSTGRES_PASSWORD
 candidate_env="$WORK_DIR/ksy.env"
 cat > "$candidate_env" <<ENV
 KSY_DEALS_IMAGE=$KSY_DEALS_IMAGE
@@ -159,11 +159,10 @@ if [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]]; then
   [[ -z "$rollback_image" || "$rollback_image" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] ||
     fail PREVIOUS_IMAGE_INVALID
   if [[ "$rollback_image" == "$KSY_DEALS_IMAGE" && -f "$EVIDENCE_FILE" ]]; then
-    rollback_image=$(node -e '
-      const fs = require("node:fs");
-      const evidence = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-      process.stdout.write(typeof evidence.rollbackImage === "string" ? evidence.rollbackImage : "");
-    ' "$EVIDENCE_FILE") || fail PREVIOUS_EVIDENCE_INVALID
+    rollback_image=$(sed -n 's/.*"rollbackImage":"\([^"]*\)".*/\1/p' "$EVIDENCE_FILE")
+    if [[ -z "$rollback_image" ]] && ! grep -q '"rollbackImage":null' "$EVIDENCE_FILE"; then
+      fail PREVIOUS_EVIDENCE_INVALID
+    fi
     [[ -z "$rollback_image" || "$rollback_image" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] ||
       fail PREVIOUS_EVIDENCE_IMAGE_INVALID
   fi
