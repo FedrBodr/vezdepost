@@ -6,6 +6,10 @@ const rules = readFileSync(
   join(process.cwd(), 'docs/content/adaptive-crossposting-chat-rules.md'),
   'utf8'
 );
+const examples = readFileSync(
+  join(process.cwd(), 'docs/content/adaptive-crossposting-examples.md'),
+  'utf8'
+);
 
 describe('adaptive crossposting chat rules', () => {
   it.each([
@@ -37,5 +41,12 @@ describe('adaptive crossposting chat rules', () => {
     expect(rules).toContain('32768');
     expect(rules).toContain('500');
     expect(rules).toContain('16384');
+  });
+
+  it('ships universal, Pinterest, and Telegram split acceptance scenarios', () => {
+    expect(examples).toContain('Сценарий 1: универсальный текст');
+    expect(examples).toContain('Сценарий 2: отдельный Pinterest');
+    expect(examples).toContain('Сценарий 3: длинный Telegram с медиа');
+    expect(examples).toContain('Ожидаемое решение');
   });
 });
