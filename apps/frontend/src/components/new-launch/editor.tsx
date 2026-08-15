@@ -68,6 +68,11 @@ import {
 } from '@gitroom/frontend/components/ui/icons';
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { PlainTextPasteExtension } from '@gitroom/frontend/components/new-launch/plain-text-paste.extension';
+import {
+  getFormattingControls,
+  resolveEditorCapabilities,
+} from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
+import type { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
 
@@ -126,8 +131,6 @@ export const EditorWrapper: FC<{
     setInternalValue,
     setInternalDelay,
     setGlobalDelay,
-    internalFromAll,
-    totalChars,
     postComment,
     dummy,
     editor,
@@ -139,7 +142,6 @@ export const EditorWrapper: FC<{
   } = useLaunchStore(
     useShallow((state) => ({
       internal: state.internal.find((p) => p.integration.id === state.current),
-      internalFromAll: state.integrations.find((p) => p.id === state.current),
       global: state.global,
       comments: state.comments,
       current: state.current,
@@ -160,7 +162,6 @@ export const EditorWrapper: FC<{
       setInternalValue: state.setInternalValue,
       setGlobalDelay: state.setGlobalDelay,
       setInternalDelay: state.setInternalDelay,
-      totalChars: state.totalChars,
       appendInternalValueMedia: state.appendInternalValueMedia,
       appendGlobalValueMedia: state.appendGlobalValueMedia,
       postComment: state.postComment,
@@ -187,6 +188,11 @@ export const EditorWrapper: FC<{
   const canEdit = useMemo(() => {
     return current === 'global' || !!internal;
   }, [current, internal]);
+
+  const capabilities = useMemo(
+    () => resolveEditorCapabilities(current, selectedIntegration),
+    [current, selectedIntegration]
+  );
 
   const items = useMemo(() => {
     if (internal) {
@@ -437,6 +443,7 @@ export const EditorWrapper: FC<{
               <Editor
                 comments={comments}
                 editorType={editor}
+                capabilities={capabilities}
                 allValues={items}
                 onChange={changeValue(index)}
                 key={index}
@@ -447,8 +454,7 @@ export const EditorWrapper: FC<{
                 setImages={changeImages(index)}
                 autoComplete={canEdit}
                 validateChars={true}
-                identifier={internalFromAll?.identifier || 'global'}
-                totalChars={totalChars}
+                totalChars={capabilities.text.max}
                 appendImages={appendImages(index)}
                 dummy={dummy}
                 selectedIntegration={selectedIntegration}
@@ -528,6 +534,7 @@ export const EditorWrapper: FC<{
 
 export const Editor: FC<{
   editorType?: 'none' | 'normal' | 'markdown' | 'html';
+  capabilities?: PlatformCapabilities;
   totalPosts: number;
   value: string;
   num?: number;
@@ -539,7 +546,6 @@ export const Editor: FC<{
   autoComplete?: boolean;
   validateChars?: boolean;
   comments: boolean | 'no-media';
-  identifier?: string;
   totalChars?: number;
   selectedIntegration: SelectedIntegrations[];
   dummy: boolean;
@@ -552,13 +558,22 @@ export const Editor: FC<{
     pictures,
     setImages,
     num,
-    identifier,
     appendImages,
     dummy,
     chars,
     childButton,
     comments,
   } = props;
+  const capabilities = useMemo(
+    () =>
+      props.capabilities ||
+      resolveEditorCapabilities('global', props.selectedIntegration),
+    [props.capabilities, props.selectedIntegration]
+  );
+  const formattingControls = useMemo(
+    () => getFormattingControls(capabilities),
+    [capabilities]
+  );
   const [id] = useState(makeId(10));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const t = useT();
@@ -779,36 +794,36 @@ export const Editor: FC<{
                   toolBar={
                     <div className="flex gap-[5px]">
                       <SignatureBox editor={editorRef?.current?.editor} />
-                      {editorType !== 'none' && (
-                        <>
-                          <UText
-                            editor={editorRef?.current?.editor}
-                            currentValue={props.value!}
-                          />
-                          <BoldText
-                            editor={editorRef?.current?.editor}
-                            currentValue={props.value!}
-                          />
-                        </>
+                      {formattingControls.includes('underline') && (
+                        <UText
+                          editor={editorRef?.current?.editor}
+                          currentValue={props.value!}
+                        />
                       )}
-                      {(editorType === 'markdown' || editorType === 'html') &&
-                        identifier !== 'telegram' &&
-                        identifier !== 'max' && (
-                          <>
-                            <AComponent
-                              editor={editorRef?.current?.editor}
-                              currentValue={props.value!}
-                            />
-                            <Bullets
-                              editor={editorRef?.current?.editor}
-                              currentValue={props.value!}
-                            />
-                            <HeadingComponent
-                              editor={editorRef?.current?.editor}
-                              currentValue={props.value!}
-                            />
-                          </>
-                        )}
+                      {formattingControls.includes('bold') && (
+                        <BoldText
+                          editor={editorRef?.current?.editor}
+                          currentValue={props.value!}
+                        />
+                      )}
+                      {formattingControls.includes('link') && (
+                        <AComponent
+                          editor={editorRef?.current?.editor}
+                          currentValue={props.value!}
+                        />
+                      )}
+                      {formattingControls.includes('list') && (
+                        <Bullets
+                          editor={editorRef?.current?.editor}
+                          currentValue={props.value!}
+                        />
+                      )}
+                      {formattingControls.includes('heading') && (
+                        <HeadingComponent
+                          editor={editorRef?.current?.editor}
+                          currentValue={props.value!}
+                        />
+                      )}
                       <div
                         data-tooltip-id="tooltip"
                         data-tooltip-content={t('insert_emoji', 'Insert Emoji')}
