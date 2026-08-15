@@ -12,3 +12,5 @@ app.vezdepost.ru {
 	reverse_proxy postiz:5000
 	encode gzip
 }
+
+import /etc/caddy/sites/*.caddy

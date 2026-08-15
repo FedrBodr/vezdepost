@@ -83,10 +83,12 @@ services:
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/landing:/srv/landing:ro
+      - /etc/caddy/sites:/etc/caddy/sites:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:
       - postiz-network
+      - caddy-edge
 
   # upstream compose has no restart policy on the temporal stack —
   # after a VM reboot it stayed down while postiz came up (2026-07-09)
@@ -119,3 +121,8 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+
+networks:
+  caddy-edge:
+    external: true
+    name: caddy-edge

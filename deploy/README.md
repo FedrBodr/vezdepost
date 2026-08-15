@@ -131,3 +131,19 @@ rtk ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
 The script backs up the production `.env`, checkout, and application image,
 holds the autodeploy lock, validates Compose, and recreates only `postiz`. It
 rolls all changed state back if verification fails and never publishes a Pin.
+
+## Gated shared Caddy sites
+
+Caddy remains the only public listener. It keeps the Vezdepost routes on
+`postiz-network` and also joins the external `caddy-edge` network for isolated
+co-hosted applications. Additional host blocks are imported from the
+host-owned `/etc/caddy/sites` directory; deploys never place an application
+hostname directly in the tracked base `deploy/Caddyfile`.
+
+Before a Compose revision containing the import is deployed, the numbered
+application provisioner must create `caddy-edge`, `/etc/caddy/sites`, and an
+empty `/etc/caddy/sites/00-empty.caddy`. This makes the import glob valid while
+keeping every new route disabled. A separate numbered route script may install
+an application site only after its loopback readiness gate passes. That script
+must validate Caddy, reload it, verify all existing Vezdepost probes, and remove
+only its own site file if acceptance fails.
