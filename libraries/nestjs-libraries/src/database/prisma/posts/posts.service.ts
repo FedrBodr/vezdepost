@@ -52,6 +52,10 @@ import { stripLinks } from '@gitroom/helpers/utils/strip.links';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { analyzePlatformContent } from '@gitroom/helpers/utils/platform.content';
+import {
+  PostValidationFailure,
+  selectPostValidationFailure,
+} from '@gitroom/nestjs-libraries/database/prisma/posts/post.validation';
 
 type PostWithConditionals = Post & {
   integration?: Integration;
@@ -975,6 +979,33 @@ export class PostsService {
       throw new BadRequestException('Post not found');
     }
 
+    if (status === 'schedule' && getPostById.state === 'DRAFT') {
+      const persistedGroup = await this._postRepository.getPostsByGroup(
+        orgId,
+        getPostById.group
+      );
+      const validationPosts = this.persistedValidationThread(
+        persistedGroup,
+        getPostById
+      );
+      const rootPost = validationPosts[0];
+      const validation = await this.validatePosts(orgId, [
+        {
+          integration: { id: rootPost.integrationId },
+          settings: this.parsePersistedJson(rootPost.settings, {}),
+          value: validationPosts.map((post) => ({
+            content: post.content,
+            image: this.parsePersistedJson(post.image, []),
+            delay: post.delay || 0,
+          })),
+        },
+      ]);
+      const failure = selectPostValidationFailure(validation, false);
+      if (failure) {
+        throw new BadRequestException(this.validationError(failure));
+      }
+    }
+
     const state: State = status === 'draft' ? 'DRAFT' : 'QUEUE';
     await this._postRepository.changeState(id, state);
 
@@ -988,6 +1019,65 @@ export class PostsService {
     } catch (err) {}
 
     return { id, state };
+  }
+
+  private parsePersistedJson<T>(value: string | null, fallback: T): T {
+    try {
+      return JSON.parse(value || '') as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private persistedValidationThread(groupPosts: any[], requestedPost: any) {
+    const integrationPosts = groupPosts.filter(
+      (post) => post.integrationId === requestedPost.integrationId
+    );
+    const postsById = new Map(
+      integrationPosts.map((post) => [post.id, post] as const)
+    );
+    let rootPost = postsById.get(requestedPost.id) || requestedPost;
+    const ancestorIds = new Set<string>();
+
+    while (rootPost.parentPostId && !ancestorIds.has(rootPost.id)) {
+      ancestorIds.add(rootPost.id);
+      const parent = postsById.get(rootPost.parentPostId);
+      if (!parent) {
+        break;
+      }
+      rootPost = parent;
+    }
+
+    const orderedPosts: any[] = [];
+    const appendedIds = new Set<string>();
+    const appendThread = (post: any) => {
+      if (appendedIds.has(post.id)) {
+        return;
+      }
+      appendedIds.add(post.id);
+      orderedPosts.push(post);
+      integrationPosts
+        .filter((candidate) => candidate.parentPostId === post.id)
+        .forEach(appendThread);
+    };
+    appendThread(rootPost);
+
+    return orderedPosts;
+  }
+
+  private validationError(failure: PostValidationFailure) {
+    switch (failure.category) {
+      case 'empty-content':
+        return 'Your post should have at least one character or one image.';
+      case 'invalid-settings':
+        return failure.item.settingsError || 'Please fix your settings';
+      case 'provider-validity':
+        return failure.item.errors as string;
+      case 'too-long':
+        return 'post is too long, please fix it';
+      case 'content-error':
+        return failure.item.contentError!;
+    }
   }
 
   async changeDate(

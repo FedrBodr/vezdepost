@@ -258,3 +258,193 @@ describe('PostsService.updateMedia', () => {
     expect(axiosMock).not.toHaveBeenCalled();
   });
 });
+
+describe('PostsService.changePostStatus validation', () => {
+  const persistedDraft = {
+    id: 'post-1',
+    group: 'group-1',
+    state: 'DRAFT',
+    integrationId: 'integration-1',
+    integration: {
+      id: 'integration-1',
+      providerIdentifier: 'pinterest',
+      name: 'Pinterest',
+    },
+    content: '<p>Pin</p>',
+    image: '[]',
+    settings: JSON.stringify({ __type: 'pinterest' }),
+    parentPostId: null,
+    delay: 0,
+  };
+
+  const invalidValidation = {
+    identifier: 'pinterest',
+    name: 'Pinterest',
+    contentError: 'This platform requires media.',
+    emptyContent: false,
+    valid: true,
+    errors: true,
+    tooLong: false,
+    maximumCharacters: 500,
+  };
+
+  it('rejects an invalid draft before changing state or starting workflow', async () => {
+    const repository = {
+      getPostById: vi.fn().mockResolvedValue(persistedDraft),
+      getPostsByGroup: vi.fn().mockResolvedValue([persistedDraft]),
+      changeState: vi.fn(),
+    };
+    const service = createService({ repository });
+    const validatePosts = vi
+      .spyOn(service, 'validatePosts')
+      .mockResolvedValue([invalidValidation] as any);
+    const startWorkflow = vi
+      .spyOn(service as any, 'startWorkflow')
+      .mockResolvedValue(undefined);
+
+    await expect(
+      service.changePostStatus('org-1', 'post-1', 'schedule')
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: 'This platform requires media.',
+      }),
+    });
+
+    expect(validatePosts).toHaveBeenCalledWith('org-1', [
+      {
+        integration: { id: 'integration-1' },
+        settings: { __type: 'pinterest' },
+        value: [
+          {
+            content: '<p>Pin</p>',
+            image: [],
+            delay: 0,
+          },
+        ],
+      },
+    ]);
+    expect(repository.changeState).not.toHaveBeenCalled();
+    expect(startWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('queues a clean stored draft only after validation', async () => {
+    const repository = {
+      getPostById: vi.fn().mockResolvedValue(persistedDraft),
+      getPostsByGroup: vi.fn().mockResolvedValue([persistedDraft]),
+      changeState: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = createService({ repository });
+    const validatePosts = vi
+      .spyOn(service, 'validatePosts')
+      .mockResolvedValue([{ ...invalidValidation, contentError: '' }] as any);
+    const startWorkflow = vi
+      .spyOn(service as any, 'startWorkflow')
+      .mockResolvedValue(undefined);
+
+    await expect(
+      service.changePostStatus('org-1', 'post-1', 'schedule')
+    ).resolves.toEqual({ id: 'post-1', state: 'QUEUE' });
+
+    expect(validatePosts).toHaveBeenCalledOnce();
+    expect(repository.changeState).toHaveBeenCalledWith('post-1', 'QUEUE');
+    expect(startWorkflow).toHaveBeenCalledWith(
+      'pinterest',
+      'post-1',
+      'org-1',
+      'QUEUE'
+    );
+  });
+
+  it('reconstructs only the requested integration thread from a shared group', async () => {
+    const childDraft = {
+      ...persistedDraft,
+      id: 'post-2',
+      content: '<p>First comment</p>',
+      image: JSON.stringify([{ path: 'comment.jpg', type: 'image' }]),
+      parentPostId: 'post-1',
+      delay: 5,
+    };
+    const otherIntegrationDraft = {
+      ...persistedDraft,
+      id: 'post-other',
+      integrationId: 'integration-2',
+      integration: {
+        id: 'integration-2',
+        providerIdentifier: 'x',
+        name: 'X',
+      },
+      content: '<p>Do not validate this post as Pinterest</p>',
+      settings: JSON.stringify({ __type: 'x' }),
+    };
+    const repository = {
+      getPostById: vi.fn().mockResolvedValue(persistedDraft),
+      getPostsByGroup: vi
+        .fn()
+        .mockResolvedValue([persistedDraft, childDraft, otherIntegrationDraft]),
+      changeState: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = createService({ repository });
+    const validatePosts = vi
+      .spyOn(service, 'validatePosts')
+      .mockResolvedValue([{ ...invalidValidation, contentError: '' }] as any);
+    vi.spyOn(service as any, 'startWorkflow').mockResolvedValue(undefined);
+
+    await service.changePostStatus('org-1', 'post-1', 'schedule');
+
+    expect(validatePosts).toHaveBeenCalledWith('org-1', [
+      {
+        integration: { id: 'integration-1' },
+        settings: { __type: 'pinterest' },
+        value: [
+          {
+            content: '<p>Pin</p>',
+            image: [],
+            delay: 0,
+          },
+          {
+            content: '<p>First comment</p>',
+            image: [{ path: 'comment.jpg', type: 'image' }],
+            delay: 5,
+          },
+        ],
+      },
+    ]);
+  });
+});
+
+describe('PostsService.changeDate draft scheduling audit', () => {
+  it('keeps a draft in DRAFT and starts only a draft workflow', async () => {
+    const repository = {
+      getPostById: vi.fn().mockResolvedValue({
+        id: 'post-1',
+        state: 'DRAFT',
+        integration: { providerIdentifier: 'pinterest' },
+      }),
+      changeDate: vi.fn().mockResolvedValue({ id: 'post-1', state: 'DRAFT' }),
+    };
+    const service = createService({ repository });
+    const validatePosts = vi.spyOn(service, 'validatePosts');
+    const startWorkflow = vi
+      .spyOn(service as any, 'startWorkflow')
+      .mockResolvedValue(undefined);
+
+    await expect(
+      service.changeDate('org-1', 'post-1', '2026-08-16T12:00:00Z', 'schedule')
+    ).resolves.toEqual({ id: 'post-1', state: 'DRAFT' });
+
+    expect(repository.changeDate).toHaveBeenCalledWith(
+      'org-1',
+      'post-1',
+      '2026-08-16T12:00:00Z',
+      true,
+      'schedule'
+    );
+    expect(startWorkflow).toHaveBeenCalledWith(
+      'pinterest',
+      'post-1',
+      'org-1',
+      'DRAFT'
+    );
+    expect(validatePosts).not.toHaveBeenCalled();
+  });
+});

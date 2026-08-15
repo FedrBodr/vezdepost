@@ -62,6 +62,10 @@ import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abst
 import { PostValidationException } from '@gitroom/backend/api/routes/posts.validation.exception';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+import {
+  PostValidationFailure,
+  selectPostValidationFailure,
+} from '@gitroom/nestjs-libraries/database/prisma/posts/post.validation';
 
 @ApiTags('Public API')
 @Controller('/public/v1')
@@ -222,7 +226,10 @@ export class PublicIntegrationsController {
       body.posts
     );
 
-    const fail = (item: (typeof validation)[number], error: string) => {
+    const fail = (
+      item: { identifier: string; name: string },
+      error: string
+    ) => {
       throw new PostValidationException({
         provider: item.identifier,
         name: item.name,
@@ -230,27 +237,12 @@ export class PublicIntegrationsController {
       });
     };
 
-    for (const item of validation) {
-      if (item.emptyContent) {
-        fail(
-          item,
-          'Your post should have at least one character or one image.'
-        );
-      }
-    }
-
-    if (body.type !== 'draft') {
-      for (const item of validation) {
-        if (!item.valid) {
-          fail(item, item.settingsError || 'Please fix your settings');
-        }
-        if (item.errors !== true) {
-          fail(item, item.errors as string);
-        }
-        if (item.tooLong) {
-          fail(item, 'post is too long, please fix it');
-        }
-      }
+    const failure = selectPostValidationFailure(
+      validation,
+      body.type === 'draft'
+    );
+    if (failure) {
+      fail(failure.item, this.validationError(failure));
     }
 
     const allowedCreationMethods = ['CLI', 'API'] as const;
@@ -261,6 +253,21 @@ export class PublicIntegrationsController {
       : 'API';
 
     return this._postsService.createPost(org.id, body, creationMethod);
+  }
+
+  private validationError(failure: PostValidationFailure) {
+    switch (failure.category) {
+      case 'empty-content':
+        return 'Your post should have at least one character or one image.';
+      case 'invalid-settings':
+        return failure.item.settingsError || 'Please fix your settings';
+      case 'provider-validity':
+        return failure.item.errors as string;
+      case 'too-long':
+        return 'post is too long, please fix it';
+      case 'content-error':
+        return failure.item.contentError!;
+    }
   }
 
   @Delete('/posts/:id')

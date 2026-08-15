@@ -29,6 +29,10 @@ import {
   Sections,
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { PostValidationException } from '@gitroom/backend/api/routes/posts.validation.exception';
+import {
+  PostValidationFailure,
+  selectPostValidationFailure,
+} from '@gitroom/nestjs-libraries/database/prisma/posts/post.validation';
 
 @ApiTags('Posts')
 @Controller('/posts')
@@ -191,7 +195,10 @@ export class PostsController {
       rawBody?.posts || []
     );
 
-    const fail = (item: (typeof validation)[number], error: string) => {
+    const fail = (
+      item: { identifier: string; name: string },
+      error: string
+    ) => {
       throw new PostValidationException({
         provider: item.identifier,
         name: item.name,
@@ -199,34 +206,31 @@ export class PostsController {
       });
     };
 
-    for (const item of validation) {
-      if (item.emptyContent) {
-        fail(
-          item,
-          'Your post should have at least one character or one image.'
-        );
-      }
-    }
-
-    if (rawBody?.type !== 'draft') {
-      for (const item of validation) {
-        if (!item.valid) {
-          fail(item, item.settingsError || 'Please fix your settings');
-        }
-        if (item.errors !== true) {
-          fail(item, item.errors as string);
-        }
-        if (item.tooLong) {
-          fail(item, 'post is too long, please fix it');
-        }
-        if (item.contentError) {
-          fail(item, item.contentError);
-        }
-      }
+    const failure = selectPostValidationFailure(
+      validation,
+      rawBody?.type === 'draft'
+    );
+    if (failure) {
+      fail(failure.item, this.validationError(failure));
     }
 
     const body = await this._postsService.mapTypeToPost(rawBody, org.id);
     return this._postsService.createPost(org.id, body, 'WEB');
+  }
+
+  private validationError(failure: PostValidationFailure) {
+    switch (failure.category) {
+      case 'empty-content':
+        return 'Your post should have at least one character or one image.';
+      case 'invalid-settings':
+        return failure.item.settingsError || 'Please fix your settings';
+      case 'provider-validity':
+        return failure.item.errors as string;
+      case 'too-long':
+        return 'post is too long, please fix it';
+      case 'content-error':
+        return failure.item.contentError!;
+    }
   }
 
   @Post('/generator/draft')
