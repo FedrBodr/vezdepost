@@ -79,4 +79,21 @@ describe('SanitizedPostContent', () => {
     expect(mention?.dataset.mentionLabel).toBe('@Ada');
     expect(mention?.hasAttribute('data-arbitrary')).toBe(false);
   });
+
+  it('keeps only exact preview decoration class tokens', () => {
+    const { container } = render(
+      <SanitizedPostContent
+        content={
+          '<span class="fixed inset-0 z-[9999] font-bold font-[arial] ' +
+          'text-[#ae8afc] font-boldness">@Ada</span>' +
+          '<mark class="absolute hidden opacity-0 bg-red-500">cropped</mark>'
+        }
+      />
+    );
+    const mention = container.querySelector('span');
+    const mark = container.querySelector('mark');
+
+    expect(mention?.className).toBe('font-bold font-[arial] text-[#ae8afc]');
+    expect(mark?.className).toBe('bg-red-500');
+  });
 });

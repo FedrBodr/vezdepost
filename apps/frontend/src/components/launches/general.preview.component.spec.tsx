@@ -83,6 +83,23 @@ describe('GeneralPreviewComponent content safety', () => {
     expect(preview.querySelector('.font-bold')?.textContent).toBe('@Ada');
   });
 
+  it('removes source layout classes while preserving normalized safe links', () => {
+    previewContext.maximumCharacters = 1_000;
+    const preview = renderPreview(
+      '<p><a href="https://example.com" class="fixed inset-0 z-[9999] hidden" ' +
+        'style="position:fixed" data-tooltip-html="hostile" ' +
+        'data-hostile="true">safe link</a></p>'
+    );
+    const link = preview.querySelector('a');
+
+    expect(preview.querySelector('[data-tooltip-html]')).toBeNull();
+    expect(preview.querySelector('[data-hostile]')).toBeNull();
+    expect(preview.querySelector('[style]')).toBeNull();
+    expect(link?.textContent).toBe('safe link');
+    expect(link?.href).toBe('https://example.com/');
+    expect(link?.hasAttribute('class')).toBe(false);
+  });
+
   it('preserves safe Telegram bold markup after normalization', () => {
     previewContext.identifier = 'telegram';
     previewContext.maximumCharacters = 100;
