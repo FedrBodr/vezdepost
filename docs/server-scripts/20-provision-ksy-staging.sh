@@ -90,6 +90,8 @@ used=$(disk_used_percent)
 [[ "$used" =~ ^[0-9]+$ && "$used" -lt 85 ]] || fail DISK_USAGE_LIMIT
 
 read_value KSY_DEALS_IMAGE 'Immutable GHCR image digest' 0
+read_value GHCR_USERNAME 'GitHub Packages username' 0
+read_value GHCR_READ_TOKEN 'GitHub Packages read-only token'
 read_value VITE_TELEGRAM_BOT_USERNAME 'Public Telegram bot username' 0
 read_value POSTGRES_PASSWORD 'PostgreSQL password'
 read_value SESSION_COOKIE_KEY 'Session cookie key'
@@ -102,6 +104,9 @@ read_value BACKUP_ENCRYPTION_PASSPHRASE 'Backup encryption passphrase'
 
 [[ "$KSY_DEALS_IMAGE" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] ||
   fail KSY_DEALS_IMAGE_INVALID
+[[ "$GHCR_USERNAME" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] ||
+  fail GHCR_USERNAME_INVALID
+safe_token "$GHCR_READ_TOKEN" || fail GHCR_READ_TOKEN_INVALID
 [[ "$VITE_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] ||
   fail VITE_TELEGRAM_BOT_USERNAME_INVALID
 hex64 "$POSTGRES_PASSWORD" || fail POSTGRES_PASSWORD_INVALID
@@ -168,6 +173,10 @@ if [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]]; then
   fi
 fi
 
+printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io \
+  --username "$GHCR_USERNAME" --password-stdin >/dev/null 2>&1 ||
+  fail GHCR_LOGIN_FAILED
+unset GHCR_READ_TOKEN
 docker network inspect caddy-edge >/dev/null 2>&1 ||
   docker network create caddy-edge >/dev/null
 install_public "$STAGED_COMPOSE" "$COMPOSE_FILE"

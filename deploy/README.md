@@ -172,6 +172,12 @@ migrates the isolated database, and requires loopback liveness/readiness. A
 failed replacement restores the previous KSY files and restarts its previous
 image without touching Vezdepost or rolling migrations back.
 
+Because the KSY repository and GHCR package are private, the note also contains
+`GHCR_USERNAME` and a dedicated `GHCR_READ_TOKEN` with package-read access only.
+The provisioner passes that token to `docker login ghcr.io` through standard
+input, suppresses command output, and never writes it to the KSY application
+env or deployment evidence. Do not reuse the package-publish credential.
+
 After the shared-edge commit is the successful deployed `prod` revision and
 both authoritative nameservers return `201.51.7.50`, activate the route:
 

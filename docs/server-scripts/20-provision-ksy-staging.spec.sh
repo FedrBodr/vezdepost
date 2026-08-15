@@ -64,6 +64,8 @@ YAML
 
 valid_environment() {
   export KSY_DEALS_IMAGE='ghcr.io/fedrbodr/ksy-deals@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  export GHCR_USERNAME='FedrBodr'
+  export GHCR_READ_TOKEN='github-read-token-secret'
   export VITE_TELEGRAM_BOT_USERNAME='ksy_staging_bot'
   export POSTGRES_PASSWORD='1111111111111111111111111111111111111111111111111111111111111111'
   export SESSION_COOKIE_KEY='2222222222222222222222222222222222222222222222222222222222222222'
@@ -156,6 +158,8 @@ test_provisions_idempotently_without_secret_leaks() {
   [[ -f "$case_dir/network.created" ]] || fail 'caddy-edge was not created'
   grep -q 'compose --project-name ksy-deals .* config --quiet' "$case_dir/docker.calls" ||
     fail 'Compose config was not validated'
+  grep -q '^login ghcr.io --username FedrBodr --password-stdin$' "$case_dir/docker.calls" ||
+    fail 'private GHCR login did not use password stdin'
   grep -q 'compose --project-name ksy-deals .* up -d db' "$case_dir/docker.calls" ||
     fail 'database was not started'
   grep -q 'compose --project-name ksy-deals .* run --rm migrate' "$case_dir/docker.calls" ||
@@ -167,7 +171,7 @@ test_provisions_idempotently_without_secret_leaks() {
   grep -q 'http://127.0.0.1:4300/health/ready' "$case_dir/curl.calls" ||
     fail 'readiness was not checked'
 
-  for secret in "$POSTGRES_PASSWORD" "$SESSION_COOKIE_KEY" \
+  for secret in "$GHCR_READ_TOKEN" "$POSTGRES_PASSWORD" "$SESSION_COOKIE_KEY" \
     "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_WEBHOOK_SECRET" \
     "$PLATPRICES_API_KEY" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
     ! grep -Fq "$secret" "$output" || fail 'secret leaked to output'
