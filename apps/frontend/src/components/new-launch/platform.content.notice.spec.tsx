@@ -44,13 +44,14 @@ describe('PlatformContentNotice', () => {
     expect(screen.getByRole('alert').textContent).toContain('requires media');
   });
 
-  it('offers a platform-specific copy for a universal warning', () => {
+  it('uses the exact target account while keeping the provider label readable', () => {
     const onCustomize = vi.fn();
     render(
       <PlatformContentNotice
         messages={[
           {
             platform: 'linkedin',
+            targetIntegrationId: 'linkedin-account-2',
             severity: 'warning',
             code: 'formatting-loss',
             text: 'linkedin: Some formatting will be converted to plain text.',
@@ -62,7 +63,7 @@ describe('PlatformContentNotice', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Customize for linkedin' })
     );
-    expect(onCustomize).toHaveBeenCalledWith('linkedin');
+    expect(onCustomize).toHaveBeenCalledWith('linkedin-account-2');
   });
 
   it('keeps repeated notice identities unique and stable', () => {
@@ -71,26 +72,32 @@ describe('PlatformContentNotice', () => {
       .mockImplementation(() => undefined);
     const first = {
       platform: 'pinterest',
+      targetIntegrationId: 'pinterest-account-1',
       severity: 'error' as const,
       code: 'text-too-long' as const,
-      text: 'Pinterest account one exceeds its limit.',
+      text: 'pinterest: Text exceeds the 500-character limit.',
     };
     const second = {
       ...first,
-      text: 'Pinterest account two exceeds its limit.',
+      targetIntegrationId: 'pinterest-account-2',
     };
     const { rerender } = render(
       <PlatformContentNotice messages={[first, second]} />
     );
     const originalNodes = new Map(
-      screen.getAllByRole('alert').map((node) => [node.textContent, node])
+      screen
+        .getAllByRole('alert')
+        .map((node, index) => [
+          [first.targetIntegrationId, second.targetIntegrationId][index],
+          node,
+        ])
     );
 
     rerender(<PlatformContentNotice messages={[second, first]} />);
 
     const reordered = screen.getAllByRole('alert');
-    expect(reordered[0]).toBe(originalNodes.get(second.text));
-    expect(reordered[1]).toBe(originalNodes.get(first.text));
+    expect(reordered[0]).toBe(originalNodes.get(second.targetIntegrationId));
+    expect(reordered[1]).toBe(originalNodes.get(first.targetIntegrationId));
     expect(consoleError.mock.calls.flat().map(String).join(' ')).not.toContain(
       'same key'
     );

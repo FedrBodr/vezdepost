@@ -6,12 +6,12 @@ export const PlatformContentNotice = ({
   onCustomize,
 }: {
   messages: PlatformContentMessage[];
-  onCustomize?: (platform: string) => void;
+  onCustomize?: (targetIntegrationId: string) => void;
 }) => {
   const occurrences = new Map<string, number>();
   const keyedMessages = messages.map((message) => {
     const identity = JSON.stringify([
-      message.platform || 'current',
+      message.targetIntegrationId || message.platform || 'current',
       message.severity,
       message.code,
       message.text,
@@ -37,12 +37,13 @@ export const PlatformContentNotice = ({
         >
           {message.text}
           {message.platform &&
+            message.targetIntegrationId &&
             message.severity === 'warning' &&
             onCustomize && (
               <button
                 type="button"
                 className="ms-2 underline"
-                onClick={() => onCustomize(message.platform!)}
+                onClick={() => onCustomize(message.targetIntegrationId!)}
               >
                 Customize for {message.platform}
               </button>

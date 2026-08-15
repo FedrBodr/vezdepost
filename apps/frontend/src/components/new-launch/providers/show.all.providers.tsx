@@ -241,7 +241,14 @@ export const ShowAllProviders = forwardRef((props, ref) => {
             })),
           }}
         >
-          {!globalTargets.length ? (
+          {!selectedIntegrations.length ? (
+            <div role="status">
+              {t(
+                'global_content_has_no_selected_channels',
+                'No channels are selected. Select a channel to preview global content.'
+              )}
+            </div>
+          ) : !globalTargets.length ? (
             <div role="status">
               {t(
                 'global_content_has_no_destinations',

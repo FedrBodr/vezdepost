@@ -14,6 +14,7 @@ import {
 
 export interface PlatformContentMessage {
   platform?: string;
+  targetIntegrationId?: string;
   severity: ContentMessageSeverity;
   code:
     | 'formatting-loss'
@@ -211,10 +212,12 @@ export const analyzeSelectedPlatformContent = ({
   content,
   media,
   capabilities,
+  targetIntegrationIds,
 }: {
   content: string;
   media: Array<{ type?: 'image' | 'video' }>;
   capabilities: PlatformCapabilities[];
+  targetIntegrationIds?: readonly (string | undefined)[];
 }): PlatformContentAnalysis => {
   const analyses = capabilities.map((profile) =>
     analyzePlatformContent({ content, media, capabilities: profile })
@@ -223,6 +226,7 @@ export const analyzeSelectedPlatformContent = ({
     analysis.messages.map((message) => ({
       ...message,
       platform: capabilities[index].identifier,
+      targetIntegrationId: targetIntegrationIds?.[index],
       text: `${capabilities[index].identifier}: ${message.text}`,
     }))
   );

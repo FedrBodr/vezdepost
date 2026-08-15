@@ -185,9 +185,9 @@ export const EditorWrapper: FC<{
   );
 
   const customizePlatform = useCallback(
-    (identifier: string) => {
+    (targetIntegrationId: string) => {
       const target = selectedIntegration.find(
-        (item) => item.integration.identifier === identifier
+        (item) => item.integration.id === targetIntegrationId
       );
       if (!target) return;
       if (
@@ -565,7 +565,7 @@ export const Editor: FC<{
   selectedIntegration: SelectedIntegrations[];
   dummy: boolean;
   chars: Record<string, number>;
-  onCustomize?: (platform: string) => void;
+  onCustomize?: (targetIntegrationId: string) => void;
   childButton?: React.ReactNode;
 }> = (props) => {
   const {
@@ -603,6 +603,9 @@ export const Editor: FC<{
               media: props.pictures || [],
               capabilities: props.selectedIntegration.map(
                 (item) => item.integration.capabilities
+              ),
+              targetIntegrationIds: props.selectedIntegration.map(
+                (item) => item.integration.id
               ),
             })
           : analyzeSourceOnlyContent({

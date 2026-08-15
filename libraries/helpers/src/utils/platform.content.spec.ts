@@ -186,4 +186,34 @@ describe('platform content normalization', () => {
       })
     );
   });
+
+  it('aligns duplicate provider diagnostics with exact target integration IDs', () => {
+    const analyses = analyzeSelectedPlatformContent({
+      content: `<p>${'a'.repeat(501)}</p>`,
+      media: [],
+      capabilities: [
+        getPlatformCapabilities('pinterest'),
+        getPlatformCapabilities('pinterest'),
+      ],
+      targetIntegrationIds: ['pinterest-first', 'pinterest-second'],
+    });
+
+    expect(
+      analyses.messages
+        .filter((message) => message.code === 'text-too-long')
+        .map((message) => ({
+          platform: message.platform,
+          targetIntegrationId: message.targetIntegrationId,
+        }))
+    ).toEqual([
+      {
+        platform: 'pinterest',
+        targetIntegrationId: 'pinterest-first',
+      },
+      {
+        platform: 'pinterest',
+        targetIntegrationId: 'pinterest-second',
+      },
+    ]);
+  });
 });

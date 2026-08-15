@@ -82,6 +82,30 @@ afterEach(() => {
 });
 
 describe('ShowAllProviders global preview', () => {
+  it('distinguishes no selected channels from fully customized channels', () => {
+    useLaunchStore.setState({
+      current: 'global',
+      selectedIntegrations: [],
+      internal: [],
+      global: [{ id: 'post', content: '<p>Keep me</p>', delay: 0, media: [] }],
+    });
+
+    render(<ShowAllProviders />);
+
+    expect(screen.queryByTestId('global-preview')).toBeNull();
+    expect(
+      screen.getByText(
+        'No channels are selected. Select a channel to preview global content.'
+      )
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        'All selected channels use customized content. Global content is kept as a source.'
+      )
+    ).toBeNull();
+    expect(useLaunchStore.getState().global[0].content).toBe('<p>Keep me</p>');
+  });
+
   it('previews the first destination that still consumes global content', () => {
     const overridden = selected('overridden', 'pinterest');
     const globalTarget = selected('global-target', 'vk');

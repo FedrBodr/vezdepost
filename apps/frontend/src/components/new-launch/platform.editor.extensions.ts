@@ -117,11 +117,24 @@ const shouldAutoLink = (url: string) => {
   }
 };
 
+const rejectEditorCommand = () => () => false;
+
 export const createCanonicalEditorExtensions = (
   capabilities: PlatformCapabilities
 ): Extensions => {
   const policy = getEditorCreationPolicy(capabilities);
   const CapabilityAwareUnderline = Underline.extend({
+    addCommands() {
+      const parentCommands = this.parent?.() || {};
+      return policy.underline
+        ? parentCommands
+        : {
+            ...parentCommands,
+            setUnderline: rejectEditorCommand,
+            toggleUnderline: rejectEditorCommand,
+            unsetUnderline: rejectEditorCommand,
+          };
+    },
     addKeyboardShortcuts() {
       return policy.underline
         ? this.parent?.() || {}
@@ -129,6 +142,17 @@ export const createCanonicalEditorExtensions = (
     },
   });
   const CapabilityAwareBold = Bold.extend({
+    addCommands() {
+      const parentCommands = this.parent?.() || {};
+      return policy.bold
+        ? parentCommands
+        : {
+            ...parentCommands,
+            setBold: rejectEditorCommand,
+            toggleBold: rejectEditorCommand,
+            unsetBold: rejectEditorCommand,
+          };
+    },
     addKeyboardShortcuts() {
       return policy.bold
         ? this.parent?.() || {}
@@ -142,6 +166,17 @@ export const createCanonicalEditorExtensions = (
     },
   });
   const CapabilityAwareLink = Link.extend({
+    addCommands() {
+      const parentCommands = this.parent?.() || {};
+      return policy.link
+        ? parentCommands
+        : {
+            ...parentCommands,
+            setLink: rejectEditorCommand,
+            toggleLink: rejectEditorCommand,
+            unsetLink: rejectEditorCommand,
+          };
+    },
     addPasteRules() {
       return policy.link ? this.parent?.() || [] : [];
     },
@@ -155,6 +190,16 @@ export const createCanonicalEditorExtensions = (
     shouldAutoLink,
   });
   const CapabilityAwareHeading = Heading.extend({
+    addCommands() {
+      const parentCommands = this.parent?.() || {};
+      return policy.heading
+        ? parentCommands
+        : {
+            ...parentCommands,
+            setHeading: rejectEditorCommand,
+            toggleHeading: rejectEditorCommand,
+          };
+    },
     addKeyboardShortcuts() {
       return policy.heading ? this.parent?.() || {} : {};
     },
@@ -163,6 +208,15 @@ export const createCanonicalEditorExtensions = (
     },
   }).configure({ levels: [1, 2, 3] });
   const CapabilityAwareBulletList = BulletList.extend({
+    addCommands() {
+      const parentCommands = this.parent?.() || {};
+      return policy.list
+        ? parentCommands
+        : {
+            ...parentCommands,
+            toggleBulletList: rejectEditorCommand,
+          };
+    },
     addKeyboardShortcuts() {
       return policy.list ? this.parent?.() || {} : {};
     },
