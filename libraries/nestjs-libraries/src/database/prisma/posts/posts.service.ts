@@ -51,8 +51,7 @@ import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import { stripLinks } from '@gitroom/helpers/utils/strip.links';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { weightedLength } from '@gitroom/helpers/utils/count.length';
+import { analyzePlatformContent } from '@gitroom/helpers/utils/platform.content';
 
 type PostWithConditionals = Post & {
   integration?: Integration;
@@ -837,22 +836,32 @@ export class PostsService {
           errors = err?.message || 'Invalid media';
         }
 
-        const maximumCharacters = provider.maxLength(additionalSettings);
-        const isX = integration.providerIdentifier === 'x';
-
-        const emptyContent = (post.value || []).some((a) => {
-          const strip = stripHtmlValidation('normal', a.content || '', true);
-          const length = isX ? weightedLength(strip) : strip.length;
-          return length === 0 && (a.image || []).length === 0;
-        });
-
-        const tooLong = (post.value || []).some((a) => {
-          const strip = stripHtmlValidation('normal', a.content || '', true);
-          const weighted = isX ? weightedLength(strip) : strip.length;
-          const totalCharacters =
-            weighted > strip.length ? weighted : strip.length;
-          return totalCharacters > (maximumCharacters || 1000000);
-        });
+        const capabilities = this._integrationManager.getCapabilities(
+          integration.providerIdentifier
+        );
+        const contentAnalyses = (post.value || []).map((item) =>
+          analyzePlatformContent({
+            content: item.content || '',
+            media: (item.image || []).map(({ type }) => ({
+              type: type === 'video' ? ('video' as const) : ('image' as const),
+            })),
+            capabilities,
+          })
+        );
+        const contentMessages = contentAnalyses.flatMap(
+          (item) => item.messages
+        );
+        const contentError =
+          contentMessages.find((item) => item.severity === 'error')?.text || '';
+        const emptyContent = contentAnalyses.some(
+          (analysis, index) =>
+            analysis.visibleLength === 0 &&
+            (post.value[index]?.image || []).length === 0
+        );
+        const tooLong = contentMessages.some(
+          (item) => item.code === 'text-too-long'
+        );
+        const maximumCharacters = capabilities.text.max;
 
         return {
           id: integration.id,
@@ -864,6 +873,8 @@ export class PostsService {
           emptyContent,
           tooLong,
           maximumCharacters,
+          contentMessages,
+          contentError,
         };
       })
     );

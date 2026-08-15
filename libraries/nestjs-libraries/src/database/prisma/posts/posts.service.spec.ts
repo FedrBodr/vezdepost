@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { describe, expect, it, vi } from 'vitest';
 import { PostsService } from './posts.service';
 
@@ -33,6 +34,9 @@ describe('PostsService.validatePosts', () => {
     const service = createService({
       integrationManager: {
         getSocialIntegration: vi.fn().mockReturnValue(provider),
+        getCapabilities: vi
+          .fn()
+          .mockReturnValue(getPlatformCapabilities('vk-group')),
       },
       integrationService: {
         getIntegrationById: vi.fn().mockResolvedValue({
@@ -63,6 +67,67 @@ describe('PostsService.validatePosts', () => {
       {},
       []
     );
+  });
+
+  it('uses registry limits instead of duplicated frontend limits', async () => {
+    const provider = {
+      checkValidity: vi.fn().mockResolvedValue(true),
+      maxLength: vi.fn().mockReturnValue(16384),
+      editor: 'normal',
+    };
+    const service = createService({
+      integrationManager: {
+        getSocialIntegration: vi.fn().mockReturnValue(provider),
+        getCapabilities: vi.fn().mockReturnValue(getPlatformCapabilities('vk')),
+      },
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue({
+          id: 'vk-1',
+          providerIdentifier: 'vk',
+          name: 'VK',
+          additionalSettings: '[]',
+        }),
+      },
+    });
+    const [result] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'vk-1' },
+        value: [{ content: `<p>${'a'.repeat(3000)}</p>`, image: [] }],
+      },
+    ]);
+    expect(result.tooLong).toBe(false);
+    expect(result.contentError).toBe('');
+  });
+
+  it('returns a blocking Pinterest media error', async () => {
+    const provider = {
+      checkValidity: vi.fn().mockResolvedValue('Requires at least one media'),
+      maxLength: vi.fn().mockReturnValue(500),
+      editor: 'normal',
+    };
+    const service = createService({
+      integrationManager: {
+        getSocialIntegration: vi.fn().mockReturnValue(provider),
+        getCapabilities: vi
+          .fn()
+          .mockReturnValue(getPlatformCapabilities('pinterest')),
+      },
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue({
+          id: 'pin-1',
+          providerIdentifier: 'pinterest',
+          name: 'Pinterest',
+          additionalSettings: '[]',
+        }),
+      },
+    });
+    const [result] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'pin-1' },
+        value: [{ content: '<p>Pin</p>', image: [] }],
+      },
+    ]);
+    expect(result.contentError).toBe('This platform requires media.');
   });
 });
 

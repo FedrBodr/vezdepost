@@ -337,6 +337,17 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               return;
             }
 
+            if (item.contentError) {
+              toaster.show(
+                `${item.name} (${item.identifier}): ${item.contentError}`,
+                'warning'
+              );
+              focus(item.id, 'preview');
+              setLoading(false);
+              setShowSettings(false);
+              return;
+            }
+
             if (item.tooLong) {
               toaster.show(
                 `${item.name} (${item.identifier}) ${t(
