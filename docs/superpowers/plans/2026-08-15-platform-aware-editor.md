@@ -785,8 +785,9 @@ ordering below so unsupported headings and links retain visible text while
 headings retain a line break:
 
 ```ts
-export const normalizeTelegramHtml = (value: string): string =>
-  striptags(
+export const normalizeTelegramHtml = (value: string): string => {
+  const hasTrailingParagraph = /<\/p>\s*$/i.test(value);
+  const normalized = striptags(
     value
       .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gis, '$1\n')
       .replace(/<a[^>]*>(.*?)<\/a>/gis, '$1'),
@@ -794,8 +795,12 @@ export const normalizeTelegramHtml = (value: string): string =>
   )
     .replace(/<strong>/g, '<b>')
     .replace(/<\/strong>/g, '</b>')
-    .replace(/<p>(.*?)<\/p>/gs, '$1\n')
-    .replace(/\n$/, '');
+    .replace(/<p>(.*?)<\/p>/gs, '$1\n');
+
+  return hasTrailingParagraph
+    ? normalized.replace(/\n(?=[^\S\r\n]*$)/, '')
+    : normalized;
+};
 ```
 
 - [ ] **Step 4: Run content and existing Telegram tests**

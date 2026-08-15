@@ -15,10 +15,15 @@ describe('Telegram HTML caption length', () => {
     ).toBe('<b>bold</b> label');
   });
 
-  it('retains paragraph separators and an intentional trailing newline', () => {
-    expect(normalizeTelegramHtml('<p>First</p><p>Second\n</p>')).toBe(
-      'First\nSecond\n'
-    );
+  it('preserves a raw trailing newline', () => {
+    expect(normalizeTelegramHtml('plain\n')).toBe('plain\n');
+  });
+
+  it('retains paragraph separators and remains idempotent with intentional trailing text', () => {
+    const once = normalizeTelegramHtml('<p>First</p><p>Second\n</p>');
+
+    expect(once).toBe('First\nSecond\n');
+    expect(normalizeTelegramHtml(once)).toBe(once);
   });
 
   it('counts formatting text without counting tags', () => {
