@@ -3,6 +3,7 @@ import DOMPurify from 'isomorphic-dompurify';
 const ALLOWED_TAGS = [
   'p',
   'br',
+  'b',
   'strong',
   'u',
   'a',
@@ -12,6 +13,7 @@ const ALLOWED_TAGS = [
   'h2',
   'h3',
   'span',
+  'mark',
 ];
 
 const ALLOWED_ATTR = [
@@ -21,6 +23,8 @@ const ALLOWED_ATTR = [
   'class',
   'data-mention-id',
   'data-mention-label',
+  'data-tooltip-id',
+  'data-tooltip-content',
 ];
 
 export const sanitizePostContent = (value: unknown): string => {

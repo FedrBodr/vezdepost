@@ -6,7 +6,50 @@ import { FC } from 'react';
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
-import { normalizePlatformContent } from '@gitroom/helpers/utils/platform.content';
+import {
+  analyzePlatformContent,
+  normalizePlatformContent,
+} from '@gitroom/helpers/utils/platform.content';
+import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
+import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+
+const mentionMarkup = (content: string) =>
+  content.replace(/\[\[\[([.\s\S]*?)]]]/g, (_match, label) => {
+    return `<span class="font-bold font-[arial] text-[#ae8afc]">${label}</span>`;
+  });
+
+const escapeHtml = (content: string) =>
+  content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const croppedMarkup = ({
+  content,
+  integrationType,
+  maximumCharacters,
+}: {
+  content: string;
+  integrationType: string;
+  maximumCharacters: number;
+}) => {
+  const plainText = stripHtmlValidation('none', content);
+  const { start, end } = textSlicer(
+    integrationType,
+    maximumCharacters,
+    plainText
+  );
+
+  return (
+    escapeHtml(plainText.slice(start, end)) +
+    '<mark class="bg-red-500" data-tooltip-id="tooltip" ' +
+    'data-tooltip-content="This text will be cropped">' +
+    escapeHtml(plainText.slice(end)) +
+    '</mark>'
+  );
+};
 
 export const GeneralPreviewComponent: FC<{
   maximumCharacters?: number;
@@ -16,33 +59,35 @@ export const GeneralPreviewComponent: FC<{
   const mediaDir = useMediaDirectory();
 
   const renderContent = topValue.map((p) => {
-    const canonicalContent = p.content.replace(
-      /<span.*?data-mention-id="([.\s\S]*?)"[.\s\S]*?>([.\s\S]*?)<\/span>/gi,
-      (_match, _id, label) => `[[[${label}]]]`
-    );
-    const newContent = integration
-      ? normalizePlatformContent(canonicalContent, integration.capabilities)
-      : canonicalContent;
-
-    const { start, end } = textSlicer(
-      integration?.identifier || '',
-      integration?.capabilities.text.max ?? props.maximumCharacters ?? 10000,
-      newContent
-    );
-
+    const maximumCharacters =
+      integration?.capabilities.text.max ?? props.maximumCharacters ?? 10000;
+    const analysis = integration
+      ? analyzePlatformContent({
+          content: p.content,
+          media: p.image?.map(() => ({})) || [],
+          capabilities: integration.capabilities,
+        })
+      : {
+          normalized: p.content,
+          visibleLength: stripHtmlValidation('none', p.content).length,
+        };
+    const normalizedContent = integration
+      ? normalizePlatformContent(
+          p.content,
+          integration.capabilities,
+          (_id, label) => `[[[${label}]]]`
+        )
+      : p.content;
     const finalValue =
-      newContent
-        .slice(start, end)
-        .replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
-          return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
-        }) +
-      `<mark class="bg-red-500" data-tooltip-id="tooltip" data-tooltip-content="This text will be cropped">` +
-      newContent.slice(end).replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
-        return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
-      }) +
-      `</mark>`;
+      analysis.visibleLength > maximumCharacters
+        ? croppedMarkup({
+            content: analysis.normalized,
+            integrationType: integration?.identifier || '',
+            maximumCharacters,
+          })
+        : mentionMarkup(normalizedContent);
 
-    return { text: finalValue, images: p.image };
+    return { text: sanitizePostContent(finalValue), images: p.image };
   });
 
   return (
