@@ -1,4 +1,5 @@
 import striptags from 'striptags';
+import { weightedLength } from './count.length';
 import { stripHtmlValidation } from './strip.html.validation';
 import {
   getTelegramVisibleTextLength,
@@ -77,10 +78,15 @@ export const analyzePlatformContent = ({
   capabilities: PlatformCapabilities;
 }): PlatformContentAnalysis => {
   const normalized = normalizePlatformContent(content, capabilities);
-  const visibleLength =
+  const plainText = striptags(normalized);
+  const rawVisibleLength =
     capabilities.identifier === 'telegram'
       ? getTelegramVisibleTextLength(normalized)
-      : striptags(normalized).length;
+      : plainText.length;
+  const visibleLength =
+    capabilities.identifier === 'x'
+      ? Math.max(weightedLength(plainText), rawVisibleLength)
+      : rawVisibleLength;
   const messages: PlatformContentMessage[] = [];
   const imageCount = media.filter((item) => item.type !== 'video').length;
   const videoCount = media.filter((item) => item.type === 'video').length;

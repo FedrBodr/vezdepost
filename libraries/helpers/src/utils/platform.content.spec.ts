@@ -54,6 +54,26 @@ describe('platform content normalization', () => {
     expect(analysis.blocking).toBe(true);
   });
 
+  it('uses X weighted length for double-weight characters', () => {
+    const analysis = analyzePlatformContent({
+      content: `<p>${'界'.repeat(141)}</p>`,
+      media: [],
+      capabilities: getPlatformCapabilities('x', {
+        editor: 'normal',
+        maximumCharacters: 280,
+      }),
+    });
+
+    expect(analysis.visibleLength).toBe(282);
+    expect(analysis.messages).toContainEqual(
+      expect.objectContaining({
+        severity: 'error',
+        code: 'text-too-long',
+      })
+    );
+    expect(analysis.blocking).toBe(true);
+  });
+
   it('retains platform identity when universal content has platform-specific delivery', () => {
     const analyses = analyzeSelectedPlatformContent({
       content: `<p>${'a'.repeat(1025)}</p>`,
