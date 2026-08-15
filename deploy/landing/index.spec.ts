@@ -8,6 +8,10 @@ const landingHtml = readFileSync(
   join(process.cwd(), 'deploy/landing/index.html'),
   'utf8'
 );
+const privacyHtml = readFileSync(
+  join(process.cwd(), 'deploy/landing/privacy/index.html'),
+  'utf8'
+);
 
 type LandingOptions = {
   locale?: string;
@@ -47,6 +51,42 @@ const createLanding = (options: LandingOptions = {}) => {
 
   const script = window.document.querySelector<HTMLScriptElement>(
     'script#landing-i18n'
+  );
+  expect(script).not.toBeNull();
+  window.eval(script!.textContent || '');
+
+  return { dom, window, document: window.document };
+};
+
+const createPrivacy = (options: LandingOptions = {}) => {
+  const dom = new JSDOM(privacyHtml, {
+    runScripts: 'outside-only',
+    url: 'https://vezdepost.ru/privacy',
+  });
+  const { window } = dom;
+
+  Object.defineProperty(window.navigator, 'languages', {
+    configurable: true,
+    value: options.locale ? [options.locale] : [],
+  });
+  Object.defineProperty(window.navigator, 'language', {
+    configurable: true,
+    value: options.locale || '',
+  });
+
+  if (options.storageThrows) {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get: () => {
+        throw new Error('storage unavailable');
+      },
+    });
+  } else if (options.storedLanguage !== undefined) {
+    window.localStorage.setItem('vezdepost-language', options.storedLanguage);
+  }
+
+  const script = window.document.querySelector<HTMLScriptElement>(
+    'script#privacy-i18n'
   );
   expect(script).not.toBeNull();
   window.eval(script!.textContent || '');
@@ -289,6 +329,15 @@ describe('landing brand assets', () => {
 });
 
 describe('landing brand integration', () => {
+  it('links to the public privacy policy from the footer', () => {
+    const { document } = createLanding({ locale: 'ru-RU' });
+
+    expect(
+      document.querySelector<HTMLAnchorElement>('footer a[href="/privacy"]')
+        ?.textContent
+    ).toBe('Политика конфиденциальности');
+  });
+
   it('exposes complete social preview and icon metadata', () => {
     const { document } = createLanding({ locale: 'ru-RU' });
 
@@ -366,9 +415,160 @@ describe('landing brand integration', () => {
   });
 });
 
+describe('privacy policy', () => {
+  it('has matching, non-empty Russian and English dictionaries', () => {
+    const { window } = createPrivacy();
+    const { ru, en } = window.__privacyI18n.translations;
+
+    expect(Object.keys(ru).sort()).toEqual(Object.keys(en).sort());
+    expect(Object.keys(en).length).toBeGreaterThan(30);
+    expect(Object.values(ru).every(Boolean)).toBe(true);
+    expect(Object.values(en).every(Boolean)).toBe(true);
+  });
+
+  it('binds every policy translation key in both dictionaries', () => {
+    const { document, window } = createPrivacy();
+    const boundKeys = Array.from(
+      document.querySelectorAll(
+        '[data-i18n], [data-i18n-html], [data-i18n-content], [data-i18n-aria-label]'
+      )
+    ).flatMap((element) =>
+      [
+        element.getAttribute('data-i18n'),
+        element.getAttribute('data-i18n-html'),
+        element.getAttribute('data-i18n-content'),
+        element.getAttribute('data-i18n-aria-label'),
+      ].filter((key): key is string => Boolean(key))
+    );
+
+    expect(boundKeys.length).toBeGreaterThan(30);
+    for (const key of boundKeys) {
+      expect(window.__privacyI18n.translations.ru[key], `ru.${key}`).toBeTruthy();
+      expect(window.__privacyI18n.translations.en[key], `en.${key}`).toBeTruthy();
+    }
+  });
+
+  it.each([
+    ['ru-RU', 'ru'],
+    ['ru-KZ', 'ru'],
+    ['en-RU', 'ru'],
+    ['be-BY', 'ru'],
+    ['kk-KZ', 'ru'],
+    ['en-US', 'en'],
+    ['de-DE', 'en'],
+    ['not_a_locale', 'en'],
+    ['', 'en'],
+  ] as const)('selects %s as %s', (locale, language) => {
+    const { window } = createPrivacy({ locale });
+    expect(window.__privacyI18n.getCurrentLanguage()).toBe(language);
+  });
+
+  it('gives a stored language priority over browser locale', () => {
+    expect(
+      createPrivacy({ locale: 'en-US', storedLanguage: 'ru' }).window
+        .__privacyI18n.getCurrentLanguage()
+    ).toBe('ru');
+    expect(
+      createPrivacy({ locale: 'ru-RU', storedLanguage: 'en' }).window
+        .__privacyI18n.getCurrentLanguage()
+    ).toBe('en');
+  });
+
+  it('renders the complete English policy and metadata', () => {
+    const { document } = createPrivacy({ locale: 'en-US' });
+    const text = document.body.textContent || '';
+
+    expect(document.documentElement.lang).toBe('en');
+    expect(document.title).toBe('Privacy Policy — Vezdepost');
+    expect(
+      document.querySelector('meta[name="description"]')?.getAttribute('content')
+    ).toContain('how Vezdepost processes personal data');
+    expect(document.querySelector('.back')?.textContent).toBe('Back to home');
+    expect(document.querySelector('#data h2')?.textContent).toBe('Data we process');
+    expect(document.querySelector('#purposes h2')?.textContent).toBe('How we use data');
+    expect(document.querySelector('#sharing h2')?.textContent).toBe('Data sharing');
+    expect(document.querySelector('#retention h2')?.textContent).toBe('Retention and security');
+    expect(document.querySelector('#rights h2')?.textContent).toBe('Your rights');
+    expect(document.querySelector('#cookies h2')?.textContent).toBe('Cookies and analytics');
+    expect(document.querySelector('#changes h2')?.textContent).toBe('Policy changes');
+    expect(document.querySelector('#contacts h2')?.textContent).toBe('Contact');
+    expect(text).toContain('individual registered in Russia under the professional income tax regime');
+    expect(text).toContain('including Pinterest');
+    expect(text).toContain('Request access, correction, restriction, or deletion');
+    expect(document.querySelector('footer')?.textContent).toContain('Home');
+  });
+
+  it('renders complete Russian policy copy', () => {
+    const { document } = createPrivacy({ locale: 'ru-RU' });
+    const text = document.body.textContent || '';
+
+    expect(document.documentElement.lang).toBe('ru');
+    expect(document.title).toBe('Политика конфиденциальности — Vezdepost');
+    expect(document.querySelector('#data h2')?.textContent).toBe('Какие данные мы обрабатываем');
+    expect(document.querySelector('#contacts h2')?.textContent).toBe('Контакты');
+    expect(text).toContain('13 августа 2026 года');
+    expect(text).toContain('включая Pinterest');
+  });
+
+  it('switches immediately, persists the choice, and updates button state', () => {
+    const { document, window } = createPrivacy({ locale: 'en-US' });
+
+    document.querySelector<HTMLButtonElement>('[data-language="ru"]')!.click();
+
+    expect(window.__privacyI18n.getCurrentLanguage()).toBe('ru');
+    expect(document.documentElement.lang).toBe('ru');
+    expect(document.querySelector('[data-language="ru"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[data-language="en"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(window.localStorage.getItem('vezdepost-language')).toBe('ru');
+  });
+
+  it('initializes, reveals, and switches when storage is unavailable', () => {
+    const { document, window } = createPrivacy({
+      locale: 'en-US',
+      storageThrows: true,
+    });
+
+    expect(window.__privacyI18n.getCurrentLanguage()).toBe('en');
+    expect(document.documentElement.classList).not.toContain('i18n-pending');
+    document.querySelector<HTMLButtonElement>('[data-language="ru"]')!.click();
+    expect(window.__privacyI18n.getCurrentLanguage()).toBe('ru');
+  });
+
+  it('preserves public identity, canonical URL, and contact in both languages', () => {
+    const { document, window } = createPrivacy({ locale: 'en-US' });
+
+    expect(
+      document.querySelector('link[rel="canonical"]')?.getAttribute('href')
+    ).toBe('https://vezdepost.ru/privacy');
+    window.__privacyI18n.applyLanguage('ru');
+    const operator = document.querySelector('[data-i18n-html="intro.operator"]');
+    expect(operator?.textContent).toContain(
+      'Федоренко Дмитрий Александрович'
+    );
+
+    window.__privacyI18n.applyLanguage('en');
+    expect(operator?.textContent).toContain('Dmitriy Fedorenko');
+    expect(operator?.textContent).not.toContain(
+      'Федоренко Дмитрий Александрович'
+    );
+    expect(operator?.textContent).toContain('772373964340');
+    expect(
+      document.querySelector('a[href="https://t.me/FedrBodr"]')?.textContent
+    ).toContain('@FedrBodr');
+    expect(document.body.textContent).not.toContain('07.08.1987');
+  });
+});
+
 declare global {
   interface Window {
     __landingI18n: {
+      languageFromLocale: (locale?: string) => 'ru' | 'en';
+      detectLanguage: () => 'ru' | 'en';
+      getCurrentLanguage: () => 'ru' | 'en';
+      applyLanguage: (language: 'ru' | 'en', persist?: boolean) => void;
+      translations: Record<'ru' | 'en', Record<string, string>>;
+    };
+    __privacyI18n: {
       languageFromLocale: (locale?: string) => 'ru' | 'en';
       detectLanguage: () => 'ru' | 'en';
       getCurrentLanguage: () => 'ru' | 'en';

@@ -44,9 +44,9 @@ export class PinterestProvider
 
   dto = PinterestSettingsDto;
 
-  override async checkValidity(
-    [firstItem]: Array<ValidityMedia[]>
-  ): Promise<string | true> {
+  override async checkValidity([firstItem]: Array<ValidityMedia[]>): Promise<
+    string | true
+  > {
     const isMp4 = firstItem?.find(
       (item) => (item?.path?.indexOf?.('mp4') ?? -1) > -1
     );
@@ -100,20 +100,22 @@ export class PinterestProvider
     if (body.indexOf('Unable to reach the URL') > -1) {
       return {
         type: 'retry' as const,
-        value: 'Pinterest was unable to reach the URL provided. Please check the link and try again.',
-      }
+        value:
+          'Pinterest was unable to reach the URL provided. Please check the link and try again.',
+      };
     }
     if (body.indexOf(`does not match '^\\\\\\\\\\\\\\\\d+$'`) > -1) {
       return {
         type: 'bad-body' as const,
-        value: 'The board ID must be a numeric string. Please check the board ID format.',
-      }
+        value:
+          'The board ID must be a numeric string. Please check the board ID format.',
+      };
     }
     if (body.indexOf('Board not found') > -1) {
       return {
         type: 'bad-body' as const,
         value: 'The specified board was not found. Please check the board ID.',
-      }
+      };
     }
     if (body.indexOf('cover_image_url or cover_image_content_type') > -1) {
       return {
@@ -127,7 +129,7 @@ export class PinterestProvider
   }
 
   async refreshToken(refreshToken: string): Promise<AuthTokenDetails> {
-    const { access_token, expires_in } = await (
+    const { access_token, refresh_token, expires_in } = await (
       await fetch('https://api.pinterest.com/v5/oauth/token', {
         method: 'POST',
         headers: {
@@ -158,7 +160,7 @@ export class PinterestProvider
       id: id,
       name: username,
       accessToken: access_token,
-      refreshToken: refreshToken,
+      refreshToken: refresh_token || refreshToken,
       expiresIn: expires_in,
       picture: profile_image || '',
       username,

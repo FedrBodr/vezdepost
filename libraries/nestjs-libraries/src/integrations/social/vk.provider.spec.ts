@@ -68,6 +68,20 @@ describe('VkProvider verified publishing', () => {
     expect(new VkProvider().refreshCron).toBe(true);
   });
 
+  it('preserves the personal VK OAuth scope contract', () => {
+    expect(new VkProvider().scopes).toMatchInlineSnapshot(`
+      [
+        "vkid.personal_info",
+        "email",
+        "wall",
+        "status",
+        "docs",
+        "photos",
+        "video",
+      ]
+    `);
+  });
+
   it('throws RefreshToken when a media API returns VK error 5', async () => {
     vi.spyOn(provider, 'fetch').mockResolvedValue(
       response({ error: { error_code: 5, error_msg: 'expired' } })
@@ -370,6 +384,48 @@ describe('VkProvider OAuth response validation', () => {
   beforeEach(() => {
     provider = new TestVkProvider();
     vi.clearAllMocks();
+  });
+
+  it('preserves the personal VK AuthTokenDetails shape', async () => {
+    vi.spyOn(provider, 'fetch')
+      .mockResolvedValueOnce(
+        response({
+          response: {
+            access_token: 'new-access-secret',
+            refresh_token: 'new-refresh-secret',
+            expires_in: 3600,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        response({
+          response: {
+            user: {
+              user_id: '123',
+              first_name: 'Ada',
+              last_name: 'Lovelace',
+              avatar: 'https://cdn.example.test/avatar.png',
+            },
+          },
+        })
+      );
+
+    await expect(
+      provider.authenticate({
+        code: 'authorization-code&&&&device-1',
+        codeVerifier: 'verifier',
+      })
+    ).resolves.toMatchInlineSnapshot(`
+      {
+        "accessToken": "new-access-secret",
+        "expiresIn": 3600,
+        "id": "123",
+        "name": "Ada Lovelace",
+        "picture": "https://cdn.example.test/avatar.png",
+        "refreshToken": "new-refresh-secret&&&&device-1",
+        "username": "ada",
+      }
+    `);
   });
 
   it('rejects a successful auth response without an access token before user_info', async () => {

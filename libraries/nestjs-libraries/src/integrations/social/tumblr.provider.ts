@@ -14,6 +14,7 @@ import { Integration } from '@prisma/client';
 import axios from 'axios';
 import { lookup } from 'mime-types';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import { randomBytes } from 'node:crypto';
 
 const TUMBLR_API_URL = 'https://api.tumblr.com/v2';
 const TUMBLR_USER_AGENT = 'Postiz/1.0 (+https://postiz.com)';
@@ -58,6 +59,13 @@ type TumblrUploadMedia = {
   identifier: string;
   width: number;
   height: number;
+};
+
+type TumblrMultipartMedia = {
+  identifier: string;
+  mimeType: string;
+  filename: string;
+  data: Buffer;
 };
 
 type TumblrContentBlock =
@@ -430,6 +438,48 @@ export class TumblrProvider extends SocialAbstract implements SocialProvider {
     return lookup(path.split('?')[0]) || 'application/octet-stream';
   }
 
+  private sanitizeMediaFilename(path: string, fallback: string) {
+    const withoutQuery = path.split('?')[0];
+    const basename = withoutQuery.split('/').pop() || fallback;
+    const sanitized = basename.replace(/[^A-Za-z0-9._-]/g, '_');
+    return sanitized || fallback;
+  }
+
+  private createMultipartBody(
+    payload: { content: TumblrContentBlock[]; [key: string]: any },
+    media: TumblrMultipartMedia[]
+  ) {
+    const boundary = `PostizTumblr${randomBytes(12).toString('hex')}`;
+    const chunks: Buffer[] = [];
+    const appendText = (value: string) => {
+      chunks.push(Buffer.from(value, 'utf8'));
+    };
+
+    appendText(
+      `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="json"\r\n' +
+        'Content-Type: application/json\r\n\r\n' +
+        `${JSON.stringify(payload)}\r\n`
+    );
+
+    for (const part of media) {
+      appendText(
+        `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="${part.identifier}"; filename="${part.filename}"\r\n` +
+          `Content-Type: ${part.mimeType}\r\n\r\n`
+      );
+      chunks.push(part.data);
+      appendText('\r\n');
+    }
+
+    appendText(`--${boundary}--\r\n`);
+
+    return {
+      body: Buffer.concat(chunks),
+      contentType: `multipart/form-data; boundary=${boundary}`,
+    };
+  }
+
   private isVideoPath(path?: string | null) {
     return hasExtension(path, 'mp4');
   }
@@ -509,23 +559,23 @@ export class TumblrProvider extends SocialAbstract implements SocialProvider {
     payload: { content: TumblrContentBlock[]; [key: string]: any },
     media: NonNullable<PostDetails['media']>
   ) {
-    const formData = new FormData();
-    formData.append(
-      'json',
-      new Blob([JSON.stringify(payload)], { type: 'application/json' })
-    );
+    const parts: TumblrMultipartMedia[] = [];
 
     for (const [index, item] of media.entries()) {
+      const identifier = `media-${index}`;
       const mimeType = this.getMimeType(item.path);
       const { data } = await axios.get(this.getMediaUrl(item.path), {
         responseType: 'arraybuffer',
       });
-      formData.append(
-        `media-${index}`,
-        new Blob([Buffer.from(data)], { type: mimeType }),
-        item.path.split('/').pop() || `media-${index}`
-      );
+      parts.push({
+        identifier,
+        mimeType,
+        filename: this.sanitizeMediaFilename(item.path, identifier),
+        data: Buffer.from(data),
+      });
     }
+
+    const multipart = this.createMultipartBody(payload, parts);
 
     return (await (
       await this.fetch(
@@ -534,9 +584,10 @@ export class TumblrProvider extends SocialAbstract implements SocialProvider {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${accessToken}`,
+            'Content-Type': multipart.contentType,
             'User-Agent': TUMBLR_USER_AGENT,
           },
-          body: formData,
+          body: multipart.body,
         }
       )
     ).json()) as TumblrCreatePostResponse;

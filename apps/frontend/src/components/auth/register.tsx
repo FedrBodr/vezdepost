@@ -228,8 +228,9 @@ export function RegisterAfter({
                 &nbsp;
                 {t('and', 'and')}&nbsp;
                 <a
-                  href={`https://postiz.com/privacy`}
-                  rel="nofollow"
+                  href="https://vezdepost.ru/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
                   className="underline hover:font-bold"
                 >
                   {t('privacy_policy', 'Privacy Policy')}

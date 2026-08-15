@@ -52,4 +52,82 @@ without rebuilding the image. Copying first is required: piping the script into
 `ssh` would occupy standard input and prevent the hidden remote prompt from
 receiving the token.
 
+## Tumblr
+
+Register the Tumblr application with this exact OAuth callback URL:
+
+`https://app.vezdepost.ru/integrations/social/tumblr`
+
+Apply `TUMBLR_CLIENT_ID` and `TUMBLR_CLIENT_SECRET` through the guarded
+production script:
+
+```bash
+scp -q -o BatchMode=yes -o ConnectTimeout=10 docs/server-scripts/16-configure-tumblr.sh vezdepost:/tmp/vezdepost-configure-tumblr.sh
+ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/vezdepost-configure-tumblr.sh || status=$?; rm -f /tmp/vezdepost-configure-tumblr.sh; exit "$status"'
+```
+
+Enter the OAuth Consumer Key and secret key only at the hidden terminal
+prompts. Never paste them into chat, command arguments, logs, or tracked files.
+The script creates timestamped backups, validates Compose, and recreates only
+`postiz` without rebuilding the image. It does not publish any Tumblr post.
+
+To deploy the tested Tumblr multipart implementation at one exact production
+revision, copy script 18 and start it **before** pushing that revision to
+`origin/prod`:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/18-deploy-tumblr-multipart.sh \
+  vezdepost:/tmp/vezdepost-deploy-tumblr-multipart.sh
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  "bash /tmp/vezdepost-deploy-tumblr-multipart.sh <40-char-prod-sha>"
+```
+
+The remote script holds `/var/lock/vezdepost-autodeploy.lock` while it waits
+for the expected SHA, preventing the cron deployment from racing it. After the
+fast-forward push, it backs up the current `postiz-max:local` image, resets the
+server checkout to that exact SHA, builds and recreates only `postiz`, and
+checks the application ports, public API, Temporal worker, Tumblr environment
+presence, and PostgreSQL attribute capacity. A failed deployment restores the
+previous revision and image. It never publishes a Tumblr post.
+
+If diagnostics confirm that the BuildKit exporter is stuck, and a production
+Docker daemon restart has been explicitly approved, start the same guarded
+deployment with `RESTART_DOCKER_BEFORE_BUILD=1`. This opt-in mode restarts the
+Docker daemon while holding the autodeploy lock, verifies that it is active,
+and waits for the Docker API before fetching or building the expected SHA. The
+default is `0`; ordinary deployments never restart Docker.
+
 This directory lives only on the `prod` branch — do not merge it into `main`.
+
+## Pinterest
+
+Use the exact OAuth callback URL:
+
+`https://app.vezdepost.ru/integrations/social/pinterest`
+
+The provider requests only `boards:read`, `boards:write`, `pins:read`,
+`pins:write`, and `user_accounts:read`. Configure `PINTEREST_CLIENT_ID` and
+`PINTEREST_CLIENT_SECRET` through the guarded script; enter both values only at
+its hidden prompts.
+
+Trial access is used to validate OAuth, the authenticated Business account,
+board discovery, and an unpublished draft. Do not publish a public Pin until
+Standard access is active and the user explicitly approves the test.
+
+Copy the script first so that the interactive SSH session can use standard
+input for the two hidden prompts. Start the guarded deployment before pushing
+its expected revision to `origin/prod`:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/19-deploy-pinterest-trial.sh \
+  vezdepost:/tmp/vezdepost-deploy-pinterest-trial.sh
+rtk ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  "status=0; bash /tmp/vezdepost-deploy-pinterest-trial.sh $(rtk git rev-parse HEAD) || status=\$?; rm -f /tmp/vezdepost-deploy-pinterest-trial.sh; exit \"\$status\""
+```
+
+The script backs up the production `.env`, checkout, and application image,
+holds the autodeploy lock, validates Compose, and recreates only `postiz`. It
+rolls all changed state back if verification fails and never publishes a Pin.

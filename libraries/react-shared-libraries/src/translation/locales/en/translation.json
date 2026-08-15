@@ -717,5 +717,22 @@
   "The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.": "The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.",
   "VK Group supports up to 10 photographs per post.": "VK Group supports up to 10 photographs per post.",
   "VK Group supports photographs only. Remove videos and other attachments.": "VK Group supports photographs only. Remove videos and other attachments.",
-  "VK Group photo access is missing. Recreate the community key with photographs access and reconnect VK Group.": "VK Group photo access is missing. Recreate the community key with photographs access and reconnect VK Group."
+  "Could not load managed VK communities. Reconnect VK Group and try again.": "Could not load managed VK communities. Reconnect VK Group and try again.",
+  "Could not verify VK Group photo publishing access. Reconnect VK Group and try again.": "Could not verify VK Group photo publishing access. Reconnect VK Group and try again.",
+  "VK Group photo access is missing. Reconnect VK Group through VK authorization and grant photo access.": "VK Group photo access is missing. Reconnect VK Group through VK authorization and grant photo access.",
+  "Reconnect VK Group through VK authorization to publish photographs.": "Reconnect VK Group through VK authorization to publish photographs.",
+  "The selected VK community is not managed by this account.": "The selected VK community is not managed by this account.",
+  "Could not save this channel because its identifier is already used by another provider.": "Could not save this channel because its identifier is already used by another provider.",
+  "Reconnect VK Group through VK authorization and try again.": "Reconnect VK Group through VK authorization and try again.",
+  "vk_group_oauth_description": "Authorize with VK to securely choose a community you administer.",
+  "vk_group_oauth_guide_title": "How VK Group authorization works",
+  "vk_group_oauth_minimal_permissions": "Authorize with VK. Postiz requests basic account information plus only the communities, wall, and photos permissions needed for this integration.",
+  "vk_group_oauth_admin_selection": "Choose one community where this VK account is an administrator.",
+  "vk_group_select_community": "Select a VK community:",
+  "vk_group_community_authorship": "Posts are published on behalf of the selected community.",
+  "vk_group_photo_limit": "VK Group supports up to 10 photographs per post.",
+  "vk_group_video_unsupported": "VK Group does not support video posts.",
+  "vk_group_no_managed_communities": "No managed VK communities were found.",
+  "vk_group_admin_required": "Sign in with a VK account that is an administrator of at least one community.",
+  "vk_group_legacy_reconnect": "Already connected VK Group with a community key? Delete that integration and reconnect through VK authorization."
 }

@@ -23,9 +23,7 @@ describe('production configuration', () => {
     expect(example).toContain(
       'NEXT_PUBLIC_POSTHOG_HOST="https://eu.i.posthog.com"'
     );
-    expect(readme).toContain(
-      'https://app.vezdepost.ru/integrations/social/x'
-    );
+    expect(readme).toContain('https://app.vezdepost.ru/integrations/social/x');
     expect(readme).toContain('OAuth 1.0a');
     expect(readme).toContain('Read and write');
   });
@@ -45,5 +43,33 @@ describe('production configuration', () => {
     expect(readme).toContain(
       'https://app.vezdepost.ru/integrations/social/linkedin'
     );
+  });
+
+  it('forwards required Tumblr credentials into every recreated postiz container', () => {
+    const override = readRootFile('docker-compose.override.yaml');
+
+    expect(override).toContain(
+      "TUMBLR_CLIENT_ID: '${TUMBLR_CLIENT_ID:?set in .env}'"
+    );
+    expect(override).toContain(
+      "TUMBLR_CLIENT_SECRET: '${TUMBLR_CLIENT_SECRET:?set in .env}'"
+    );
+  });
+
+  it('requires Pinterest credentials and documents the Trial OAuth setup', () => {
+    const override = readRootFile('docker-compose.override.yaml');
+    const readme = readRootFile('deploy/README.md');
+
+    expect(override).toContain(
+      "PINTEREST_CLIENT_ID: '${PINTEREST_CLIENT_ID:?set in .env}'"
+    );
+    expect(override).toContain(
+      "PINTEREST_CLIENT_SECRET: '${PINTEREST_CLIENT_SECRET:?set in .env}'"
+    );
+    expect(readme).toContain(
+      'https://app.vezdepost.ru/integrations/social/pinterest'
+    );
+    expect(readme).toContain('Trial access');
+    expect(readme).toContain('19-deploy-pinterest-trial.sh');
   });
 });

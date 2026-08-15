@@ -30,6 +30,62 @@ export const getSafeErrorMessage = (data: unknown, fallback: string) => {
   return fallback;
 };
 
+export const VK_GROUP_SAFE_CONNECTION_MESSAGES = new Set([
+  'Could not load managed VK communities. Reconnect VK Group and try again.',
+  'Could not verify VK Group photo publishing access. Reconnect VK Group and try again.',
+  'VK Group photo access is missing. Reconnect VK Group through VK authorization and grant photo access.',
+  'Reconnect VK Group through VK authorization to publish photographs.',
+  'The selected VK community is not managed by this account.',
+  'Could not save this channel because its identifier is already used by another provider.',
+  'Reconnect VK Group through VK authorization and try again.',
+]);
+
+export const getLocalizedConnectionError = (
+  provider: string,
+  data: unknown,
+  fallback: string,
+  t: (key: string, fallback: string) => string
+) => {
+  const message = getSafeErrorMessage(data, fallback);
+  if (provider !== 'vk-group') {
+    return message;
+  }
+  return VK_GROUP_SAFE_CONNECTION_MESSAGES.has(message)
+    ? t(message, message)
+    : fallback;
+};
+
+export const normalizeIntegrationCallbackParams = (
+  provider: string,
+  searchParams: Record<string, any>
+) => {
+  if (provider === 'mewe') {
+    return {
+      state: searchParams.state || '',
+      code: searchParams.loginRequestToken || '',
+      refresh: searchParams.refresh || '',
+    };
+  }
+  if (provider === 'x') {
+    return {
+      state: searchParams.oauth_token || '',
+      code: searchParams.oauth_verifier || '',
+      refresh: searchParams.refresh || '',
+    };
+  }
+  if (provider === 'vk' || provider === 'vk-group') {
+    const code = typeof searchParams.code === 'string' ? searchParams.code : '';
+    const deviceId =
+      typeof searchParams.device_id === 'string' ? searchParams.device_id : '';
+    return {
+      ...searchParams,
+      state: searchParams.state || '',
+      code: deviceId ? `${code}&&&&${deviceId}` : code,
+    };
+  }
+  return searchParams;
+};
+
 export const runAnalyticsSafely = (capture: () => void) => {
   try {
     capture();
@@ -83,43 +139,10 @@ export const ContinueIntegration: FC<{
     },
     [logged, push]
   );
-  const modifiedParams = useMemo(() => {
-    if (provider === 'mewe') {
-      return {
-        state: searchParams.state || '',
-        code: searchParams.loginRequestToken || '',
-        refresh: searchParams.refresh || '',
-      };
-    }
-    if (provider === 'x') {
-      return {
-        state: searchParams.oauth_token || '',
-        code: searchParams.oauth_verifier || '',
-        refresh: searchParams.refresh || '',
-      };
-    }
-
-    if (provider === 'vk') {
-      return {
-        ...searchParams,
-        state: searchParams.state || '',
-        code: searchParams.code + '&&&&' + searchParams.device_id,
-      };
-    }
-
-    if (provider === 'mewe') {
-      const hash =
-        typeof window !== 'undefined' ? window.location.hash.substring(1) : '';
-      const hashParams = new URLSearchParams(hash);
-      return {
-        state: hashParams.get('state') || searchParams.state || '',
-        code: hashParams.get('loginRequestToken') || '',
-        refresh: searchParams.refresh || '',
-      };
-    }
-
-    return searchParams;
-  }, []);
+  const modifiedParams = useMemo(
+    () => normalizeIntegrationCallbackParams(provider, searchParams),
+    []
+  );
 
   useEffect(() => {
     (async () => {
@@ -164,9 +187,11 @@ export const ContinueIntegration: FC<{
 
       if (data.status === HttpStatusCode.NotAcceptable) {
         const errorData = await data.json().catch(() => ({}));
-        const safeMessage = getSafeErrorMessage(
+        const safeMessage = getLocalizedConnectionError(
+          provider,
           errorData,
-          'Could not add provider'
+          'Could not add provider',
+          t
         );
         const returnURL =
           errorData && typeof errorData.returnURL === 'string'
@@ -185,9 +210,11 @@ export const ContinueIntegration: FC<{
       ) {
         const errorData =
           parsedErrorData ?? (await data.json().catch(() => ({})));
-        const safeMessage = getSafeErrorMessage(
+        const safeMessage = getLocalizedConnectionError(
+          provider,
           errorData,
-          'Could not add provider'
+          'Could not add provider',
+          t
         );
         setErrorMessage(safeMessage);
         setError(true);
@@ -282,9 +309,11 @@ export const ContinueIntegration: FC<{
           response.status !== HttpStatusCode.Created
         ) {
           const errorData = await response.json().catch(() => ({}));
-          const safeMessage = getSafeErrorMessage(
+          const safeMessage = getLocalizedConnectionError(
+            provider,
             errorData,
-            'Failed to save channel configuration'
+            'Failed to save channel configuration',
+            t
           );
           setErrorMessage(safeMessage);
           setError(true);

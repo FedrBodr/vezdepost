@@ -1,5 +1,6 @@
 import {
   AuthTokenDetails,
+  FetchPageInformationResult,
   PostDetails,
   PostResponse,
   SocialProvider,
@@ -10,124 +11,46 @@ import {
   SocialAbstract,
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { Integration } from '@prisma/client';
 import axios from 'axios';
-import dayjs from 'dayjs';
 import FormDataNew from 'form-data';
 import mime from 'mime-types';
+import {
+  authenticateVkUser,
+  generateVkAuthUrl,
+  refreshVkUser,
+} from './vk.oauth';
+import type { VkIdentifier } from './vk.oauth';
+import {
+  VK_GROUP_LEGACY_TOKEN_RECONNECT,
+  VK_GROUP_PHOTO_ACCESS_MISSING,
+  VK_GROUP_SELECTED_COMMUNITY_NOT_MANAGED,
+} from './vk.group.errors';
 
-const INVALID_GROUP = 'Enter a valid VK community link or short name.';
-const INVALID_TOKEN = 'The VK community token is invalid.';
-const WRONG_GROUP = 'This token belongs to a different VK community.';
-const MISSING_PERMISSIONS =
-  'The VK community key must allow community management, community wall, and photographs access. Recreate the key and reconnect VK Group.';
 const TOO_MANY_PHOTOS = 'VK Group supports up to 10 photographs per post.';
 const UNSUPPORTED_MEDIA =
   'VK Group supports photographs only. Remove videos and other attachments.';
-const PHOTO_ACCESS_MISSING =
-  'VK Group photo access is missing. Recreate the community key with photographs access and reconnect VK Group.';
-
 const isUnsupportedAttachmentPath = (path: string) =>
   /\.(?:mp4|mov|avi|mkv|webm|m4v|pdf|docx?|xlsx?|pptx?|txt|rtf|csv|zip|rar|7z|tar|gz)(?:[?#].*)?$/i.test(
     path || ''
   );
 
-type VkGroup = {
-  id: number;
-  name?: string;
-  screen_name?: string;
-  photo_200?: string;
+export type VkManagedCommunity = {
+  id: string;
+  page: string;
+  username: string;
+  name: string;
+  picture: string;
 };
-
-const extractGroup = (payload: any): VkGroup | undefined =>
-  payload?.response?.groups?.[0] ?? payload?.response?.[0];
-
-export function normalizeVkGroupIdentifier(value: string): string | null {
-  const input = value?.trim();
-  if (!input) {
-    return null;
-  }
-
-  const explicitScheme = input.match(/^([a-z][a-z\d+.-]*):\/\//i)?.[1];
-  if (explicitScheme && explicitScheme.toLowerCase() !== 'https') {
-    return null;
-  }
-
-  let candidate = input;
-  const hostPattern = /^(?:www\.)?vk\.(?:com|ru)$/i;
-  const looksLikeVkUrl =
-    /^https:\/\//i.test(input) ||
-    /^(?:www\.)?vk\.(?:com|ru)(?::\d+)?(?:\/|$)/i.test(input);
-
-  if (looksLikeVkUrl) {
-    try {
-      const urlInput = /^https:\/\//i.test(input) ? input : `https://${input}`;
-      const rawAuthority = urlInput.match(/^https:\/\/([^/?#]+)/i)?.[1];
-      if (!rawAuthority || /[@:]/.test(rawAuthority)) {
-        return null;
-      }
-      const url = new URL(urlInput);
-      if (
-        !hostPattern.test(url.hostname) ||
-        url.username ||
-        url.password ||
-        url.port ||
-        !/^\/[^/]+\/?$/.test(url.pathname)
-      ) {
-        return null;
-      }
-      candidate = url.pathname.slice(1).replace(/\/$/, '');
-    } catch {
-      return null;
-    }
-  } else if (/^https:\/\//i.test(input) || input.includes('/')) {
-    return null;
-  }
-
-  if (!candidate || candidate.includes('/')) {
-    return null;
-  }
-
-  const prefixedId = candidate.match(/^(?:club|public)([1-9]\d*)$/i);
-  if (prefixedId) {
-    return prefixedId[1];
-  }
-
-  if (/^(?:club|public)/i.test(candidate)) {
-    return null;
-  }
-
-  if (/^-?\d+$/.test(candidate)) {
-    return /^-?[1-9]\d*$/.test(candidate) ? candidate.replace(/^-/, '') : null;
-  }
-
-  return /^[a-zA-Z0-9_.-]+$/.test(candidate) ? candidate : null;
-}
 
 export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2;
-  identifier = 'vk-group';
+  refreshCron = true;
+  identifier: VkIdentifier = 'vk-group';
   name = 'VK Group';
-  isBetweenSteps = false;
-  scopes = [] as string[];
+  isBetweenSteps = true;
+  scopes = ['vkid.personal_info', 'wall', 'photos', 'groups'];
   editor = 'normal' as const;
-  customFieldsInstructions = {
-    collapsible: true,
-    summary: 'Where to get the link and key',
-    title: 'Connect a VK community',
-    items: [
-      'Open the community in the desktop VK website and select Management.',
-      'Open More → API usage → Access keys.',
-      'Select Create key.',
-      'Grant only community management, community wall, and photographs access.',
-      'Copy the generated community access key into Vezdepost.',
-      'Copy the public community address, for example https://vk.ru/fedrbodr_pro, into the first field.',
-    ],
-    notRequired: 'Callback API and Long Poll API are not required.',
-    warning:
-      'The access key is secret. Do not send it to support, put it in screenshots, or share it with third parties.',
-  };
 
   maxLength() {
     return 16384;
@@ -152,40 +75,28 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     return true;
   }
 
-  async customFields() {
-    return [
-      {
-        key: 'group',
-        label: 'VK community link',
-        placeholder: 'https://vk.ru/fedrbodr_pro',
-        placeholderTranslationKey: 'vk_group_community_link_placeholder',
-        validation: '/^.{1,255}$/',
-        validationMessage: INVALID_GROUP,
-        type: 'text' as const,
-      },
-      {
-        key: 'accessToken',
-        label: 'Community access key',
-        validation: '/^.{10,}$/',
-        type: 'password' as const,
-      },
-    ];
-  }
-
   async generateAuthUrl() {
-    const state = makeId(17);
-    return { url: state, codeVerifier: makeId(10), state };
+    return generateVkAuthUrl({
+      identifier: this.identifier,
+      scopes: this.scopes,
+    });
   }
 
-  async refreshToken(): Promise<AuthTokenDetails> {
+  async refreshToken(refresh: string): Promise<AuthTokenDetails> {
+    const user = await refreshVkUser({
+      refresh,
+      scopes: this.scopes,
+      fetcher: (url, options) => this.fetch(url, options),
+    });
+
     return {
-      refreshToken: '',
-      expiresIn: 0,
-      accessToken: '',
-      id: '',
-      name: '',
-      picture: '',
-      username: '',
+      id: user.userId,
+      name: user.name,
+      accessToken: user.accessToken,
+      refreshToken: user.refreshToken,
+      expiresIn: user.expiresIn,
+      picture: user.picture,
+      username: user.username,
     };
   }
 
@@ -245,8 +156,11 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
           message
         );
       }
+      if (code === 27 && method.startsWith('photos.')) {
+        this.badGroupResponse(VK_GROUP_LEGACY_TOKEN_RECONNECT, code);
+      }
       if (code === 15 && method.startsWith('photos.')) {
-        this.badGroupResponse(PHOTO_ACCESS_MISSING, code);
+        this.badGroupResponse(VK_GROUP_PHOTO_ACCESS_MISSING, code);
       }
       this.badGroupResponse(message, code);
     }
@@ -344,58 +258,6 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       this.badGroupResponse(`VK ${method} request failed`);
     }
     return this.unwrapGroupResponse<T>(payload, method);
-  }
-
-  private async requirePhotoPermission(accessToken: string): Promise<void> {
-    const response = await this.callGroupVk<unknown>(
-      'groups.getTokenPermissions',
-      accessToken
-    );
-    if (!response || typeof response !== 'object') {
-      this.badGroupResponse(
-        'VK groups.getTokenPermissions returned invalid permissions'
-      );
-    }
-
-    const permissions = (response as { permissions?: unknown }).permissions;
-    if (!Array.isArray(permissions)) {
-      this.badGroupResponse(
-        'VK groups.getTokenPermissions returned invalid permissions'
-      );
-    }
-
-    const enabledNames = new Set<string>();
-    for (const permission of permissions) {
-      if (!permission || typeof permission !== 'object') {
-        this.badGroupResponse(
-          'VK groups.getTokenPermissions returned invalid permissions'
-        );
-      }
-      const { name, setting } = permission as {
-        name?: unknown;
-        setting?: unknown;
-      };
-      const validSetting =
-        (typeof setting === 'number' &&
-          Number.isSafeInteger(setting) &&
-          setting >= 0) ||
-        (typeof setting === 'string' && /^(?:0|[1-9]\d*)$/.test(setting));
-      if (typeof name !== 'string' || !name || !validSetting) {
-        this.badGroupResponse(
-          'VK groups.getTokenPermissions returned invalid permissions'
-        );
-      }
-      if (
-        (typeof setting === 'number' && setting > 0) ||
-        (typeof setting === 'string' && /[1-9]/.test(setting))
-      ) {
-        enabledNames.add(name);
-      }
-    }
-
-    if (!enabledNames.has('photos')) {
-      this.badGroupResponse(PHOTO_ACCESS_MISSING);
-    }
   }
 
   private parsePhotoUploadFields(payload: unknown): {
@@ -500,12 +362,13 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     }
 
     const savedPhoto = saved[0] as Record<string, unknown>;
+    const savedOwnerId = this.parseSignedId(
+      savedPhoto.owner_id,
+      'photos.saveWallPhoto',
+      'owner ID'
+    );
     return {
-      ownerId: this.parseSignedId(
-        savedPhoto.owner_id,
-        'photos.saveWallPhoto',
-        'owner ID'
-      ),
+      ownerId: savedOwnerId,
       id: this.parsePositiveId(
         savedPhoto.id,
         'photos.saveWallPhoto',
@@ -519,81 +382,99 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     codeVerifier: string;
     refresh?: string;
   }) {
-    let credentials: { group?: unknown; accessToken?: unknown };
-    try {
-      credentials = JSON.parse(
-        Buffer.from(params.code, 'base64').toString('utf8')
-      );
-    } catch {
-      return INVALID_TOKEN;
+    const user = await authenticateVkUser({
+      identifier: this.identifier,
+      code: params.code,
+      codeVerifier: params.codeVerifier,
+      fetcher: (url, options) => this.fetch(url, options),
+    });
+
+    return {
+      id: `vk-group-oauth:${user.userId}`,
+      name: user.name,
+      accessToken: user.accessToken,
+      refreshToken: user.refreshToken,
+      expiresIn: user.expiresIn,
+      picture: user.picture,
+      username: user.username,
+    };
+  }
+
+  async pages(accessToken: string): Promise<VkManagedCommunity[]> {
+    const response = await this.callGroupVk<unknown>(
+      'groups.get',
+      accessToken,
+      {
+        filter: 'admin',
+        extended: '1',
+        fields: 'photo_200,screen_name',
+      }
+    );
+    if (!response || typeof response !== 'object') {
+      this.badGroupResponse('VK groups.get returned invalid communities');
     }
 
-    if (typeof credentials.accessToken !== 'string') {
-      return INVALID_TOKEN;
-    }
-    if (typeof credentials.group !== 'string') {
-      return INVALID_GROUP;
+    const items = (response as { items?: unknown }).items;
+    if (!Array.isArray(items)) {
+      this.badGroupResponse('VK groups.get returned invalid communities');
     }
 
-    const groupIdentifier = normalizeVkGroupIdentifier(credentials.group);
-    if (!groupIdentifier) {
-      return INVALID_GROUP;
-    }
-
-    const accessToken = credentials.accessToken;
-
-    try {
-      const requestedPayload = await this.callVk(
-        'groups.getById',
-        accessToken,
-        {
-          group_ids: groupIdentifier,
-          fields: 'photo_200,screen_name',
-        }
-      );
-      const requestedGroup = extractGroup(requestedPayload);
-      if (requestedPayload?.error || !requestedGroup?.id) {
-        return INVALID_TOKEN;
+    return items.map((item) => {
+      if (!item || typeof item !== 'object') {
+        this.badGroupResponse('VK groups.get returned invalid community');
       }
-
-      const ownerPayload = await this.callVk('groups.getById', accessToken);
-      const tokenGroup = extractGroup(ownerPayload);
-      if (ownerPayload?.error || !tokenGroup?.id) {
-        return INVALID_TOKEN;
+      const group = item as Record<string, unknown>;
+      const id = this.parsePositiveId(group.id, 'groups.get', 'community ID');
+      if (typeof group.name !== 'string' || !group.name) {
+        this.badGroupResponse('VK groups.get returned invalid community name');
       }
-      if (Number(tokenGroup.id) !== Number(requestedGroup.id)) {
-        return WRONG_GROUP;
-      }
-
-      const permissionsPayload = await this.callVk(
-        'groups.getTokenPermissions',
-        accessToken
-      );
-      const permissionNames = (permissionsPayload?.response?.permissions || [])
-        .filter((permission: any) => Number(permission?.setting) > 0)
-        .map((permission: any) => permission.name)
-        .filter(Boolean);
-      const requiredPermissions = ['manage', 'wall', 'photos'];
-
-      if (
-        permissionsPayload?.error ||
-        requiredPermissions.some((name) => !permissionNames.includes(name))
-      ) {
-        return MISSING_PERMISSIONS;
-      }
-
       return {
-        id: String(-Math.abs(Number(requestedGroup.id))),
-        name: requestedGroup.name || '',
-        accessToken,
-        refreshToken: '',
-        expiresIn: dayjs().add(100, 'years').unix() - dayjs().unix(),
-        picture: requestedGroup.photo_200 || '',
-        username: requestedGroup.screen_name || '',
+        id,
+        page: id,
+        username:
+          typeof group.screen_name === 'string' ? group.screen_name : '',
+        name: group.name,
+        picture: typeof group.photo_200 === 'string' ? group.photo_200 : '',
       };
-    } catch {
-      return INVALID_TOKEN;
+    });
+  }
+
+  async fetchPageInformation(
+    accessToken: string,
+    data: { page: string }
+  ): Promise<FetchPageInformationResult> {
+    if (typeof data?.page !== 'string' || !/^[1-9]\d*$/.test(data.page)) {
+      this.badGroupResponse(VK_GROUP_SELECTED_COMMUNITY_NOT_MANAGED);
     }
+
+    const group = (await this.pages(accessToken)).find(
+      ({ id }) => id === data.page
+    );
+    if (!group) {
+      this.badGroupResponse(VK_GROUP_SELECTED_COMMUNITY_NOT_MANAGED);
+    }
+
+    const uploadServer = await this.callPhotoVk<unknown>(
+      'photos.getWallUploadServer',
+      accessToken,
+      { group_id: group.id }
+    );
+    if (!uploadServer || typeof uploadServer !== 'object') {
+      this.badGroupResponse(
+        'VK photos.getWallUploadServer returned an invalid response'
+      );
+    }
+    this.parseHttpsUploadUrl(
+      (uploadServer as Record<string, unknown>).upload_url
+    );
+
+    return {
+      id: `-${group.id}`,
+      name: group.name,
+      access_token: accessToken,
+      picture: group.picture,
+      username: group.username,
+    };
   }
 
   async post(
@@ -627,14 +508,10 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       'wall.post',
       'community ID'
     );
-    if (mainMedia.length > 0) {
-      await this.requirePhotoPermission(accessToken);
+    const photos: Array<{ ownerId: string; id: string }> = [];
+    for (const media of mainMedia) {
+      photos.push(await this.uploadPhoto(positiveGroupId, accessToken, media));
     }
-    const photos = await Promise.all(
-      mainMedia.map((media) =>
-        this.uploadPhoto(positiveGroupId, accessToken, media)
-      )
-    );
 
     let wallPostPayload: unknown;
     try {

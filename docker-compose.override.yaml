@@ -7,6 +7,10 @@
 #   GOOGLE_CLIENT_SECRET=...
 #   LINKEDIN_CLIENT_ID=...
 #   LINKEDIN_CLIENT_SECRET=...
+#   TUMBLR_CLIENT_ID=...
+#   TUMBLR_CLIENT_SECRET=...
+#   PINTEREST_CLIENT_ID=...
+#   PINTEREST_CLIENT_SECRET=...
 # Optional integrations: X_API_KEY, X_API_SECRET, NEXT_PUBLIC_POSTHOG_KEY,
 # NEXT_PUBLIC_POSTHOG_HOST.
 services:
@@ -31,7 +35,7 @@ services:
     # nginx starts right away (clean 502 instead of hanging connects);
     # the app starts only once temporal actually accepts connections —
     # otherwise the backend loses the startup race and dies (2026-07-09 incident)
-    command: ["sh", "-c", "nginx && node /wait-temporal.js && pnpm run pm2"]
+    command: ['sh', '-c', 'nginx && node /wait-temporal.js && pnpm run pm2']
     # host port only for on-server debugging; the internet comes in via caddy
     ports: !override
       - '127.0.0.1:4007:5000'
@@ -52,6 +56,10 @@ services:
       GOOGLE_CLIENT_SECRET: '${GOOGLE_CLIENT_SECRET:?set in .env}'
       LINKEDIN_CLIENT_ID: '${LINKEDIN_CLIENT_ID:?set in .env}'
       LINKEDIN_CLIENT_SECRET: '${LINKEDIN_CLIENT_SECRET:?set in .env}'
+      TUMBLR_CLIENT_ID: '${TUMBLR_CLIENT_ID:?set in .env}'
+      TUMBLR_CLIENT_SECRET: '${TUMBLR_CLIENT_SECRET:?set in .env}'
+      PINTEREST_CLIENT_ID: '${PINTEREST_CLIENT_ID:?set in .env}'
+      PINTEREST_CLIENT_SECRET: '${PINTEREST_CLIENT_SECRET:?set in .env}'
       X_API_KEY: '${X_API_KEY:-}'
       X_API_SECRET: '${X_API_SECRET:-}'
       NEXT_PUBLIC_POSTHOG_KEY: '${NEXT_PUBLIC_POSTHOG_KEY:-}'

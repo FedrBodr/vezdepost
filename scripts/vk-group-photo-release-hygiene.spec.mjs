@@ -144,6 +144,136 @@ describe('VK Group photo release hygiene', () => {
     expect(output).not.toContain('VK_GROUP_CAPABILITY_TOKEN=');
   });
 
+  it.each([
+    ['legacy plain', 'VK_GROUP_CAPABILITY_TOKEN', false],
+    ['user OAuth plain', 'VK_GROUP_CAPABILITY_USER_TOKEN', false],
+    ['legacy quoted', 'VK_GROUP_CAPABILITY_TOKEN', true],
+    ['user OAuth quoted', 'VK_GROUP_CAPABILITY_USER_TOKEN', true],
+  ])(
+    'detects and redacts the %s environment assignment in history',
+    async (label, environmentName, quoted) => {
+      const root = await makeRepository();
+      const secret = `${label.replaceAll(' ', '-')}-token-${'a'.repeat(40)}`;
+      const assignedValue = quoted ? `'${secret}'` : secret;
+      await writeFile(
+        join(root, 'capability-token.env'),
+        `${environmentName}=${assignedValue}\n`
+      );
+      git(root, 'add', 'capability-token.env');
+      git(root, 'commit', '-qm', `introduce ${label} token assignment`);
+      await writeFile(join(root, 'capability-token.env'), 'safe replacement\n');
+      let output = '';
+
+      const exitCode = runHygieneChecks({
+        cwd: root,
+        base: 'prod',
+        stdout: { write: (chunk) => (output += String(chunk)) },
+      });
+
+      expect(exitCode).toBe(2);
+      expect(
+        output
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+      ).toContainEqual({
+        check: 'secret-signatures',
+        status: 'STOP',
+        files: ['capability-token.env'],
+      });
+      expect(output).not.toContain(secret);
+      expect(output).not.toContain(`${environmentName}=`);
+    }
+  );
+
+  it('does not treat a source object mapping as a literal token assignment', async () => {
+    const root = await makeRepository();
+    await writeFile(
+      join(root, 'config.mjs'),
+      [
+        'export function capabilityConfig(env) {',
+        '  return {',
+        '    accessToken: env.VK_GROUP_CAPABILITY_USER_TOKEN,',
+        '  };',
+        '}',
+        '',
+      ].join('\n')
+    );
+    git(root, 'add', 'config.mjs');
+    git(root, 'commit', '-qm', 'add safe environment reference');
+    let output = '';
+
+    const exitCode = runHygieneChecks({
+      cwd: root,
+      base: 'prod',
+      stdout: { write: (chunk) => (output += String(chunk)) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(
+      output
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+    ).toContainEqual({
+      check: 'secret-signatures',
+      status: 'PASS',
+      files: [],
+    });
+  });
+
+  it('emits exactly one terminal GO after all safe checks pass', async () => {
+    const root = await makeRepository();
+    await writeFile(join(root, 'safe.txt'), 'safe release content\n');
+    git(root, 'add', 'safe.txt');
+    git(root, 'commit', '-qm', 'safe change');
+    let output = '';
+
+    expect(
+      runHygieneChecks({
+        cwd: root,
+        base: 'prod',
+        stdout: { write: (chunk) => (output += String(chunk)) },
+      })
+    ).toBe(0);
+    const records = output
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    const terminalRecords = records.filter(
+      (record) => record.check === 'terminal'
+    );
+
+    expect(terminalRecords).toEqual([{ check: 'terminal', status: 'GO' }]);
+    expect(records.at(-1)).toEqual({ check: 'terminal', status: 'GO' });
+  });
+
+  it('emits exactly one terminal STOP after a check stops', async () => {
+    const root = await makeRepository();
+    await writeFile(join(root, 'unsafe.txt'), 'trailing whitespace  \n');
+    git(root, 'add', 'unsafe.txt');
+    git(root, 'commit', '-qm', 'unsafe change');
+    let output = '';
+
+    expect(
+      runHygieneChecks({
+        cwd: root,
+        base: 'prod',
+        stdout: { write: (chunk) => (output += String(chunk)) },
+      })
+    ).toBe(2);
+    const records = output
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    const terminalRecords = records.filter(
+      (record) => record.check === 'terminal'
+    );
+
+    expect(terminalRecords).toEqual([{ check: 'terminal', status: 'STOP' }]);
+    expect(records.at(-1)).toEqual({ check: 'terminal', status: 'STOP' });
+  });
+
   it('scans secret and image blobs that branch history later deletes', async () => {
     const root = await makeRepository();
     const secret = `vk1.${'a'.repeat(64)}`;
@@ -277,11 +407,15 @@ describe('VK Group photo release hygiene', () => {
     });
 
     expect(exitCode).toBe(2);
-    expect(JSON.parse(output)).toEqual({
-      check: 'input',
-      status: 'STOP',
-      files: [],
-    });
+    expect(
+      output
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+    ).toEqual([
+      { check: 'input', status: 'STOP', files: [] },
+      { check: 'terminal', status: 'STOP' },
+    ]);
   });
 
   it('fails closed when a changed HEAD blob cannot be read safely', async () => {
