@@ -147,3 +147,29 @@ keeping every new route disabled. A separate numbered route script may install
 an application site only after its loopback readiness gate passes. That script
 must validate Caddy, reload it, verify all existing Vezdepost probes, and remove
 only its own site file if acceptance fails.
+
+### Provision KSY before deploying the Caddy import
+
+Stage the reviewed KSY Compose file and script 20 before the shared-edge commit
+reaches `prod`:
+
+```bash
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'mkdir -p /tmp/ksy-deals-release'
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  /Users/d.fedorenko/IdeaProjects/fedrbodr/ksy-deals/infra/docker-compose.yml \
+  vezdepost:/tmp/ksy-deals-release/docker-compose.yml
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/20-provision-ksy-staging.sh \
+  vezdepost:/tmp/20-provision-ksy-staging.sh
+rtk ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/20-provision-ksy-staging.sh || status=$?; rm -f /tmp/20-provision-ksy-staging.sh; exit "$status"'
+```
+
+The script performs disk, immutable-digest and input validation before
+mutation. Copy values from the Bitwarden note `KSY Deals / staging` only into
+its hidden prompts. It atomically installs the root-only env and reviewed
+Compose file, creates `caddy-edge` and the empty imported-site placeholder,
+migrates the isolated database, and requires loopback liveness/readiness. A
+failed replacement restores the previous KSY files and restarts its previous
+image without touching Vezdepost or rolling migrations back.
