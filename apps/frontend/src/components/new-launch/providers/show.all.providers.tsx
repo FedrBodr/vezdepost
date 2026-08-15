@@ -27,7 +27,7 @@ import NostrProvider from '@gitroom/frontend/components/new-launch/providers/nos
 import VkProvider from '@gitroom/frontend/components/new-launch/providers/vk/vk.provider';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
-import React, { FC, forwardRef, useEffect, useImperativeHandle } from 'react';
+import React, { FC, forwardRef, useImperativeHandle, useMemo } from 'react';
 import { GeneralPreviewComponent } from '@gitroom/frontend/components/launches/general.preview.component';
 import { IntegrationContext } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { Button } from '@gitroom/react/form/button';
@@ -41,6 +41,7 @@ import SkoolProvider from '@gitroom/frontend/components/new-launch/providers/sko
 import WhopProvider from '@gitroom/frontend/components/new-launch/providers/whop/whop.provider';
 import MeweProvider from '@gitroom/frontend/components/new-launch/providers/mewe/mewe.provider';
 import TumblrProvider from '@gitroom/frontend/components/new-launch/providers/tumblr/tumblr.provider';
+import { deriveGlobalTargets } from '@gitroom/frontend/components/new-launch/global.targets';
 
 export const Providers = [
   {
@@ -189,16 +190,21 @@ export const Providers = [
   },
 ];
 export const ShowAllProviders = forwardRef((props, ref) => {
-  const { date, current, global, selectedIntegrations, allIntegrations } =
+  const { date, current, global, selectedIntegrations, internal } =
     useLaunchStore(
       useShallow((state) => ({
         date: state.date,
         selectedIntegrations: state.selectedIntegrations,
-        allIntegrations: state.integrations,
+        internal: state.internal,
         current: state.current,
         global: state.global,
       }))
     );
+
+  const globalTargets = useMemo(
+    () => deriveGlobalTargets(selectedIntegrations, internal),
+    [selectedIntegrations, internal]
+  );
 
   const t = useT();
 
@@ -226,9 +232,8 @@ export const ShowAllProviders = forwardRef((props, ref) => {
         <IntegrationContext.Provider
           value={{
             date,
-            integration:
-              selectedIntegrations?.[0]?.integration || allIntegrations?.[0],
-            allIntegrations: selectedIntegrations.map((p) => p.integration),
+            integration: globalTargets[0]?.integration,
+            allIntegrations: globalTargets.map((p) => p.integration),
             value: global.map((p) => ({
               id: p.id,
               content: p.content,
@@ -236,7 +241,14 @@ export const ShowAllProviders = forwardRef((props, ref) => {
             })),
           }}
         >
-          {global?.[0]?.content?.length === 0 ? (
+          {!globalTargets.length ? (
+            <div role="status">
+              {t(
+                'global_content_has_no_destinations',
+                'All selected channels use customized content. Global content is kept as a source.'
+              )}
+            </div>
+          ) : global?.[0]?.content?.length === 0 ? (
             <div>
               {t(
                 'start_writing_your_post',

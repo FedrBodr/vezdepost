@@ -8,6 +8,7 @@ import SafeImage from '@gitroom/react/helpers/safe.image';
 import { capitalize } from 'lodash';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import type { PlatformContentAnalysis } from '@gitroom/helpers/utils/platform.content';
+import { deriveGlobalTargets } from '@gitroom/frontend/components/new-launch/global.targets';
 
 const Valid: FC = () => {
   return (
@@ -71,18 +72,10 @@ export const InformationComponent: FC<{
     }))
   );
 
-  const isInternal = useMemo(() => {
-    if (!isGlobal) {
-      return [];
-    }
-    return selectedIntegrations.map((p) => {
-      const findIt = internal.find(
-        (a) => a.integration.id === p.integration.id
-      );
-
-      return !!findIt;
-    });
-  }, [isGlobal, internal, selectedIntegrations]);
+  const globalTargets = useMemo(
+    () => deriveGlobalTargets(selectedIntegrations, internal),
+    [internal, selectedIntegrations]
+  );
 
   const isValid = useMemo(() => {
     if (!isPicture && !totalChars) {
@@ -111,7 +104,7 @@ export const InformationComponent: FC<{
           {totalChars}/{totalAllowedChars}
         </div>
       )}
-      {isGlobal && !!selectedIntegrations.length && (
+      {isGlobal && !!globalTargets.length && (
         <div
           className={clsx(
             'text-[10px] font-[600] flex justify-center items-center',
@@ -121,7 +114,7 @@ export const InformationComponent: FC<{
           {totalChars}/{totalAllowedChars}
         </div>
       )}
-      {((isGlobal && selectedIntegrations.length) || !isValid) && (
+      {((isGlobal && globalTargets.length) || !isValid) && (
         <svg
           className={clsx('group-hover:rotate-180', !isValid && 'text-white')}
           xmlns="http://www.w3.org/2000/svg"
@@ -136,7 +129,7 @@ export const InformationComponent: FC<{
           />
         </svg>
       )}
-      {((isGlobal && selectedIntegrations.length) || !isValid) && (
+      {((isGlobal && globalTargets.length) || !isValid) && (
         <div
           className={clsx(
             'z-[300] hidden rounded-[12px] bg-newBgColorInner group-hover:flex absolute end-0 bottom-[100%] mb-[5px] p-[12px] flex-col',
@@ -147,7 +140,7 @@ export const InformationComponent: FC<{
             <div
               className={clsx(
                 'text-sm text-[#FF3F3F] whitespace-nowrap',
-                isGlobal && selectedIntegrations.length && 'mb-[12px]'
+                isGlobal && globalTargets.length && 'mb-[12px]'
               )}
             >
               {t(
@@ -158,7 +151,7 @@ export const InformationComponent: FC<{
           )}
           {isGlobal && (
             <div className="grid grid-cols-[auto_auto_auto] text-[14px] font-[500] gap-[8px] items-center">
-              {selectedIntegrations.map((p, index) => (
+              {globalTargets.map((p) => (
                 <Fragment key={p.integration.id}>
                   <div>
                     <SafeImage
@@ -172,9 +165,7 @@ export const InformationComponent: FC<{
                   <div
                     className={clsx(
                       'whitespace-nowrap',
-                      isInternal?.[index]
-                        ? ''
-                        : totalChars > (chars?.[p.integration.id] || 0)
+                      totalChars > (chars?.[p.integration.id] || 0)
                         ? 'text-[#FF3F3F]'
                         : ''
                     )}
@@ -185,16 +176,12 @@ export const InformationComponent: FC<{
                   <div
                     className={clsx(
                       'whitespace-nowrap',
-                      isInternal?.[index]
-                        ? ''
-                        : totalChars > (chars?.[p.integration.id] || 0)
+                      totalChars > (chars?.[p.integration.id] || 0)
                         ? 'text-[#FF3F3F]'
                         : ''
                     )}
                   >
-                    {isInternal?.[index]
-                      ? t('internal_edit', 'Internal Edit')
-                      : `${totalChars}/${chars?.[p.integration.id] || 0}`}
+                    {totalChars}/{chars?.[p.integration.id] || 0}
                   </div>
                 </Fragment>
               ))}

@@ -1,8 +1,9 @@
-import type { SelectedIntegrations } from './store';
+import type { Internal, SelectedIntegrations } from './store';
 import {
   intersectPlatformCapabilities,
   type PlatformCapabilities,
 } from '@gitroom/helpers/utils/platform.capabilities';
+import { deriveGlobalTargets } from './global.targets';
 
 export type FormattingControl =
   | 'bold'
@@ -11,18 +12,16 @@ export type FormattingControl =
   | 'list'
   | 'heading';
 
-export type ControlDependentEditorExtension = Extract<
-  FormattingControl,
-  'link' | 'heading'
->;
-
 export const resolveEditorCapabilities = (
   current: string,
-  selected: SelectedIntegrations[]
+  selected: SelectedIntegrations[],
+  internal: Internal[] = []
 ): PlatformCapabilities => {
   if (current === 'global') {
     return intersectPlatformCapabilities(
-      selected.map((item) => item.integration.capabilities)
+      deriveGlobalTargets(selected, internal).map(
+        (item) => item.integration.capabilities
+      )
     );
   }
 
@@ -42,15 +41,3 @@ export const getFormattingControls = (
     capabilities.formatting.lists === 'native' && 'list',
     capabilities.formatting.headings === 'native' && 'heading',
   ].filter(Boolean) as FormattingControl[];
-
-export const getControlDependentEditorExtensions = (
-  capabilities: PlatformCapabilities
-): ControlDependentEditorExtension[] => {
-  const controls = getFormattingControls(capabilities);
-  const preservesRichMarkup =
-    capabilities.output === 'html' || capabilities.output === 'markdown';
-
-  return (['link', 'heading'] as const).filter(
-    (extension) => preservesRichMarkup || controls.includes(extension)
-  );
-};

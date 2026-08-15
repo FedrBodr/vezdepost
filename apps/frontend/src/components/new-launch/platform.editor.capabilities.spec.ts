@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import {
-  getControlDependentEditorExtensions,
   getFormattingControls,
   resolveEditorCapabilities,
 } from './platform.editor.capabilities';
@@ -32,6 +31,26 @@ describe('platform editor capabilities', () => {
     expect(getFormattingControls(result)).toEqual(['bold', 'underline']);
   });
 
+  it('excludes internally overridden destinations from the global intersection', () => {
+    const pinterest = selected('pinterest-account', 'pinterest');
+    const vk = selected('vk-account', 'vk');
+
+    const result = resolveEditorCapabilities(
+      'global',
+      [pinterest, vk],
+      [
+        {
+          integration: pinterest.integration,
+          integrationValue: [],
+        },
+      ]
+    );
+
+    expect(result.text.max).toBe(16_384);
+    expect(result.media.required).toBe(false);
+    expect(result.media.maxImages).toBeUndefined();
+  });
+
   it('uses the exact profile in platform-specific mode', () => {
     const result = resolveEditorCapabilities('tg', [
       selected('tg', 'telegram'),
@@ -42,20 +61,16 @@ describe('platform editor capabilities', () => {
     expect(result.text.mediaCaptionMax).toBe(1024);
   });
 
-  it('keeps HTML parser extensions when Telegram hides link and heading controls', () => {
+  it('hides unsupported Telegram link and heading controls', () => {
     const result = resolveEditorCapabilities('tg', [
       selected('tg', 'telegram'),
     ]);
 
     expect(getFormattingControls(result)).not.toContain('link');
     expect(getFormattingControls(result)).not.toContain('heading');
-    expect(getControlDependentEditorExtensions(result)).toEqual([
-      'link',
-      'heading',
-    ]);
   });
 
-  it('keeps parser extensions for Markdown output with hidden controls', () => {
+  it('hides non-native Markdown link and heading controls', () => {
     const result = resolveEditorCapabilities('markdown', [
       selected('markdown', 'markdown-provider', {
         ...getPlatformCapabilities('telegram'),
@@ -66,10 +81,15 @@ describe('platform editor capabilities', () => {
 
     expect(getFormattingControls(result)).not.toContain('link');
     expect(getFormattingControls(result)).not.toContain('heading');
-    expect(getControlDependentEditorExtensions(result)).toEqual([
-      'link',
-      'heading',
+  });
+
+  it('hides plain-output link and heading controls', () => {
+    const result = resolveEditorCapabilities('linkedin', [
+      selected('linkedin', 'linkedin'),
     ]);
+
+    expect(getFormattingControls(result)).not.toContain('link');
+    expect(getFormattingControls(result)).not.toContain('heading');
   });
 
   it('installs the link extension when global mode shows the link control', () => {
@@ -78,7 +98,6 @@ describe('platform editor capabilities', () => {
     ]);
 
     expect(getFormattingControls(result)).toContain('link');
-    expect(getControlDependentEditorExtensions(result)).toContain('link');
   });
 
   it('installs the heading extension when global mode shows the heading control', () => {
@@ -94,6 +113,5 @@ describe('platform editor capabilities', () => {
     ]);
 
     expect(getFormattingControls(result)).toContain('heading');
-    expect(getControlDependentEditorExtensions(result)).toContain('heading');
   });
 });

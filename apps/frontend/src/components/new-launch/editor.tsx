@@ -33,23 +33,13 @@ import { useCopilotAction, useCopilotReadable } from '@copilotkit/react-core';
 import { useDropzone } from 'react-dropzone';
 import { useUppyUploader } from '@gitroom/frontend/components/media/new.uploader';
 import { Dashboard } from '@uppy/react';
-import Link from '@tiptap/extension-link';
-import {
-  useEditor,
-  EditorContent,
-  Extension,
-  mergeAttributes,
-} from '@tiptap/react';
+import { useEditor, EditorContent, mergeAttributes } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
-import Bold from '@tiptap/extension-bold';
 import Text from '@tiptap/extension-text';
 import Paragraph from '@tiptap/extension-paragraph';
-import Underline from '@tiptap/extension-underline';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { History } from '@tiptap/extension-history';
-import { BulletList, ListItem } from '@tiptap/extension-list';
 import { Bullets } from '@gitroom/frontend/components/new-launch/bullets.component';
-import Heading from '@tiptap/extension-heading';
 import { HeadingComponent } from '@gitroom/frontend/components/new-launch/heading.component';
 import Mention from '@tiptap/extension-mention';
 import { suggestion } from '@gitroom/frontend/components/new-launch/mention.component';
@@ -69,46 +59,30 @@ import {
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { PlainTextPasteExtension } from '@gitroom/frontend/components/new-launch/plain-text-paste.extension';
 import {
-  getControlDependentEditorExtensions,
   getFormattingControls,
   resolveEditorCapabilities,
 } from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
+import {
+  createCanonicalEditorExtensions,
+  getEditorCreationPolicyKey,
+} from '@gitroom/frontend/components/new-launch/platform.editor.extensions';
 import type { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import {
   analyzePlatformContent,
   analyzeSelectedPlatformContent,
+  type PlatformContentAnalysis,
 } from '@gitroom/helpers/utils/platform.content';
 import { PlatformContentNotice } from '@gitroom/frontend/components/new-launch/platform.content.notice';
+import { deriveGlobalTargets } from '@gitroom/frontend/components/new-launch/global.targets';
 
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
 
-const InterceptBoldShortcut = Extension.create({
-  name: 'preventBoldWithUnderline',
-
-  addKeyboardShortcuts() {
-    return {
-      'Mod-b': () => {
-        // For example, toggle bold while removing underline
-        this?.editor?.commands?.unsetUnderline();
-        return this?.editor?.commands?.toggleBold();
-      },
-    };
-  },
-});
-
-const InterceptUnderlineShortcut = Extension.create({
-  name: 'preventUnderlineWithUnderline',
-
-  addKeyboardShortcuts() {
-    return {
-      'Mod-u': () => {
-        // For example, toggle bold while removing underline
-        this?.editor?.commands?.unsetBold();
-        return this?.editor?.commands?.toggleUnderline();
-      },
-    };
-  },
-});
+const analyzeSourceOnlyContent = (
+  input: Parameters<typeof analyzePlatformContent>[0]
+): PlatformContentAnalysis => {
+  const analysis = analyzePlatformContent(input);
+  return { ...analysis, blocking: false, messages: [] };
+};
 
 export const EditorWrapper: FC<{
   totalPosts: number;
@@ -199,9 +173,15 @@ export const EditorWrapper: FC<{
     return current === 'global' || !!internal;
   }, [current, internal]);
 
+  const globalTargets = useMemo(
+    () => deriveGlobalTargets(selectedIntegration, internalChannels),
+    [selectedIntegration, internalChannels]
+  );
+
   const capabilities = useMemo(
-    () => resolveEditorCapabilities(current, selectedIntegration),
-    [current, selectedIntegration]
+    () =>
+      resolveEditorCapabilities(current, selectedIntegration, internalChannels),
+    [current, selectedIntegration, internalChannels]
   );
 
   const customizePlatform = useCallback(
@@ -486,7 +466,9 @@ export const EditorWrapper: FC<{
                 totalChars={capabilities.text.max}
                 appendImages={appendImages(index)}
                 dummy={dummy}
-                selectedIntegration={selectedIntegration}
+                selectedIntegration={
+                  current === 'global' ? globalTargets : selectedIntegration
+                }
                 onCustomize={
                   current === 'global' ? customizePlatform : undefined
                 }
@@ -608,20 +590,26 @@ export const Editor: FC<{
     () => getFormattingControls(capabilities),
     [capabilities]
   );
-  const parserExtensionKey = useMemo(
-    () => getControlDependentEditorExtensions(capabilities).join(':'),
+  const editorCreationPolicyKey = useMemo(
+    () => getEditorCreationPolicyKey(capabilities),
     [capabilities]
   );
   const analysis = useMemo(
     () =>
       props.identifier === 'global'
-        ? analyzeSelectedPlatformContent({
-            content: props.value || '',
-            media: props.pictures || [],
-            capabilities: props.selectedIntegration.map(
-              (item) => item.integration.capabilities
-            ),
-          })
+        ? props.selectedIntegration.length
+          ? analyzeSelectedPlatformContent({
+              content: props.value || '',
+              media: props.pictures || [],
+              capabilities: props.selectedIntegration.map(
+                (item) => item.integration.capabilities
+              ),
+            })
+          : analyzeSourceOnlyContent({
+              content: props.value || '',
+              media: props.pictures || [],
+              capabilities,
+            })
         : analyzePlatformContent({
             content: props.value || '',
             media: props.pictures || [],
@@ -792,7 +780,7 @@ export const Editor: FC<{
             </div>
             <div className="px-[10px] pt-[10px] bg-newBgColorInner rounded-t-[6px] relative z-[99]">
               <OnlyEditor
-                key={parserExtensionKey}
+                key={editorCreationPolicyKey}
                 value={props.value}
                 capabilities={capabilities}
                 onChange={props.onChange}
@@ -952,8 +940,8 @@ export const OnlyEditor = forwardRef<
 >(({ capabilities, value, onChange, paste }, ref) => {
   const t = useT();
   const fetch = useFetch();
-  const controlDependentExtensions = useMemo(
-    () => getControlDependentEditorExtensions(capabilities),
+  const canonicalEditorExtensions = useMemo(
+    () => createCanonicalEditorExtensions(capabilities),
     [capabilities]
   );
 
@@ -999,96 +987,11 @@ export const OnlyEditor = forwardRef<
       Paragraph,
       Text,
       PlainTextPasteExtension,
-      // These stay mounted so canonical content still parses when a toolbar
-      // control is hidden. BulletList also requires ListItem.
-      Underline,
-      Bold,
-      InterceptBoldShortcut,
-      InterceptUnderlineShortcut,
-      BulletList,
-      ListItem,
+      ...canonicalEditorExtensions,
       Placeholder.configure({
         placeholder: t('write_something', 'Write something …'),
         emptyEditorClass: 'is-editor-empty',
       }),
-      ...(controlDependentExtensions.includes('link')
-        ? [
-            Link.configure({
-              openOnClick: false,
-              autolink: true,
-              defaultProtocol: 'https',
-              protocols: ['http', 'https'],
-              isAllowedUri: (url, ctx) => {
-                try {
-                  // prevent transforming plain emails like foo@bar.com into links
-                  const trimmed = String(url).trim();
-                  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                  if (emailPattern.test(trimmed)) {
-                    return false;
-                  }
-
-                  // construct URL
-                  const parsedUrl = url.includes(':')
-                    ? new URL(url)
-                    : new URL(`${ctx.defaultProtocol}://${url}`);
-
-                  // use default validation
-                  if (!ctx.defaultValidate(parsedUrl.href)) {
-                    return false;
-                  }
-
-                  // disallowed protocols
-                  const disallowedProtocols = ['ftp', 'file', 'mailto'];
-                  const protocol = parsedUrl.protocol.replace(':', '');
-
-                  if (disallowedProtocols.includes(protocol)) {
-                    return false;
-                  }
-
-                  // only allow protocols specified in ctx.protocols
-                  const allowedProtocols = ctx.protocols.map((p) =>
-                    typeof p === 'string' ? p : p.scheme
-                  );
-
-                  if (!allowedProtocols.includes(protocol)) {
-                    return false;
-                  }
-
-                  // all checks have passed
-                  return true;
-                } catch {
-                  return false;
-                }
-              },
-              shouldAutoLink: (url) => {
-                try {
-                  // prevent auto-linking of plain emails like foo@bar.com
-                  const trimmed = String(url).trim();
-                  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                  if (emailPattern.test(trimmed)) {
-                    return false;
-                  }
-
-                  // construct URL
-                  const parsedUrl = url.includes(':')
-                    ? new URL(url)
-                    : new URL(`https://${url}`);
-
-                  // only auto-link if the domain is not in the disallowed list
-                  const disallowedDomains = [
-                    'example-no-autolink.com',
-                    'another-no-autolink.com',
-                  ];
-                  const domain = parsedUrl.hostname;
-
-                  return !disallowedDomains.includes(domain);
-                } catch {
-                  return false;
-                }
-              },
-            }),
-          ]
-        : []),
       ...(internal?.integration?.id
         ? [
             Mention.configure({
@@ -1106,13 +1009,6 @@ export const OnlyEditor = forwardRef<
                 ];
               },
               suggestion: suggestion(loadList),
-            }),
-          ]
-        : []),
-      ...(controlDependentExtensions.includes('heading')
-        ? [
-            Heading.configure({
-              levels: [1, 2, 3],
             }),
           ]
         : []),
