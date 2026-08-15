@@ -11,6 +11,11 @@ export type FormattingControl =
   | 'list'
   | 'heading';
 
+export type ControlDependentEditorExtension = Extract<
+  FormattingControl,
+  'link' | 'heading'
+>;
+
 export const resolveEditorCapabilities = (
   current: string,
   selected: SelectedIntegrations[]
@@ -37,3 +42,13 @@ export const getFormattingControls = (
     capabilities.formatting.lists === 'native' && 'list',
     capabilities.formatting.headings === 'native' && 'heading',
   ].filter(Boolean) as FormattingControl[];
+
+export const getControlDependentEditorExtensions = (
+  capabilities: PlatformCapabilities
+): ControlDependentEditorExtension[] => {
+  const controls = getFormattingControls(capabilities);
+
+  return (['link', 'heading'] as const).filter((extension) =>
+    controls.includes(extension)
+  );
+};

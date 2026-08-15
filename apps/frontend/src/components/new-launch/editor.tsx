@@ -69,6 +69,7 @@ import {
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { PlainTextPasteExtension } from '@gitroom/frontend/components/new-launch/plain-text-paste.extension';
 import {
+  getControlDependentEditorExtensions,
   getFormattingControls,
   resolveEditorCapabilities,
 } from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
@@ -731,8 +732,9 @@ export const Editor: FC<{
             </div>
             <div className="px-[10px] pt-[10px] bg-newBgColorInner rounded-t-[6px] relative z-[99]">
               <OnlyEditor
+                key={formattingControls.join(':')}
                 value={props.value}
-                editorType={editorType}
+                capabilities={capabilities}
                 onChange={props.onChange}
                 paste={paste}
                 ref={editorRef}
@@ -876,14 +878,18 @@ export const Editor: FC<{
 export const OnlyEditor = forwardRef<
   any,
   {
-    editorType: 'none' | 'normal' | 'markdown' | 'html';
+    capabilities: PlatformCapabilities;
     value: string;
     onChange: (value: string) => void;
     paste?: (event: ClipboardEvent | File[]) => void;
   }
->(({ editorType, value, onChange, paste }, ref) => {
+>(({ capabilities, value, onChange, paste }, ref) => {
   const t = useT();
   const fetch = useFetch();
+  const controlDependentExtensions = useMemo(
+    () => getControlDependentEditorExtensions(capabilities),
+    [capabilities]
+  );
 
   const { internal } = useLaunchStore(
     useShallow((state) => ({
@@ -927,6 +933,8 @@ export const OnlyEditor = forwardRef<
       Paragraph,
       Text,
       PlainTextPasteExtension,
+      // These stay mounted so canonical content still parses when a toolbar
+      // control is hidden. BulletList also requires ListItem.
       Underline,
       Bold,
       InterceptBoldShortcut,
@@ -937,7 +945,7 @@ export const OnlyEditor = forwardRef<
         placeholder: t('write_something', 'Write something …'),
         emptyEditorClass: 'is-editor-empty',
       }),
-      ...(editorType === 'html' || editorType === 'markdown'
+      ...(controlDependentExtensions.includes('link')
         ? [
             Link.configure({
               openOnClick: false,
@@ -1035,7 +1043,7 @@ export const OnlyEditor = forwardRef<
             }),
           ]
         : []),
-      ...(editorType === 'html' || editorType === 'markdown'
+      ...(controlDependentExtensions.includes('heading')
         ? [
             Heading.configure({
               levels: [1, 2, 3],
