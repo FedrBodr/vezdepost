@@ -575,6 +575,10 @@ export const Editor: FC<{
     () => getFormattingControls(capabilities),
     [capabilities]
   );
+  const parserExtensionKey = useMemo(
+    () => getControlDependentEditorExtensions(capabilities).join(':'),
+    [capabilities]
+  );
   const [id] = useState(makeId(10));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const t = useT();
@@ -732,7 +736,7 @@ export const Editor: FC<{
             </div>
             <div className="px-[10px] pt-[10px] bg-newBgColorInner rounded-t-[6px] relative z-[99]">
               <OnlyEditor
-                key={formattingControls.join(':')}
+                key={parserExtensionKey}
                 value={props.value}
                 capabilities={capabilities}
                 onChange={props.onChange}

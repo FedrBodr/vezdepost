@@ -42,6 +42,36 @@ describe('platform editor capabilities', () => {
     expect(result.text.mediaCaptionMax).toBe(1024);
   });
 
+  it('keeps HTML parser extensions when Telegram hides link and heading controls', () => {
+    const result = resolveEditorCapabilities('tg', [
+      selected('tg', 'telegram'),
+    ]);
+
+    expect(getFormattingControls(result)).not.toContain('link');
+    expect(getFormattingControls(result)).not.toContain('heading');
+    expect(getControlDependentEditorExtensions(result)).toEqual([
+      'link',
+      'heading',
+    ]);
+  });
+
+  it('keeps parser extensions for Markdown output with hidden controls', () => {
+    const result = resolveEditorCapabilities('markdown', [
+      selected('markdown', 'markdown-provider', {
+        ...getPlatformCapabilities('telegram'),
+        identifier: 'markdown-provider',
+        output: 'markdown',
+      }),
+    ]);
+
+    expect(getFormattingControls(result)).not.toContain('link');
+    expect(getFormattingControls(result)).not.toContain('heading');
+    expect(getControlDependentEditorExtensions(result)).toEqual([
+      'link',
+      'heading',
+    ]);
+  });
+
   it('installs the link extension when global mode shows the link control', () => {
     const result = resolveEditorCapabilities('global', [
       selected('max', 'max'),

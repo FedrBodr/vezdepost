@@ -47,8 +47,10 @@ export const getControlDependentEditorExtensions = (
   capabilities: PlatformCapabilities
 ): ControlDependentEditorExtension[] => {
   const controls = getFormattingControls(capabilities);
+  const preservesRichMarkup =
+    capabilities.output === 'html' || capabilities.output === 'markdown';
 
-  return (['link', 'heading'] as const).filter((extension) =>
-    controls.includes(extension)
+  return (['link', 'heading'] as const).filter(
+    (extension) => preservesRichMarkup || controls.includes(extension)
   );
 };
