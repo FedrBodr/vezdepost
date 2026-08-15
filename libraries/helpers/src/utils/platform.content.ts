@@ -1,5 +1,6 @@
 import striptags from 'striptags';
 import { weightedLength } from './count.length';
+import { convertHtmlStructureToText } from './html.structure';
 import { stripHtmlValidation } from './strip.html.validation';
 import {
   getTelegramVisibleTextLength,
@@ -38,15 +39,34 @@ export const normalizePlatformContent = (
   capabilities: PlatformCapabilities,
   convertMentionFunction?: (idOrHandle: string, name: string) => string
 ): string => {
+  if (!/<\/?[a-z][\s\S]*>/i.test(content)) {
+    return content;
+  }
+
+  if (!capabilities.verified) {
+    return stripHtmlValidation(
+      capabilities.output,
+      content,
+      true,
+      false,
+      false,
+      convertMentionFunction
+    );
+  }
+
   const canonicalContent =
     capabilities.identifier === 'telegram'
       ? content
           .replace(/<b(?=[\s>])/gi, '<strong')
           .replace(/<\/b>/gi, '</strong>')
       : content;
+  const structuredContent =
+    capabilities.output === 'html'
+      ? convertHtmlStructureToText(canonicalContent)
+      : canonicalContent;
   const html = stripHtmlValidation(
     'html',
-    canonicalContent,
+    structuredContent,
     false,
     false,
     false,

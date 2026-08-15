@@ -8,7 +8,12 @@ exports[`linkedin formatting matrix > normalizes deterministically and stays und
 "
 `;
 
-exports[`max formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `"Launch<p><strong>Bold</strong> and <u>underlined</u></p>OneTwo"`;
+exports[`max formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
+"Launch
+<strong>Bold</strong> and <u>underlined</u>
+- One
+- Two"
+`;
 
 exports[`pinterest formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
@@ -21,7 +26,8 @@ exports[`pinterest formatting matrix > normalizes deterministically and stays un
 exports[`telegram formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
 <b>Bold</b> and <u>underlined</u>
-OneTwo"
+- One
+- Two"
 `;
 
 exports[`tumblr formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `

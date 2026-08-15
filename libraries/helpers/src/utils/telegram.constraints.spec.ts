@@ -27,11 +27,34 @@ describe('Telegram HTML caption length', () => {
     expect(normalizeTelegramHtml('plain\n')).toBe('plain\n');
   });
 
+  it('preserves literal private-use Unicode text', () => {
+    expect(normalizeTelegramHtml('Private \uE000 glyph')).toBe(
+      'Private \uE000 glyph'
+    );
+  });
+
   it('retains paragraph separators and remains idempotent with intentional trailing text', () => {
     const once = normalizeTelegramHtml('<p>First</p><p>Second\n</p>');
 
     expect(once).toBe('First\nSecond\n');
     expect(normalizeTelegramHtml(once)).toBe(once);
+  });
+
+  it('preserves heading, paragraph, break, and list boundaries idempotently', () => {
+    const once = normalizeTelegramHtml(
+      '<h2>Heading</h2><p><strong>Intro</strong><br>continued</p><ul><li>One</li><li><u>Two</u></li></ul><p>Last</p>'
+    );
+
+    expect(once).toBe(
+      'Heading\n<b>Intro</b>\ncontinued\n- One\n- <u>Two</u>\nLast'
+    );
+    expect(normalizeTelegramHtml(once)).toBe(once);
+  });
+
+  it('preserves trailing-newline intent after structural normalization', () => {
+    expect(normalizeTelegramHtml('<ul><li>One</li><li>Two</li></ul>\n')).toBe(
+      '- One\n- Two\n'
+    );
   });
 
   it('counts formatting text without counting tags', () => {

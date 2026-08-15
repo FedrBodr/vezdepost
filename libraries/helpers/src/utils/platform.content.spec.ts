@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getPlatformCapabilities } from './platform.capabilities';
 import {
   analyzePlatformContent,
@@ -7,6 +7,77 @@ import {
 } from './platform.content';
 
 describe('platform content normalization', () => {
+  it.each(['telegram', 'max'])(
+    '%s preserves readable list boundaries',
+    (identifier) => {
+      const normalized = normalizePlatformContent(
+        '<h2>Heading</h2><p>Intro<br>continued</p><ul><li>One</li><li><strong>Two</strong></li></ul><p>Last</p>',
+        getPlatformCapabilities(identifier)
+      );
+
+      expect(normalized).toContain('Heading\nIntro\ncontinued\n- One\n- ');
+      expect(normalized).toContain('Two');
+      expect(normalized).toMatch(/\nLast$/);
+    }
+  );
+
+  it.each(['wordpress', 'listmonk'])(
+    '%s preserves the legacy HTML fallback subset',
+    (identifier) => {
+      const content =
+        '<h1>Title</h1><h2>Subtitle</h2><h3>Detail</h3><ul><li>One</li><li><strong>Two</strong></li></ul><p>Body</p>';
+
+      expect(
+        normalizePlatformContent(
+          content,
+          getPlatformCapabilities(identifier, {
+            editor: 'html',
+            maximumCharacters: 100_000,
+          })
+        )
+      ).toBe(content);
+    }
+  );
+
+  it.each([
+    ['telegram', undefined],
+    ['linkedin', undefined],
+    ['legacy-html', { editor: 'html' as const, maximumCharacters: 1000 }],
+    ['legacy-normal', { editor: 'normal' as const, maximumCharacters: 1000 }],
+    [
+      'legacy-markdown',
+      { editor: 'markdown' as const, maximumCharacters: 1000 },
+    ],
+    ['legacy-none', { editor: 'none' as const, maximumCharacters: 1000 }],
+  ])(
+    '%s leaves tagless special characters unchanged',
+    (identifier, fallback) => {
+      const content = 'AT&T < launch > landing &copy;';
+      const convertMention = vi.fn(() => '@mention');
+
+      expect(
+        normalizePlatformContent(
+          content,
+          getPlatformCapabilities(identifier, fallback),
+          convertMention
+        )
+      ).toBe(content);
+      expect(convertMention).not.toHaveBeenCalled();
+    }
+  );
+
+  it('analyzes tagless special characters without rewriting them', () => {
+    const content = 'AT&T < launch > landing &copy;';
+    const analysis = analyzePlatformContent({
+      content,
+      media: [],
+      capabilities: getPlatformCapabilities('linkedin'),
+    });
+
+    expect(analysis.normalized).toBe(content);
+    expect(analysis.visibleLength).toBe(content.length);
+  });
+
   it('normalizes Telegram to its supported HTML subset', () => {
     expect(
       normalizePlatformContent(

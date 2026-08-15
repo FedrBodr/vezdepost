@@ -1,22 +1,18 @@
 import striptags from 'striptags';
+import { convertHtmlStructureToText } from './html.structure';
 
 export const TELEGRAM_MEDIA_CAPTION_MAX_LENGTH = 1024;
 
 export const normalizeTelegramHtml = (value: string): string => {
-  const hasTrailingParagraph = /<\/p>\s*$/i.test(value);
-  const normalized = striptags(
-    value
-      .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, '$1\n')
-      .replace(/<a[^>]*>([\s\S]*?)<\/a>/gi, '$1'),
-    ['u', 'strong', 'b', 'p']
+  return striptags(
+    convertHtmlStructureToText(value).replace(
+      /<a[^>]*>([\s\S]*?)<\/a>/gi,
+      '$1'
+    ),
+    ['u', 'strong', 'b']
   )
     .replace(/<strong>/g, '<b>')
-    .replace(/<\/strong>/g, '</b>')
-    .replace(/<p>([\s\S]*?)<\/p>/g, '$1\n');
-
-  return hasTrailingParagraph
-    ? normalized.replace(/\n(?=[^\S\r\n]*$)/, '')
-    : normalized;
+    .replace(/<\/strong>/g, '</b>');
 };
 
 const decodeTelegramHtmlEntities = (value: string) =>
