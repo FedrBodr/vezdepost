@@ -21,23 +21,98 @@ fail() {
   exit 1
 }
 
-read_value() {
-  local name=$1
-  local label=$2
-  local secret=${3:-1}
-  local value=${!name:-}
-  if [[ -z "$value" ]]; then
-    [[ -t 0 || -r /dev/tty ]] || fail "${name}_REQUIRED"
-    if [[ "$secret" == 1 ]]; then
-      read -r -s -p "$label: " value </dev/tty
-      printf '\n' >/dev/tty
-    else
-      read -r -p "$label: " value </dev/tty
-    fi
+[[ $# -eq 2 && $1 == --image ]] || fail IMAGE_ARGUMENT_REQUIRED
+KSY_DEALS_IMAGE=$2
+
+required_keys=(
+  VITE_TELEGRAM_BOT_USERNAME GHCR_USERNAME GHCR_READ_TOKEN
+  TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL
+  ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY POSTGRES_PASSWORD
+  SESSION_COOKIE_KEY BACKUP_ENCRYPTION_PASSPHRASE
+)
+
+trim_horizontal() {
+  local value=$1
+  value="${value#"${value%%[!$' \t']*}"}"
+  value="${value%"${value##*[!$' \t']}"}"
+  TRIMMED_VALUE=$value
+}
+
+cleanup_batch() {
+  if [[ "${BATCH_ECHO_DISABLED:-0}" == 1 ]]; then
+    stty echo <&3 2>/dev/null || true
+    BATCH_ECHO_DISABLED=0
   fi
-  [[ -n "$value" && "$value" != *$'\n'* && "$value" != *$'\r'* ]] ||
-    fail "${name}_INVALID"
-  printf -v "$name" '%s' "$value"
+  exec 3>&- 2>/dev/null || true
+}
+
+read_batch() {
+  local input_fd=0
+  local line trimmed key value required_key key_allowed
+  local terminated=0
+  local seen_keys=''
+
+  if [[ "$TEST_MODE" != 1 ]]; then
+    exec 3</dev/tty || fail TTY_REQUIRED
+    trap cleanup_batch EXIT INT TERM
+    stty -echo <&3 || fail TERMINAL_ECHO_DISABLE_FAILED
+    BATCH_ECHO_DISABLED=1
+    input_fd=3
+  fi
+
+  if (( BASH_VERSINFO[0] >= 4 )); then
+    declare -A seen=()
+  fi
+
+  while IFS= read -r line <&"$input_fd"; do
+    trim_horizontal "$line"
+    trimmed=$TRIMMED_VALUE
+    [[ -z "$trimmed" ]] && continue
+    if [[ "$trimmed" == KSY_SECRETS_END ]]; then
+      terminated=1
+      break
+    fi
+    [[ "$trimmed" == *=* ]] || fail BATCH_MALFORMED_LINE
+    key=${trimmed%%=*}
+    value=${trimmed#*=}
+    trim_horizontal "$key"
+    key=$TRIMMED_VALUE
+    trim_horizontal "$value"
+    value=$TRIMMED_VALUE
+
+    key_allowed=0
+    for required_key in "${required_keys[@]}"; do
+      if [[ "$key" == "$required_key" ]]; then
+        key_allowed=1
+        break
+      fi
+    done
+    (( key_allowed == 1 )) || fail BATCH_UNKNOWN_KEY
+
+    if (( BASH_VERSINFO[0] >= 4 )); then
+      [[ -z "${seen[$key]+x}" ]] || fail BATCH_DUPLICATE_KEY
+      seen["$key"]=1
+    else
+      case ":$seen_keys:" in
+        *":$key:"*) fail BATCH_DUPLICATE_KEY ;;
+      esac
+      seen_keys="$seen_keys:$key"
+    fi
+    [[ -n "$value" ]] || fail BATCH_EMPTY_VALUE
+    printf -v "$key" '%s' "$value"
+  done
+
+  if [[ "$input_fd" == 3 ]]; then
+    stty echo <&3 2>/dev/null || true
+    BATCH_ECHO_DISABLED=0
+  fi
+  (( terminated == 1 )) || fail BATCH_TERMINATOR_REQUIRED
+
+  for required_key in "${required_keys[@]}"; do
+    if [[ -z "${!required_key:-}" ]]; then
+      fail BATCH_MISSING_KEY
+    fi
+  done
 }
 
 hex64() {
@@ -89,18 +164,7 @@ fi
 used=$(disk_used_percent)
 [[ "$used" =~ ^[0-9]+$ && "$used" -lt 85 ]] || fail DISK_USAGE_LIMIT
 
-read_value KSY_DEALS_IMAGE 'Immutable GHCR image digest' 0
-read_value GHCR_USERNAME 'GitHub Packages username' 0
-read_value GHCR_READ_TOKEN 'GitHub Packages read-only token'
-read_value VITE_TELEGRAM_BOT_USERNAME 'Public Telegram bot username' 0
-read_value POSTGRES_PASSWORD 'PostgreSQL password'
-read_value SESSION_COOKIE_KEY 'Session cookie key'
-read_value TELEGRAM_BOT_TOKEN 'Telegram bot token'
-read_value TELEGRAM_WEBHOOK_SECRET 'Telegram webhook secret'
-read_value ORDER_TELEGRAM_URL 'Telegram order URL' 0
-read_value ADMIN_TELEGRAM_IDS 'Two administrator Telegram IDs' 0
-read_value PLATPRICES_API_KEY 'PlatPrices API key'
-read_value BACKUP_ENCRYPTION_PASSPHRASE 'Backup encryption passphrase'
+read_batch
 
 [[ "$KSY_DEALS_IMAGE" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] ||
   fail KSY_DEALS_IMAGE_INVALID

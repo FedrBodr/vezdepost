@@ -63,41 +63,143 @@ YAML
 }
 
 valid_environment() {
-  export KSY_DEALS_IMAGE='ghcr.io/fedrbodr/ksy-deals@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  export GHCR_USERNAME='FedrBodr'
-  export GHCR_READ_TOKEN='github-read-token-secret'
-  export VITE_TELEGRAM_BOT_USERNAME='ksy_staging_bot'
-  export POSTGRES_PASSWORD='1111111111111111111111111111111111111111111111111111111111111111'
-  export SESSION_COOKIE_KEY='2222222222222222222222222222222222222222222222222222222222222222'
-  export TELEGRAM_BOT_TOKEN='123456:test_bot-token'
-  export TELEGRAM_WEBHOOK_SECRET='3333333333333333333333333333333333333333333333333333333333333333'
-  export ORDER_TELEGRAM_URL='https://t.me/ksy_orders'
-  export ADMIN_TELEGRAM_IDS='101,202'
-  export PLATPRICES_API_KEY='platprices_test-key'
-  export BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
+  VALID_IMAGE='ghcr.io/fedrbodr/ksy-deals@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  GHCR_USERNAME='FedrBodr'
+  GHCR_READ_TOKEN='github-read-token-secret'
+  VITE_TELEGRAM_BOT_USERNAME='ksy_staging_bot'
+  POSTGRES_PASSWORD='1111111111111111111111111111111111111111111111111111111111111111'
+  SESSION_COOKIE_KEY='2222222222222222222222222222222222222222222222222222222222222222'
+  TELEGRAM_BOT_TOKEN='123456:test_bot-token'
+  TELEGRAM_WEBHOOK_SECRET='3333333333333333333333333333333333333333333333333333333333333333'
+  ORDER_TELEGRAM_URL='https://t.me/ksy_orders'
+  ADMIN_TELEGRAM_IDS='101,202'
+  PLATPRICES_API_KEY='platprices_test-key'
+  BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
+}
+
+valid_batch() {
+  cat <<'BATCH'
+SESSION_COOKIE_KEY = 2222222222222222222222222222222222222222222222222222222222222222
+GHCR_USERNAME = FedrBodr
+ORDER_TELEGRAM_URL = https://t.me/ksy_orders
+VITE_TELEGRAM_BOT_USERNAME = ksy_staging_bot
+GHCR_READ_TOKEN = github-read-token-secret
+POSTGRES_PASSWORD = 1111111111111111111111111111111111111111111111111111111111111111
+TELEGRAM_BOT_TOKEN = 123456:test_bot-token
+TELEGRAM_WEBHOOK_SECRET = 3333333333333333333333333333333333333333333333333333333333333333
+ADMIN_TELEGRAM_IDS = 101,202
+PLATPRICES_API_KEY = platprices_test-key
+BACKUP_ENCRYPTION_PASSPHRASE = 4444444444444444444444444444444444444444444444444444444444444444
+KSY_SECRETS_END
+BATCH
+}
+
+out_of_order_batch() {
+  cat <<'BATCH'
+BACKUP_ENCRYPTION_PASSPHRASE    =    4444444444444444444444444444444444444444444444444444444444444444
+PLATPRICES_API_KEY=platprices_test-key
+ADMIN_TELEGRAM_IDS = 101,202
+TELEGRAM_WEBHOOK_SECRET=3333333333333333333333333333333333333333333333333333333333333333
+TELEGRAM_BOT_TOKEN = 123456:test_bot-token
+POSTGRES_PASSWORD=1111111111111111111111111111111111111111111111111111111111111111
+GHCR_READ_TOKEN = github-read-token-secret
+VITE_TELEGRAM_BOT_USERNAME=ksy_staging_bot
+ORDER_TELEGRAM_URL    = https://t.me/ksy_orders
+GHCR_USERNAME=FedrBodr
+SESSION_COOKIE_KEY = 2222222222222222222222222222222222222222222222222222222222222222
+KSY_SECRETS_END
+BATCH
+}
+
+duplicate_order_batch() {
+  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "ORDER_TELEGRAM_URL = https://t.me/ksy_orders"; print }'
+}
+
+unknown_key_batch() {
+  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "EXTRA_KEY = should-not-be-accepted"; print }'
+}
+
+malformed_line_batch() {
+  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "this line has no assignment separator"; print }'
+}
+
+missing_admin_batch() {
+  valid_batch | awk '$0 !~ /^ADMIN_TELEGRAM_IDS/'
+}
+
+empty_platprices_batch() {
+  valid_batch | awk '{ if ($0 ~ /^PLATPRICES_API_KEY/) print "PLATPRICES_API_KEY =   "; else print }'
 }
 
 run_case() {
   local case_dir=$1
   local output=$2
   local curl_fail=${3:-0}
+  local batch_fn=${4:-valid_batch}
+  local image=${5:-$VALID_IMAGE}
   local bin_dir="$case_dir/bin"
   mkdir -p "$case_dir"
   make_stubs "$bin_dir"
   : > "$case_dir/docker.calls"
   : > "$case_dir/curl.calls"
-  PATH="$bin_dir:$PATH" \
-    DOCKER_CALLS="$case_dir/docker.calls" \
-    CURL_CALLS="$case_dir/curl.calls" \
-    CURL_FAIL="$curl_fail" \
-    NETWORK_MARKER="$case_dir/network.created" \
-    KSY_PROVISION_TEST_MODE=1 \
-    KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
-    KSY_ROOT="$case_dir/opt/ksy-deals" \
-    KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
-    CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
-    STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
-    bash "$SCRIPT" > "$output" 2>&1
+  if [[ "$image" == __ABSENT__ ]]; then
+    "$batch_fn" | PATH="$bin_dir:$PATH" \
+      DOCKER_CALLS="$case_dir/docker.calls" \
+      CURL_CALLS="$case_dir/curl.calls" \
+      CURL_FAIL="$curl_fail" \
+      NETWORK_MARKER="$case_dir/network.created" \
+      KSY_PROVISION_TEST_MODE=1 \
+      KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
+      KSY_ROOT="$case_dir/opt/ksy-deals" \
+      KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
+      STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
+      bash "$SCRIPT" > "$output" 2>&1
+  else
+    "$batch_fn" | PATH="$bin_dir:$PATH" \
+      DOCKER_CALLS="$case_dir/docker.calls" \
+      CURL_CALLS="$case_dir/curl.calls" \
+      CURL_FAIL="$curl_fail" \
+      NETWORK_MARKER="$case_dir/network.created" \
+      KSY_PROVISION_TEST_MODE=1 \
+      KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
+      KSY_ROOT="$case_dir/opt/ksy-deals" \
+      KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
+      STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
+      bash "$SCRIPT" --image "$image" > "$output" 2>&1
+  fi
+}
+
+assert_synthetic_secrets_absent() {
+  local output=$1
+  for secret in "$GHCR_READ_TOKEN" "$POSTGRES_PASSWORD" "$SESSION_COOKIE_KEY" \
+    "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_WEBHOOK_SECRET" \
+    "$PLATPRICES_API_KEY" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
+    ! grep -Fq "$secret" "$output" || fail 'synthetic secret leaked to output'
+  done
+}
+
+assert_rejection() {
+  local case_name=$1
+  local expected=$2
+  local batch_fn=$3
+  local image=${4:-$VALID_IMAGE}
+  local case_dir="$TMP_DIR/$case_name"
+  local output="$case_dir/output"
+  mkdir -p "$case_dir"
+  write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+
+  if run_case "$case_dir" "$output" 0 "$batch_fn" "$image"; then
+    fail "$case_name was accepted"
+  fi
+  grep -q "KSY_PROVISION_FAILED $expected" "$output" ||
+    fail "$case_name did not report $expected"
+  [[ ! -e "$case_dir/opt/ksy-deals/.env" ]] ||
+    fail "$case_name created .env after rejection"
+  [[ ! -s "$case_dir/docker.calls" ]] ||
+    fail "$case_name ran Docker after rejection"
+  assert_synthetic_secrets_absent "$output"
 }
 
 test_rejects_full_disk_before_mutation() {
@@ -115,6 +217,7 @@ test_rejects_full_disk_before_mutation() {
     fail 'target env was created after disk rejection'
   [[ ! -s "$case_dir/docker.calls" ]] ||
     fail 'Docker ran after disk rejection'
+  assert_synthetic_secrets_absent "$output"
   unset KSY_PROVISION_TEST_DISK_USED_PERCENT
 }
 
@@ -123,7 +226,7 @@ test_rejects_mutable_image_before_mutation() {
   local output="$case_dir/output"
   mkdir -p "$case_dir"
   valid_environment
-  export KSY_DEALS_IMAGE='ghcr.io/fedrbodr/ksy-deals:latest'
+  VALID_IMAGE='ghcr.io/fedrbodr/ksy-deals:latest'
   write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
 
   if run_case "$case_dir" "$output"; then
@@ -133,6 +236,7 @@ test_rejects_mutable_image_before_mutation() {
     fail 'target env was created after image rejection'
   [[ ! -s "$case_dir/docker.calls" ]] ||
     fail 'Docker ran after image rejection'
+  assert_synthetic_secrets_absent "$output"
 }
 
 test_provisions_idempotently_without_secret_leaks() {
@@ -142,8 +246,8 @@ test_provisions_idempotently_without_secret_leaks() {
   valid_environment
   write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
 
-  run_case "$case_dir" "$output"
-  run_case "$case_dir" "$case_dir/output-second"
+  run_case "$case_dir" "$output" 0 out_of_order_batch
+  run_case "$case_dir" "$case_dir/output-second" 0 out_of_order_batch
 
   assert_eq 600 "$(file_mode "$case_dir/opt/ksy-deals/.env")" \
     'staging env must be owner-readable only'
@@ -186,6 +290,48 @@ test_provisions_idempotently_without_secret_leaks() {
     fail 'idempotent rerun replaced the original rollback candidate'
 }
 
+test_rejects_batch_safety_failures_before_mutation() {
+  valid_environment
+  assert_rejection duplicate-key BATCH_DUPLICATE_KEY duplicate_order_batch
+  assert_rejection unknown-key BATCH_UNKNOWN_KEY unknown_key_batch
+  assert_rejection malformed-line BATCH_MALFORMED_LINE malformed_line_batch
+  assert_rejection missing-key BATCH_MISSING_KEY missing_admin_batch
+  assert_rejection empty-value BATCH_EMPTY_VALUE empty_platprices_batch
+}
+
+test_rejects_missing_image_argument_before_mutation() {
+  valid_environment
+  assert_rejection image-required IMAGE_ARGUMENT_REQUIRED valid_batch __ABSENT__
+}
+
+test_rejects_mutable_image_argument_before_mutation() {
+  valid_environment
+  assert_rejection mutable-image-argument KSY_DEALS_IMAGE_INVALID valid_batch \
+    'ghcr.io/fedrbodr/ksy-deals:latest'
+}
+
+test_has_hidden_batch_terminal_safety() {
+  local exec_line cleanup_line disable_line read_loop_line
+  grep -Fq 'exec 3</dev/tty' "$SCRIPT" ||
+    fail 'production path does not open /dev/tty on descriptor 3'
+  grep -Fq 'stty -echo' "$SCRIPT" ||
+    fail 'production path does not disable terminal echo'
+  grep -Fq 'while IFS=' "$SCRIPT" ||
+    fail 'production path does not use a batch read loop'
+  grep -Fq 'trap cleanup_batch' "$SCRIPT" ||
+    fail 'production path does not install batch cleanup'
+  exec_line=$(grep -nF 'exec 3</dev/tty' "$SCRIPT" | head -1 | cut -d: -f1)
+  cleanup_line=$(grep -nF 'trap cleanup_batch' "$SCRIPT" | head -1 | cut -d: -f1)
+  disable_line=$(grep -nF 'stty -echo' "$SCRIPT" | head -1 | cut -d: -f1)
+  read_loop_line=$(grep -nF 'while IFS=' "$SCRIPT" | head -1 | cut -d: -f1)
+  (( cleanup_line < disable_line )) ||
+    fail 'batch cleanup must be installed before echo is disabled'
+  (( disable_line < read_loop_line )) ||
+    fail 'terminal echo must be disabled before the batch read loop'
+  (( exec_line < disable_line )) ||
+    fail 'terminal descriptor must be opened before echo is disabled'
+}
+
 test_restores_previous_installation_after_failed_readiness() {
   local case_dir="$TMP_DIR/rollback"
   local output="$case_dir/output"
@@ -209,10 +355,15 @@ test_restores_previous_installation_after_failed_readiness() {
     fail 'previous Compose file was not restored'
   [[ "$(grep -c 'compose --project-name ksy-deals .* up -d server' "$case_dir/docker.calls")" -ge 2 ]] ||
     fail 'previous server was not restarted after failure'
+  assert_synthetic_secrets_absent "$output"
 }
 
 test_rejects_full_disk_before_mutation
 test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
+test_rejects_batch_safety_failures_before_mutation
+test_rejects_missing_image_argument_before_mutation
+test_rejects_mutable_image_argument_before_mutation
+test_has_hidden_batch_terminal_safety
 echo 'KSY staging provisioner tests passed'
