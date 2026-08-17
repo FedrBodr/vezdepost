@@ -77,6 +77,20 @@ valid_environment() {
   BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
 }
 
+inherited_application_environment() {
+  export GHCR_USERNAME='FedrBodr'
+  export GHCR_READ_TOKEN='github-read-token-secret'
+  export VITE_TELEGRAM_BOT_USERNAME='ksy_staging_bot'
+  export POSTGRES_PASSWORD='1111111111111111111111111111111111111111111111111111111111111111'
+  export SESSION_COOKIE_KEY='2222222222222222222222222222222222222222222222222222222222222222'
+  export TELEGRAM_BOT_TOKEN='123456:test_bot-token'
+  export TELEGRAM_WEBHOOK_SECRET='3333333333333333333333333333333333333333333333333333333333333333'
+  export ORDER_TELEGRAM_URL='https://t.me/ksy_orders'
+  export ADMIN_TELEGRAM_IDS='101,202'
+  export PLATPRICES_API_KEY='platprices_test-key'
+  export BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
+}
+
 valid_batch() {
   cat <<'BATCH'
 SESSION_COOKIE_KEY = 2222222222222222222222222222222222222222222222222222222222222222
@@ -299,6 +313,15 @@ test_rejects_batch_safety_failures_before_mutation() {
   assert_rejection empty-value BATCH_EMPTY_VALUE empty_platprices_batch
 }
 
+test_rejects_missing_batch_key_despite_inherited_environment() {
+  valid_environment
+  inherited_application_environment
+  assert_rejection missing-key-inherited-environment BATCH_MISSING_KEY missing_admin_batch
+  unset GHCR_USERNAME GHCR_READ_TOKEN VITE_TELEGRAM_BOT_USERNAME POSTGRES_PASSWORD \
+    SESSION_COOKIE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL \
+    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY BACKUP_ENCRYPTION_PASSPHRASE
+}
+
 test_rejects_missing_image_argument_before_mutation() {
   valid_environment
   assert_rejection image-required IMAGE_ARGUMENT_REQUIRED valid_batch __ABSENT__
@@ -311,7 +334,7 @@ test_rejects_mutable_image_argument_before_mutation() {
 }
 
 test_has_hidden_batch_terminal_safety() {
-  local exec_line cleanup_line disable_line read_loop_line
+  local exec_line cleanup_line disable_line read_loop_line cleanup_body
   grep -Fq 'exec 3</dev/tty' "$SCRIPT" ||
     fail 'production path does not open /dev/tty on descriptor 3'
   grep -Fq 'stty -echo' "$SCRIPT" ||
@@ -320,6 +343,11 @@ test_has_hidden_batch_terminal_safety() {
     fail 'production path does not use a batch read loop'
   grep -Fq 'trap cleanup_batch' "$SCRIPT" ||
     fail 'production path does not install batch cleanup'
+  cleanup_body=$(awk '/^cleanup_batch\(\)/,/^}/' "$SCRIPT")
+  grep -Fq 'exec 3>&-' <<<"$cleanup_body" ||
+    fail 'batch cleanup does not close the terminal descriptor'
+  grep -Fq 'rm -rf "$WORK_DIR"' <<<"$cleanup_body" ||
+    fail 'composed batch cleanup does not remove WORK_DIR'
   exec_line=$(grep -nF 'exec 3</dev/tty' "$SCRIPT" | head -1 | cut -d: -f1)
   cleanup_line=$(grep -nF 'trap cleanup_batch' "$SCRIPT" | head -1 | cut -d: -f1)
   disable_line=$(grep -nF 'stty -echo' "$SCRIPT" | head -1 | cut -d: -f1)
@@ -363,6 +391,7 @@ test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
 test_rejects_batch_safety_failures_before_mutation
+test_rejects_missing_batch_key_despite_inherited_environment
 test_rejects_missing_image_argument_before_mutation
 test_rejects_mutable_image_argument_before_mutation
 test_has_hidden_batch_terminal_safety

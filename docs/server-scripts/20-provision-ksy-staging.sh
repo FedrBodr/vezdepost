@@ -44,6 +44,7 @@ cleanup_batch() {
     BATCH_ECHO_DISABLED=0
   fi
   exec 3>&- 2>/dev/null || true
+  rm -rf "$WORK_DIR"
 }
 
 read_batch() {
@@ -109,8 +110,13 @@ read_batch() {
   (( terminated == 1 )) || fail BATCH_TERMINATOR_REQUIRED
 
   for required_key in "${required_keys[@]}"; do
-    if [[ -z "${!required_key:-}" ]]; then
-      fail BATCH_MISSING_KEY
+    if (( BASH_VERSINFO[0] >= 4 )); then
+      [[ -n "${seen[$required_key]+x}" ]] || fail BATCH_MISSING_KEY
+    else
+      case ":$seen_keys:" in
+        *":$required_key:"*) ;;
+        *) fail BATCH_MISSING_KEY ;;
+      esac
     fi
   done
 }
