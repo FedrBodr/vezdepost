@@ -13,8 +13,42 @@ ENV_FILE="$KSY_ROOT/.env"
 COMPOSE_FILE="$KSY_ROOT/docker-compose.yml"
 EVIDENCE_FILE="$KSY_ROOT/deployment-evidence.json"
 TEST_MODE=${KSY_PROVISION_TEST_MODE:-0}
+WORK_DIR=''
+BATCH_ECHO_DISABLED=0
+
+required_keys=(
+  VITE_TELEGRAM_BOT_USERNAME GHCR_USERNAME GHCR_READ_TOKEN
+  TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL
+  ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY POSTGRES_PASSWORD
+  SESSION_COOKIE_KEY BACKUP_ENCRYPTION_PASSPHRASE
+)
+
+for required_key in "${required_keys[@]}"; do
+  unset "$required_key"
+done
+
+trim_horizontal() {
+  local value=$1
+  value="${value#"${value%%[!$' \t']*}"}"
+  value="${value%"${value##*[!$' \t']}"}"
+  TRIMMED_VALUE=$value
+}
+
+restore_batch_echo() {
+  if [[ "$BATCH_ECHO_DISABLED" == 1 ]] && stty echo <&3 2>/dev/null; then
+    BATCH_ECHO_DISABLED=0
+    printf '\n' >/dev/tty 2>/dev/null || true
+  fi
+}
+
+cleanup_batch() {
+  restore_batch_echo
+  exec 3>&- 2>/dev/null || true
+  [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
+}
+
+trap cleanup_batch EXIT
 WORK_DIR=$(mktemp -d)
-trap 'rm -rf "$WORK_DIR"' EXIT
 
 fail() {
   printf 'KSY_PROVISION_FAILED %s\n' "$1" >&2
@@ -24,29 +58,6 @@ fail() {
 [[ $# -eq 2 && $1 == --image ]] || fail IMAGE_ARGUMENT_REQUIRED
 KSY_DEALS_IMAGE=$2
 
-required_keys=(
-  VITE_TELEGRAM_BOT_USERNAME GHCR_USERNAME GHCR_READ_TOKEN
-  TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL
-  ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY POSTGRES_PASSWORD
-  SESSION_COOKIE_KEY BACKUP_ENCRYPTION_PASSPHRASE
-)
-
-trim_horizontal() {
-  local value=$1
-  value="${value#"${value%%[!$' \t']*}"}"
-  value="${value%"${value##*[!$' \t']}"}"
-  TRIMMED_VALUE=$value
-}
-
-cleanup_batch() {
-  if [[ "${BATCH_ECHO_DISABLED:-0}" == 1 ]]; then
-    stty echo <&3 2>/dev/null || true
-    BATCH_ECHO_DISABLED=0
-  fi
-  exec 3>&- 2>/dev/null || true
-  rm -rf "$WORK_DIR"
-}
-
 read_batch() {
   local input_fd=0
   local line trimmed key value required_key key_allowed
@@ -55,9 +66,12 @@ read_batch() {
 
   if [[ "$TEST_MODE" != 1 ]]; then
     exec 3</dev/tty || fail TTY_REQUIRED
-    trap cleanup_batch EXIT INT TERM
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     stty -echo <&3 || fail TERMINAL_ECHO_DISABLE_FAILED
     BATCH_ECHO_DISABLED=1
+    printf 'Paste the eleven KSY secret assignments, then KSY_SECRETS_END:\n' >/dev/tty ||
+      fail TTY_REQUIRED
     input_fd=3
   fi
 
@@ -104,8 +118,7 @@ read_batch() {
   done
 
   if [[ "$input_fd" == 3 ]]; then
-    stty echo <&3 2>/dev/null || true
-    BATCH_ECHO_DISABLED=0
+    restore_batch_echo
   fi
   (( terminated == 1 )) || fail BATCH_TERMINATOR_REQUIRED
 

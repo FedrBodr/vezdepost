@@ -28,6 +28,9 @@ make_stubs() {
   mkdir -p "$bin_dir"
   cat > "$bin_dir/docker" <<'STUB'
 #!/usr/bin/env bash
+if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
+  env | grep -E '^(VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 if [[ "$1 $2" == 'network inspect' ]]; then
   [[ -f "$NETWORK_MARKER" ]]
@@ -37,15 +40,25 @@ fi
 STUB
   cat > "$bin_dir/curl" <<'STUB'
 #!/usr/bin/env bash
+if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
+  env | grep -E '^(VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+fi
 printf '%s\n' "$*" >> "$CURL_CALLS"
 [[ "${CURL_FAIL:-0}" != 1 ]]
+STUB
+  cat > "$bin_dir/mktemp" <<'STUB'
+#!/usr/bin/env bash
+if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
+  env | grep -E '^(VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+fi
+exec /usr/bin/mktemp "$@"
 STUB
   cat > "$bin_dir/node" <<'STUB'
 #!/usr/bin/env bash
 echo 'host Node must not be required by the provisioner' >&2
 exit 97
 STUB
-  chmod +x "$bin_dir/docker" "$bin_dir/curl" "$bin_dir/node"
+  chmod +x "$bin_dir/docker" "$bin_dir/curl" "$bin_dir/mktemp" "$bin_dir/node"
 }
 
 write_staged_compose() {
@@ -322,6 +335,220 @@ test_rejects_missing_batch_key_despite_inherited_environment() {
     ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY BACKUP_ENCRYPTION_PASSPHRASE
 }
 
+test_clears_inherited_application_secrets_before_any_child_process() {
+  local case_dir="$TMP_DIR/inherited-environment-sanitized"
+  local output="$case_dir/output"
+  mkdir -p "$case_dir"
+  valid_environment
+  inherited_application_environment
+  write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+  : > "$case_dir/child.env"
+
+  CHILD_ENV_CAPTURE="$case_dir/child.env" \
+    run_case "$case_dir" "$output"
+
+  [[ ! -s "$case_dir/child.env" ]] ||
+    fail 'a child process inherited an application secret'
+  assert_synthetic_secrets_absent "$output"
+  unset GHCR_USERNAME GHCR_READ_TOKEN VITE_TELEGRAM_BOT_USERNAME POSTGRES_PASSWORD \
+    SESSION_COOKIE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL \
+    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY BACKUP_ENCRYPTION_PASSPHRASE
+}
+
+make_pty_stty_stub() {
+  local bin_dir=$1
+  local restore_mode=$2
+  cat > "$bin_dir/stty" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == -echo ]]; then
+  /bin/stty "$@" || exit $?
+  printf '[ECHO_OFF]\n'
+  exit 0
+fi
+if [[ "$1" == echo ]]; then
+  count_file="${PTY_STTY_COUNT:?}"
+  count=0
+  [[ -f "$count_file" ]] && count=$(cat "$count_file")
+  count=$((count + 1))
+  printf '%s' "$count" > "$count_file"
+  if [[ "${PTY_RESTORE_MODE:-normal}" == retry && "$count" == 1 ]]; then
+    printf 'echo-failed\n' >> "${PTY_STTY_EVENTS:?}"
+    exit 1
+  fi
+  /bin/stty "$@" || exit $?
+  printf 'echo-restored\n' >> "${PTY_STTY_EVENTS:?}"
+  exit 0
+fi
+exec /bin/stty "$@"
+STUB
+  chmod +x "$bin_dir/stty"
+  : > "$bin_dir/stty-events"
+  : > "$bin_dir/stty-count"
+  export PTY_RESTORE_MODE=$restore_mode
+  export PTY_STTY_EVENTS="$bin_dir/stty-events"
+  export PTY_STTY_COUNT="$bin_dir/stty-count"
+}
+
+make_unprivileged_pty_script() {
+  local case_dir=$1
+  local pty_script="$case_dir/provisioner-pty.sh"
+  sed \
+    -e 's/\[\[ "$TEST_MODE" == 1 || $EUID -eq 0 \]\] || fail ROOT_REQUIRED/true/' \
+    -e 's/install -o root -g root -m /install -m /' \
+    "$SCRIPT" > "$pty_script"
+  chmod +x "$pty_script"
+  printf '%s\n' "$pty_script"
+}
+
+run_pty_case() {
+  local case_dir=$1
+  local output=$2
+  local batch_fn=${3:-valid_batch}
+  local restore_mode=${4:-normal}
+  local pty_script bin_dir
+  bin_dir="$case_dir/bin"
+  mkdir -p "$case_dir"
+  make_stubs "$bin_dir"
+  make_pty_stty_stub "$bin_dir" "$restore_mode"
+  pty_script=$(make_unprivileged_pty_script "$case_dir")
+  : > "$case_dir/docker.calls"
+  : > "$case_dir/curl.calls"
+  write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+
+  PTY_SCRIPT="$pty_script" \
+    PTY_BATCH="$("$batch_fn")"$'\n' \
+    PTY_IMAGE="$VALID_IMAGE" \
+    PATH="$bin_dir:$PATH" \
+    DOCKER_CALLS="$case_dir/docker.calls" \
+    CURL_CALLS="$case_dir/curl.calls" \
+    NETWORK_MARKER="$case_dir/network.created" \
+    KSY_ROOT="$case_dir/opt/ksy-deals" \
+    KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
+    STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
+  expect > "$output" 2>&1 <<'EXPECT' && return 0
+log_user 1
+set timeout 10
+spawn -noecho bash $env(PTY_SCRIPT) --image $env(PTY_IMAGE)
+expect {
+  -exact "Paste the eleven KSY secret assignments, then KSY_SECRETS_END:" {}
+  timeout { exit 124 }
+  eof { exit 125 }
+}
+send -- $env(PTY_BATCH)
+expect {
+  eof {}
+  timeout { exit 126 }
+}
+lassign [wait] pid spawnid os_error status
+if {$os_error != 0} { exit 127 }
+exit $status
+EXPECT
+  local status=$?
+  printf 'PTY harness exited %s; transcript markers follow:\n' "$status" >&2
+  rg -n 'ECHO_OFF|Paste the eleven|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED' \
+    "$output" >&2 || true
+  return "$status"
+}
+
+test_pty_prompt_follows_echo_off_and_normal_path_restores_echo() {
+  local case_dir="$TMP_DIR/pty-normal"
+  local output="$case_dir/output"
+  valid_environment
+  run_pty_case "$case_dir" "$output"
+
+  local transcript
+  transcript=$(<"$output")
+  if [[ "$transcript" != *'[ECHO_OFF]'*'Paste the eleven KSY secret assignments, then KSY_SECRETS_END:'* ]]; then
+    rg -n 'ECHO_OFF|Paste the eleven|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
+    fail 'batch readiness prompt did not follow successful echo disable'
+  fi
+  grep -qx 'echo-restored' "$case_dir/bin/stty-events" ||
+    fail 'normal PTY path did not restore echo'
+  assert_synthetic_secrets_absent "$output"
+}
+
+test_pty_parse_failure_restores_echo() {
+  local case_dir="$TMP_DIR/pty-parse-failure"
+  local output="$case_dir/output"
+  valid_environment
+  if run_pty_case "$case_dir" "$output" malformed_line_batch 2>/dev/null; then
+    fail 'malformed PTY batch was accepted'
+  fi
+  grep -qx 'echo-restored' "$case_dir/bin/stty-events" ||
+    fail 'parse failure did not restore echo'
+}
+
+test_pty_failed_first_echo_restore_is_retried_by_exit_cleanup() {
+  local case_dir="$TMP_DIR/pty-restore-retry"
+  local output="$case_dir/output"
+  valid_environment
+  run_pty_case "$case_dir" "$output" valid_batch retry
+
+  grep -qx 'echo-failed' "$case_dir/bin/stty-events" ||
+    fail 'test did not force the first normal echo restoration failure'
+  grep -qx 'echo-restored' "$case_dir/bin/stty-events" ||
+    fail 'EXIT cleanup did not retry terminal echo restoration'
+  assert_eq 2 "$(<"$case_dir/bin/stty-count")" \
+    'failed normal echo restoration must be retried once during EXIT cleanup'
+}
+
+test_pty_signals_terminate_before_mutation() {
+  local signal_name case_dir output pty_script bin_dir status
+  for signal_name in INT TERM; do
+    case_dir="$TMP_DIR/pty-signal-$signal_name"
+    output="$case_dir/output"
+    bin_dir="$case_dir/bin"
+    mkdir -p "$case_dir"
+    valid_environment
+    make_stubs "$bin_dir"
+    make_pty_stty_stub "$bin_dir" normal
+    pty_script=$(make_unprivileged_pty_script "$case_dir")
+    : > "$case_dir/docker.calls"
+    : > "$case_dir/curl.calls"
+    write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+
+    set +e
+    PTY_SCRIPT="$pty_script" \
+      PTY_IMAGE="$VALID_IMAGE" \
+      PTY_SIGNAL="$signal_name" \
+      PATH="$bin_dir:$PATH" \
+      DOCKER_CALLS="$case_dir/docker.calls" \
+      CURL_CALLS="$case_dir/curl.calls" \
+      NETWORK_MARKER="$case_dir/network.created" \
+      KSY_ROOT="$case_dir/opt/ksy-deals" \
+      KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
+      STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
+      expect > "$output" 2>&1 <<'EXPECT'
+log_user 1
+set timeout 5
+spawn -noecho bash $env(PTY_SCRIPT) --image $env(PTY_IMAGE)
+expect -exact "Paste the eleven KSY secret assignments, then KSY_SECRETS_END:"
+if {$env(PTY_SIGNAL) == "INT"} {
+  send -- "\003"
+} else {
+  exec kill -TERM [exp_pid]
+}
+expect {
+  eof {}
+  timeout { exit 124 }
+}
+lassign [wait] pid spawnid os_error status
+if {$os_error != 0} { exit 127 }
+exit $status
+EXPECT
+    status=$?
+    set -e
+    assert_eq "$([[ "$signal_name" == INT ]] && printf 130 || printf 143)" "$status" \
+      "$signal_name must terminate with its signal-appropriate status"
+    [[ ! -e "$case_dir/opt/ksy-deals/.env" ]] ||
+      fail "$signal_name created .env after interruption"
+    [[ ! -s "$case_dir/docker.calls" ]] ||
+      fail "$signal_name ran Docker after interruption"
+  done
+}
+
 test_rejects_missing_image_argument_before_mutation() {
   valid_environment
   assert_rejection image-required IMAGE_ARGUMENT_REQUIRED valid_batch __ABSENT__
@@ -392,7 +619,12 @@ test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
 test_rejects_batch_safety_failures_before_mutation
 test_rejects_missing_batch_key_despite_inherited_environment
+test_clears_inherited_application_secrets_before_any_child_process
 test_rejects_missing_image_argument_before_mutation
 test_rejects_mutable_image_argument_before_mutation
 test_has_hidden_batch_terminal_safety
+test_pty_prompt_follows_echo_off_and_normal_path_restores_echo
+test_pty_parse_failure_restores_echo
+test_pty_failed_first_echo_restore_is_retried_by_exit_cleanup
+test_pty_signals_terminate_before_mutation
 echo 'KSY staging provisioner tests passed'
