@@ -1,15 +1,14 @@
 import { readFileSync } from 'fs';
-import axios from 'axios';
+import { fetchRemoteBuffer } from './ssrf.safe.fetch';
+import { resolveAppOwnedLocalUploadFilePath } from './local.upload.path';
 
 export const readOrFetch = async (path: string) => {
-  if (path.indexOf('http') === 0) {
-    return (
-      await axios({
-        url: path,
-        method: 'GET',
-        responseType: 'arraybuffer',
-      })
-    ).data;
+  if (/^https?:\/\//i.test(path)) {
+    const localFile = resolveAppOwnedLocalUploadFilePath(path);
+    if (localFile) {
+      return readFileSync(localFile);
+    }
+    return fetchRemoteBuffer(path);
   }
 
   return readFileSync(path);

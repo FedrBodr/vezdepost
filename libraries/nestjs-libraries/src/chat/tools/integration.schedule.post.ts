@@ -215,8 +215,7 @@ If the tools return errors, you would need to rerun it with the right parameters
             throw new Error('Integration not found');
           }
 
-          const output = await this._postsService.createPost(
-            organizationId,
+          const body = await this._postsService.mapTypeToPost(
             {
               date: post.date,
               type: post.type as 'draft' | 'schedule' | 'now',
@@ -242,14 +241,19 @@ If the tools return errors, you would need to rerun it with the right parameters
                     content: p.content,
                     id: makeId(10),
                     delay: 0,
-                    image: p.attachments.map((p: any) => ({
+                    image: p.attachments.map((path: string) => ({
                       id: makeId(10),
-                      path: p,
+                      path,
                     })),
                   })),
                 },
               ],
             },
+            organizationId
+          );
+          const output = await this._postsService.createPost(
+            organizationId,
+            body,
             'MCP'
           );
           finalOutput.push(...output);

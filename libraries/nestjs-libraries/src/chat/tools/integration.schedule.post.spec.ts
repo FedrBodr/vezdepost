@@ -25,6 +25,7 @@ const socialPost = {
 function createTool(validation: any) {
   const postsService = {
     validatePosts: vi.fn().mockResolvedValue([validation]),
+    mapTypeToPost: vi.fn().mockImplementation(async (body) => body),
     createPost: vi
       .fn()
       .mockResolvedValue([{ postId: 'post-1', integration: 'integration-1' }]),
@@ -88,5 +89,41 @@ describe('IntegrationSchedulePostTool validation', () => {
       output: [{ postId: 'post-1', integration: 'integration-1' }],
     });
     expect(postsService.createPost).toHaveBeenCalledOnce();
+  });
+
+  it('DTO-sanitizes the chat shape before the shared persistence guard', async () => {
+    const { tool, postsService } = createTool({
+      ...baseValidation,
+      contentError: '',
+    });
+    postsService.mapTypeToPost.mockImplementationOnce(async (body) => ({
+      ...body,
+      posts: body.posts.map((post: any) => ({
+        ...post,
+        value: post.value.map((value: any) => ({
+          ...value,
+          content: '<p>sanitized chat content</p>',
+        })),
+      })),
+    }));
+
+    await execute(tool);
+
+    expect(postsService.mapTypeToPost).toHaveBeenCalledOnce();
+    expect(postsService.createPost).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({
+        posts: [
+          expect.objectContaining({
+            value: [
+              expect.objectContaining({
+                content: '<p>sanitized chat content</p>',
+              }),
+            ],
+          }),
+        ],
+      }),
+      'MCP'
+    );
   });
 });

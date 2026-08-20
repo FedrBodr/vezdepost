@@ -523,4 +523,75 @@ describe('PostActivity platform formatting', () => {
     ).rejects.toThrow('Caption exceeds the 2200-UTF-16-code-unit limit.');
     expect(provider.post).not.toHaveBeenCalled();
   });
+
+  it.each(['post', 'comment'] as const)(
+    'blocks provider %s when a TikTok conversion targets metadata media',
+    async (method) => {
+      vi.stubEnv('STRIPE_SECRET_KEY', '');
+      const provider = {
+        post: vi.fn().mockResolvedValue([]),
+        comment: vi.fn().mockResolvedValue([]),
+        checkValidity: vi.fn().mockResolvedValue(true),
+        maxLength: vi.fn().mockReturnValue(2_200),
+        editor: 'normal' as const,
+        convertToJPEG: true,
+      };
+      const integrationManager = new IntegrationManager();
+      vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+        provider as any
+      );
+      const postService = new PostsService(
+        { updateImages: vi.fn() } as any,
+        integrationManager,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+      vi.spyOn(postService, 'updateTags').mockResolvedValue([
+        {
+          id: 'post-1',
+          content: '<p>safe content</p>',
+          settings: '{}',
+          image: JSON.stringify([
+            {
+              path: 'http://169.254.169.254/latest/meta-data/photo.png',
+              type: 'video',
+            },
+          ]),
+        } as any,
+      ]);
+      const activity = new PostActivity(
+        postService,
+        {} as any,
+        integrationManager,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+      const integration = {
+        id: 'integration-1',
+        internalId: 'profile',
+        token: 'token',
+        providerIdentifier: 'tiktok',
+        organizationId: 'org-1',
+      } as any;
+
+      const request =
+        method === 'post'
+          ? activity.postSocial(integration, [{ id: 'post-1' } as any])
+          : activity.postComment('remote-post', undefined, integration, [
+              { id: 'post-1' } as any,
+            ]);
+
+      await expect(request).rejects.toThrow('Unable to prepare media safely.');
+      expect(provider.post).not.toHaveBeenCalled();
+      expect(provider.comment).not.toHaveBeenCalled();
+    }
+  );
 });

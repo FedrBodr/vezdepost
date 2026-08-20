@@ -189,10 +189,11 @@ export class PostsController {
     @GetOrgFromRequest() org: Organization,
     @Body() rawBody: any
   ) {
+    const body = await this._postsService.mapTypeToPost(rawBody, org.id);
     // Server-side validation — never trust the client to have validated.
     const validation = await this._postsService.validatePosts(
       org.id,
-      rawBody?.posts || []
+      body.posts
     );
 
     const fail = (
@@ -208,13 +209,12 @@ export class PostsController {
 
     const failure = selectPostValidationFailure(
       validation,
-      rawBody?.type === 'draft'
+      body.type === 'draft'
     );
     if (failure) {
       fail(failure.item, this.validationError(failure));
     }
 
-    const body = await this._postsService.mapTypeToPost(rawBody, org.id);
     return this._postsService.createPost(org.id, body, 'WEB');
   }
 

@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PublicIntegrationsController } from './public.integrations.controller';
 
 const org = { id: 'org-1' } as any;
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 const sharedInvalidItem = {
   identifier: 'pinterest',
@@ -81,6 +85,29 @@ describe('PublicIntegrationsController.createPost validation', () => {
         type: 'draft',
         posts: [{ content: 'Pin' }],
       })
+    ).resolves.toEqual([{ postId: 'post-1' }]);
+    expect(postsService.createPost).toHaveBeenCalledOnce();
+  });
+
+  it('does not reapply substring domain checks after DTO path validation', async () => {
+    vi.stubEnv('RESTRICT_UPLOAD_DOMAINS', 'uploads.example.com');
+    const clean = { ...sharedInvalidItem, contentError: '' };
+    const { controller, postsService } = createController([clean]);
+    postsService.mapTypeToPost.mockResolvedValue({
+      type: 'schedule',
+      posts: [
+        {
+          value: [
+            {
+              image: [{ id: 'media-1', path: 'uploads/local-photo.jpg' }],
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      controller.createPost(org, { type: 'schedule', posts: [] })
     ).resolves.toEqual([{ postId: 'post-1' }]);
     expect(postsService.createPost).toHaveBeenCalledOnce();
   });

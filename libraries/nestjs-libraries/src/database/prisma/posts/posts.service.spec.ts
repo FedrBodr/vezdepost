@@ -1,4 +1,5 @@
-import axios from 'axios';
+import * as safeRemoteFetch from '@gitroom/helpers/utils/ssrf.safe.fetch';
+import * as mediaReader from '@gitroom/helpers/utils/read.or.fetch';
 import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
@@ -547,6 +548,49 @@ describe('PostsService.validatePosts', () => {
 });
 
 describe('PostsService.updateMedia', () => {
+  it('normalizes a legacy null media list to an empty array', async () => {
+    const service = createService();
+
+    await expect(service.updateMedia('post-1', null as any)).resolves.toEqual(
+      []
+    );
+  });
+
+  it.each([
+    { label: 'non-array list', media: { path: 'photo.jpg' } },
+    { label: 'null item', media: [null] },
+    { label: 'missing path and id', media: [{ type: 'video' }] },
+  ])('rejects malformed media: $label', async ({ media }) => {
+    const service = createService();
+
+    await expect(service.updateMedia('post-1', media as any)).rejects.toThrow(
+      /invalid media/i
+    );
+  });
+
+  it('fails closed when an ID-only legacy lookup fails', async () => {
+    const service = createService({
+      mediaService: {
+        getMediaById: vi.fn().mockRejectedValue(new Error('database details')),
+      },
+    });
+
+    await expect(
+      service.updateMedia('post-1', [{ id: 'missing-media', type: 'video' }])
+    ).rejects.toThrow('Unable to prepare media safely.');
+  });
+
+  it('confines a legacy relative media path beneath the upload root', async () => {
+    vi.stubEnv('UPLOAD_DIRECTORY', '/var/postiz/uploads');
+    const service = createService();
+
+    const [normalized] = await service.updateMedia('post-1', [
+      { path: '2026/08/20/photo.png' },
+    ]);
+
+    expect(normalized.path).toBe('/var/postiz/uploads/2026/08/20/photo.png');
+  });
+
   it('preserves video type through the worker media normalization path', async () => {
     const repository = { updateImages: vi.fn() };
     const mediaService = {
@@ -602,9 +646,9 @@ describe('PostsService.updateMedia', () => {
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
       'base64'
     );
-    const axiosMock = vi
-      .spyOn(axios, 'get')
-      .mockResolvedValue({ data: png } as any);
+    const remoteFetch = vi
+      .spyOn(safeRemoteFetch, 'fetchRemoteBuffer')
+      .mockResolvedValue(png);
     const uploadFile = vi
       .spyOn((service as any).storage, 'uploadFile')
       .mockResolvedValue({
@@ -622,16 +666,226 @@ describe('PostsService.updateMedia', () => {
       type: 'image',
       path: 'https://media.test/converted.jpg',
     });
-    expect(axiosMock).toHaveBeenCalledWith(
+    expect(remoteFetch).toHaveBeenCalledWith(
       'https://media.test/forged-video.PNG',
-      { responseType: 'arraybuffer' }
+      {
+        maxBytes: safeRemoteFetch.SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+        bodyTimeoutMs: safeRemoteFetch.SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+      }
     );
     expect(uploadFile).toHaveBeenCalledOnce();
     expect(repository.updateImages).toHaveBeenCalledOnce();
   });
+
+  it('reads an app-owned local-storage PNG from the confined upload root', async () => {
+    vi.stubEnv('STORAGE_PROVIDER', 'local');
+    vi.stubEnv('FRONTEND_URL', 'http://localhost:4007');
+    vi.stubEnv('UPLOAD_DIRECTORY', '/uploads');
+    const repository = { updateImages: vi.fn() };
+    const service = createService({ repository });
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    );
+    const localRead = vi
+      .spyOn(mediaReader, 'readOrFetch')
+      .mockResolvedValue(png);
+    const remoteFetch = vi
+      .spyOn(safeRemoteFetch, 'fetchRemoteBuffer')
+      .mockRejectedValue(new Error('localhost must not be fetched remotely'));
+    vi.spyOn((service as any).storage, 'uploadFile').mockResolvedValue({
+      path: 'http://localhost:4007/uploads/2026/08/20/converted.jpg',
+      originalname: 'converted.jpg',
+    });
+
+    await expect(
+      service.updateMedia(
+        'post-1',
+        [
+          {
+            path: 'http://localhost:4007/uploads/2026/08/20/photo.png',
+          },
+        ],
+        true
+      )
+    ).resolves.toEqual([
+      expect.objectContaining({
+        path: 'http://localhost:4007/uploads/2026/08/20/converted.jpg',
+        type: 'image',
+      }),
+    ]);
+    expect(localRead).toHaveBeenCalledWith('/uploads/2026/08/20/photo.png');
+    expect(remoteFetch).not.toHaveBeenCalled();
+  });
+
+  it('does not resurrect a forged type when PNG conversion fails', async () => {
+    const service = createService();
+    vi.spyOn(safeRemoteFetch, 'fetchRemoteBuffer').mockRejectedValue(
+      new Error('blocked private address details')
+    );
+
+    await expect(
+      service.updateMedia(
+        'post-1',
+        [{ path: 'https://media.test/photo.png', type: 'video' }],
+        true
+      )
+    ).rejects.toThrow('Unable to prepare media safely.');
+  });
+
+  it('fails closed when converted media cannot be uploaded', async () => {
+    const service = createService();
+    vi.spyOn(safeRemoteFetch, 'fetchRemoteBuffer').mockResolvedValue(
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64'
+      )
+    );
+    vi.spyOn((service as any).storage, 'uploadFile').mockRejectedValue(
+      new Error('storage details')
+    );
+
+    await expect(
+      service.updateMedia(
+        'post-1',
+        [{ path: 'https://media.test/photo.png', type: 'video' }],
+        true
+      )
+    ).rejects.toThrow('Unable to prepare media safely.');
+  });
+
+  it('fails closed when normalized media cannot be persisted', async () => {
+    vi.stubEnv('UPLOAD_DIRECTORY', '/uploads');
+    const service = createService({
+      repository: {
+        updateImages: vi.fn().mockRejectedValue(new Error('database details')),
+      },
+      mediaService: {
+        getMediaById: vi.fn().mockResolvedValue({
+          id: 'stored-video',
+          path: 'uploads/video.mp4',
+          type: 'image',
+        }),
+      },
+    });
+
+    await expect(
+      service.updateMedia('post-1', [{ id: 'stored-video' }])
+    ).rejects.toThrow('Unable to prepare media safely.');
+  });
 });
 
 describe('PostsService.createPost authored persistence', () => {
+  const createFinalAuthorityService = ({
+    transformedContent,
+    repository = {
+      createOrUpdatePost: vi.fn().mockResolvedValue({
+        posts: [{ id: 'post-1', state: 'QUEUE' }],
+      }),
+    },
+  }: {
+    transformedContent: string;
+    repository?: any;
+  }) => {
+    const provider = {
+      identifier: 'slack',
+      editor: 'normal' as const,
+      maxLength: vi.fn().mockReturnValue(40_000),
+      stripLinks: vi.fn().mockReturnValue(false),
+      checkValidity: vi.fn().mockResolvedValue(true),
+    };
+    const integration = {
+      id: 'slack-1',
+      providerIdentifier: 'slack',
+      name: 'Slack',
+      additionalSettings: '[]',
+    } as any;
+    const integrationManager = new IntegrationManager();
+    vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+      provider as any
+    );
+    const resolveCapabilitiesV2 = vi.spyOn(
+      integrationManager,
+      'resolveCapabilitiesV2'
+    );
+    const service = createService({
+      repository,
+      integrationManager,
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue(integration),
+      },
+      shortLinkService: {
+        convertTextToShortLinks: vi
+          .fn()
+          .mockResolvedValue([transformedContent]),
+      },
+    });
+    vi.spyOn(service as any, 'startWorkflow').mockResolvedValue(undefined);
+
+    return { service, repository, resolveCapabilitiesV2 };
+  };
+
+  const postBody = (content: string, image: any[] = []) => ({
+    type: 'schedule' as const,
+    shortLink: true,
+    date: '2026-08-20T12:00:00Z',
+    tags: [],
+    posts: [
+      {
+        integration: { id: 'slack-1' },
+        settings: { __type: 'slack' } as any,
+        value: [{ id: 'post-1', content, delay: 0, image }],
+      },
+    ],
+  });
+
+  it.each(['WEB', 'API', 'MCP'] as const)(
+    'validates and writes the identical transformed content for %s creation',
+    async (creationMethod) => {
+      const transformed = '<p>final short-link content</p>';
+      const { service, repository, resolveCapabilitiesV2 } =
+        createFinalAuthorityService({ transformedContent: transformed });
+
+      await service.createPost(
+        'org-1',
+        postBody('<p>original https://example.com/path</p>'),
+        creationMethod
+      );
+
+      expect(resolveCapabilitiesV2).toHaveBeenCalledOnce();
+      expect(repository.createOrUpdatePost).toHaveBeenCalledOnce();
+      expect(
+        repository.createOrUpdatePost.mock.calls[0][3].value[0].content
+      ).toBe(transformed);
+    }
+  );
+
+  it('blocks a transformed over-limit post before repository write', async () => {
+    const { service, repository } = createFinalAuthorityService({
+      transformedContent: `<p>${'a'.repeat(40_001)}</p>`,
+    });
+
+    await expect(
+      service.createPost(
+        'org-1',
+        postBody('<p>short before transformation</p>'),
+        'WEB'
+      )
+    ).rejects.toThrow('Body exceeds the 40000-UTF-16-code-unit limit.');
+    expect(repository.createOrUpdatePost).not.toHaveBeenCalled();
+  });
+
+  it('returns a controlled media validation error before repository write', async () => {
+    const { service, repository } = createFinalAuthorityService({
+      transformedContent: '<p>content</p>',
+    });
+
+    await expect(
+      service.createPost('org-1', postBody('<p>content</p>', [null]), 'MCP')
+    ).rejects.toThrow(/invalid media/i);
+    expect(repository.createOrUpdatePost).not.toHaveBeenCalled();
+  });
+
   it.each(['draft', 'now'] as const)(
     'preserves media authored HTML byte-for-byte for %s posts while skipping short links',
     async (type) => {
@@ -644,12 +898,22 @@ describe('PostsService.createPost authored persistence', () => {
         }),
       };
       const shortLinkService = { convertTextToShortLinks: vi.fn() };
+      const integrationManager = new IntegrationManager();
+      vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue({
+        editor: 'normal',
+        maxLength: () => 280,
+        stripLinks: () => true,
+      } as any);
       const service = createService({
         repository,
         shortLinkService,
-        integrationManager: {
-          getSocialIntegration: vi.fn().mockReturnValue({
-            stripLinks: () => true,
+        integrationManager,
+        integrationService: {
+          getIntegrationById: vi.fn().mockResolvedValue({
+            id: 'x-1',
+            providerIdentifier: 'x',
+            name: 'X',
+            additionalSettings: '[]',
           }),
         },
       });

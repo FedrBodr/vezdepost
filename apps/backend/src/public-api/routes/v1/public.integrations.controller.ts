@@ -201,24 +201,6 @@ export class PublicIntegrationsController {
     );
     body.type = rawBody.type;
 
-    if (
-      process.env.RESTRICT_UPLOAD_DOMAINS &&
-      body.posts.some((p) =>
-        p.value.some((a) =>
-          a.image.some(
-            (i) => i.path.indexOf(process.env.RESTRICT_UPLOAD_DOMAINS) === -1
-          )
-        )
-      )
-    ) {
-      throw new HttpException(
-        {
-          msg: `All media must be uploaded through our upload API route and contain the domain: ${process.env.RESTRICT_UPLOAD_DOMAINS}`,
-        },
-        400
-      );
-    }
-
     // Server-side validation — same rules as the dashboard, surfaced as a
     // readable 400 (see PostValidationExceptionFilter).
     const validation = await this._postsService.validatePosts(

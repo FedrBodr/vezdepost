@@ -6,7 +6,10 @@ const org = { id: 'org-1' } as any;
 function createController(validation: any[]) {
   const postsService = {
     validatePosts: vi.fn().mockResolvedValue(validation),
-    mapTypeToPost: vi.fn().mockResolvedValue({ mapped: true }),
+    mapTypeToPost: vi.fn().mockImplementation(async (body) => ({
+      ...body,
+      mapped: true,
+    })),
     createPost: vi.fn().mockResolvedValue({ created: true }),
   };
   const controller = new PostsController(
@@ -29,7 +32,7 @@ const sharedInvalidItem = {
 };
 
 describe('PostsController.createPost shared content validation', () => {
-  it('rejects non-draft shared content errors before mapping or creating', async () => {
+  it('maps and sanitizes before rejecting non-draft shared content errors', async () => {
     const { controller, postsService } = createController([sharedInvalidItem]);
 
     await expect(
@@ -41,7 +44,13 @@ describe('PostsController.createPost shared content validation', () => {
         error: 'This platform requires media.',
       },
     });
-    expect(postsService.mapTypeToPost).not.toHaveBeenCalled();
+    expect(postsService.mapTypeToPost).toHaveBeenCalledOnce();
+    expect(postsService.validatePosts).toHaveBeenCalledWith('org-1', [
+      { content: 'Pin' },
+    ]);
+    expect(postsService.mapTypeToPost.mock.invocationCallOrder[0]).toBeLessThan(
+      postsService.validatePosts.mock.invocationCallOrder[0]
+    );
     expect(postsService.createPost).not.toHaveBeenCalled();
   });
 
@@ -63,7 +72,7 @@ describe('PostsController.createPost shared content validation', () => {
         error: 'post is too long, please fix it',
       },
     });
-    expect(postsService.mapTypeToPost).not.toHaveBeenCalled();
+    expect(postsService.mapTypeToPost).toHaveBeenCalledOnce();
     expect(postsService.createPost).not.toHaveBeenCalled();
   });
 
@@ -77,7 +86,7 @@ describe('PostsController.createPost shared content validation', () => {
     expect(postsService.mapTypeToPost).toHaveBeenCalledTimes(1);
     expect(postsService.createPost).toHaveBeenCalledWith(
       'org-1',
-      { mapped: true },
+      expect.objectContaining({ mapped: true }),
       'WEB'
     );
   });
