@@ -169,6 +169,29 @@ describe('Batch 0 platform capability resolution', () => {
     expect(resolved.diagnostics).toEqual([]);
   });
 
+  it('normalizes accepted runtime text-limit provenance to runtime', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('mastodon', [], {
+        now: '2026-08-20T10:30:00.000Z',
+        runtimeOverlay: {
+          observedAt: '2026-08-20T10:00:00.000Z',
+          textLimits: {
+            body: {
+              max: 777,
+              unit: 'graphemes',
+              source: 'platform',
+            },
+          },
+        },
+      })
+    );
+
+    expect(resolved.fields[0].limit).toMatchObject({
+      max: 777,
+      source: 'runtime',
+    });
+  });
+
   it('rejects stale Mastodon runtime data using the injected clock', () => {
     const resolved = resolvePlatformCapabilityV2(
       ctx('mastodon', [], {
@@ -194,6 +217,31 @@ describe('Batch 0 platform capability resolution', () => {
       expect.objectContaining({ code: 'runtime-data-missing' })
     );
     expect(resolved.runtimeOverlay).toBeUndefined();
+  });
+
+  it('rejects stale Mastodon runtime data using the real clock by default', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('mastodon', [], {
+        runtimeOverlay: {
+          observedAt: '2000-01-01T00:00:00.000Z',
+          textLimits: {
+            body: {
+              max: 777,
+              unit: 'graphemes',
+              source: 'runtime',
+            },
+          },
+        },
+      })
+    );
+
+    expect(resolved.fields[0].limit).toMatchObject({
+      max: 500,
+      source: 'application-safety',
+    });
+    expect(resolved.diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'runtime-data-missing' })
+    );
   });
 
   it('does not mutate frozen settings, media, or runtime overlay inputs', () => {

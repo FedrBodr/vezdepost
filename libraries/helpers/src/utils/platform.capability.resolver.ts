@@ -152,16 +152,12 @@ const isRuntimeOverlayFresh = (
   profile: PlatformCapabilityProfileV2,
   context: CapabilityResolutionContext
 ): boolean => {
-  if (
-    !context.runtimeOverlay ||
-    !profile.runtimeMaxAgeSeconds ||
-    !context.now
-  ) {
+  if (!context.runtimeOverlay || !profile.runtimeMaxAgeSeconds) {
     return !!context.runtimeOverlay;
   }
 
   const observedAt = Date.parse(context.runtimeOverlay.observedAt);
-  const now = Date.parse(context.now);
+  const now = context.now ? Date.parse(context.now) : Date.now();
   return (
     Number.isFinite(observedAt) &&
     Number.isFinite(now) &&
@@ -200,11 +196,20 @@ const applyRuntimeOverlay = (
 
   const overlay = context.runtimeOverlay!;
   const runtimeKeys = profile.runtimeKeys ?? [];
+  const textLimits = overlay.textLimits
+    ? Object.fromEntries(
+        Object.entries(overlay.textLimits).map(([key, limit]) => [
+          key,
+          { ...limit, source: 'runtime' as const },
+        ])
+      )
+    : undefined;
+  const runtimeOverlay = textLimits ? { ...overlay, textLimits } : overlay;
   const fields =
-    runtimeKeys.includes('text-limit') && overlay.textLimits
+    runtimeKeys.includes('text-limit') && textLimits
       ? variant.fields.map((field) => {
-          const limit = overlay.textLimits?.[field.key];
-          return limit ? { ...field, limit: { ...limit } } : field;
+          const limit = textLimits[field.key];
+          return limit ? { ...field, limit } : field;
         })
       : variant.fields;
   const media =
@@ -214,7 +219,7 @@ const applyRuntimeOverlay = (
 
   return {
     variant: { ...variant, fields, media },
-    runtimeOverlay: overlay,
+    runtimeOverlay,
     runtimeObservedAt: overlay.observedAt,
     diagnostics: [],
   };
