@@ -20,6 +20,7 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 import { authorizeMediaSource } from '@gitroom/helpers/utils/media.source';
+import { collectPublicationMediaSourcePaths } from './publication.media.sources';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
@@ -276,7 +277,14 @@ export class PostActivity {
             )) as MediaContent[])
           : normalizedMedia;
 
-        await Promise.all(media.map(({ path }) => authorizeMediaSource(path)));
+        const sourcePaths = collectPublicationMediaSourcePaths({
+          providerIdentifier: integration.providerIdentifier,
+          settings,
+          media,
+        });
+        await Promise.all(
+          sourcePaths.map((path) => authorizeMediaSource(path))
+        );
         const fields = analysis.fields;
         return {
           id: post.id,

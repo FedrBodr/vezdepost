@@ -13,7 +13,10 @@ import {
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { lookup } from 'mime-types';
-import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
+import {
+  authorizeMediaSource,
+  readMediaSourceBuffer,
+} from '@gitroom/helpers/utils/media.source';
 import WebSocket from 'ws';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Integration } from '@prisma/client';
@@ -205,6 +208,17 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     postDetails: PostDetails<RedditSettingsDto>[]
   ): Promise<PostResponse[]> {
     const [post] = postDetails;
+
+    if (
+      post.settings.subreddit.some(({ value }) => value.type === 'media') &&
+      hasExtension(post.media[0].path, 'mp4')
+    ) {
+      const thumbnail = post.media[0].thumbnail;
+      if (typeof thumbnail !== 'string' || !thumbnail.trim()) {
+        throw new Error('Invalid secondary media source');
+      }
+      await authorizeMediaSource(thumbnail);
+    }
 
     const valueArray: PostResponse[] = [];
     for (const firstPostSettings of post.settings.subreddit) {

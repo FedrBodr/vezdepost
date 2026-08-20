@@ -4,6 +4,7 @@ import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabil
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
+import { authorizeMediaSource } from '@gitroom/helpers/utils/media.source';
 
 vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => {
   const actual = await importOriginal<any>();
@@ -744,6 +745,167 @@ describe('PostActivity platform formatting', () => {
       await expect(request).rejects.toThrow(/blocked remote media/i);
       expect(provider.post).not.toHaveBeenCalled();
       expect(provider.comment).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(
+    [
+      ['youtube', 'settings.thumbnail.path'],
+      ['wordpress', 'settings.main_image.path'],
+      ['reddit', 'media.thumbnail'],
+      ['tumblr', 'media.thumbnail'],
+    ].flatMap(([providerIdentifier, field]) =>
+      (['post', 'comment'] as const).map(
+        (method) => [providerIdentifier, field, method] as const
+      )
+    )
+  )(
+    'rejects unsafe %s %s before provider.%s invocation',
+    async (providerIdentifier, field, method) => {
+      vi.stubEnv('STRIPE_SECRET_KEY', '');
+      const unsafePath =
+        'http://169.254.169.254/latest/meta-data/secondary.jpg';
+      const settings =
+        providerIdentifier === 'youtube'
+          ? { thumbnail: { path: unsafePath } }
+          : providerIdentifier === 'wordpress'
+          ? { main_image: { path: unsafePath } }
+          : {};
+      const media = [
+        {
+          path: 'https://media.example.test/primary.mp4',
+          type: 'video' as const,
+          ...(['reddit', 'tumblr'].includes(providerIdentifier)
+            ? { thumbnail: unsafePath }
+            : {}),
+        },
+      ];
+      const provider = {
+        post: vi.fn().mockResolvedValue([]),
+        comment: vi.fn().mockResolvedValue([]),
+        editor: 'normal' as const,
+        mentionFormat: undefined,
+        convertToJPEG: false,
+        maxLength: vi.fn().mockReturnValue(40_000),
+      };
+      const postService = {
+        updateTags: vi.fn().mockResolvedValue([
+          {
+            id: 'post-1',
+            content: '<p>safe</p>',
+            settings: JSON.stringify(settings),
+            image: JSON.stringify(media),
+          },
+        ]),
+        updateMedia: vi.fn().mockResolvedValue(media),
+      };
+      const integrationManager = new IntegrationManager();
+      vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+        provider as any
+      );
+      const activity = new PostActivity(
+        postService as any,
+        {} as any,
+        integrationManager,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+      const integration = {
+        id: 'integration-1',
+        internalId: 'profile',
+        token: 'token',
+        providerIdentifier,
+        organizationId: 'org-1',
+      } as any;
+
+      const request =
+        method === 'post'
+          ? activity.postSocial(integration, [{ id: 'post-1' } as any])
+          : activity.postComment('remote-post', undefined, integration, [
+              { id: 'post-1' } as any,
+            ]);
+
+      await expect(request).rejects.toThrow(/blocked remote media/i);
+      expect(provider.post).not.toHaveBeenCalled();
+      expect(provider.comment).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [
+      'youtube',
+      { thumbnail: { path: 'https://app.example.test/uploads/thumb.jpg' } },
+      'https://app.example.test/uploads/thumb.jpg',
+    ],
+    [
+      'wordpress',
+      { main_image: { path: 'https://cdn.example.test/main.jpg' } },
+      'https://cdn.example.test/main.jpg',
+    ],
+  ] as const)(
+    'publishes with an authorized safe %s secondary source',
+    async (providerIdentifier, settings, secondaryPath) => {
+      vi.stubEnv('STRIPE_SECRET_KEY', '');
+      vi.stubEnv('FRONTEND_URL', 'https://app.example.test');
+      vi.stubEnv('STORAGE_PROVIDER', 'local');
+      vi.mocked(authorizeMediaSource).mockClear();
+      const media = [
+        {
+          path: 'https://media.example.test/primary.jpg',
+          type: 'image' as const,
+        },
+      ];
+      const provider = {
+        post: vi.fn().mockResolvedValue([]),
+        editor: 'normal' as const,
+        mentionFormat: undefined,
+        convertToJPEG: false,
+        maxLength: vi.fn().mockReturnValue(40_000),
+      };
+      const postService = {
+        updateTags: vi.fn().mockResolvedValue([
+          {
+            id: 'post-1',
+            content: '<p>safe</p>',
+            settings: JSON.stringify(settings),
+            image: JSON.stringify(media),
+          },
+        ]),
+        updateMedia: vi.fn().mockResolvedValue(media),
+      };
+      const integrationManager = new IntegrationManager();
+      vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+        provider as any
+      );
+      const activity = new PostActivity(
+        postService as any,
+        {} as any,
+        integrationManager,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+
+      await activity.postSocial(
+        {
+          id: 'integration-1',
+          internalId: 'profile',
+          token: 'token',
+          providerIdentifier,
+          organizationId: 'org-1',
+        } as any,
+        [{ id: 'post-1' } as any]
+      );
+
+      expect(authorizeMediaSource).toHaveBeenCalledWith(secondaryPath);
+      expect(provider.post).toHaveBeenCalledOnce();
     }
   );
 

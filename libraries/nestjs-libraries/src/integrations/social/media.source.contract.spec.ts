@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { PUBLICATION_SECONDARY_MEDIA_SOURCE_FIELDS } from '../../../../../apps/orchestrator/src/activities/publication.media.sources';
 
 const sources: Array<[string, RegExp[]]> = [
   ['bluesky.provider.ts', [/axios\.get\(url/, /fetch\(url\)/]],
@@ -97,5 +98,42 @@ describe('social adapter MediaSource contract', () => {
   ])('%s supplies known source length to multipart form-data', (file) => {
     const source = readFileSync(resolve(__dirname, file), 'utf8');
     expect(source).toMatch(/knownLength:\s*size/);
+  });
+
+  it('registers every adapter secondary source field read by the server', () => {
+    const detected = new Set<string>();
+    const directory = resolve(__dirname);
+    for (const file of readdirSync(directory).filter((name) =>
+      name.endsWith('.provider.ts')
+    )) {
+      const source = readFileSync(resolve(directory, file), 'utf8');
+      const providerIdentifier = file.replace('.provider.ts', '');
+      if (
+        /(?:readMediaSourceBuffer|readOrFetch|withMediaSourceStream|getMediaSourceMetadata|withMediaSourceRange)/.test(
+          source
+        )
+      ) {
+        for (const match of source.matchAll(
+          /settings\s*(?:\?\.|\.)\s*([a-z_]\w*)\s*(?:\?\.|\.)\s*path/gi
+        )) {
+          detected.add(`${providerIdentifier}:settings:${match[1]}`);
+        }
+      }
+      if (/getImageDimensions|readMediaSourceBuffer/.test(source)) {
+        for (const match of source.matchAll(
+          /(?:post\.)?media(?:\?\.)?(?:\[\d+\])?(?:\?\.)?\.thumbnail\b/g
+        )) {
+          detected.add(`${providerIdentifier}:media:thumbnail`);
+        }
+      }
+    }
+
+    const registered = new Set(
+      PUBLICATION_SECONDARY_MEDIA_SOURCE_FIELDS.map(
+        ({ providerIdentifier, container, field }) =>
+          `${providerIdentifier}:${container}:${field}`
+      )
+    );
+    expect([...detected].sort()).toEqual([...registered].sort());
   });
 });
