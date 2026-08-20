@@ -71,6 +71,7 @@ KSY_DEALS_IMAGE=$2
 read_batch() {
   local input_fd=0
   local line trimmed key value required_key key_allowed
+  local line_number=0
   local terminated=0
   local seen_keys=''
 
@@ -90,6 +91,7 @@ read_batch() {
   fi
 
   while IFS= read -r line <&"$input_fd"; do
+    line_number=$((line_number + 1))
     trim_horizontal "$line"
     trimmed=$TRIMMED_VALUE
     [[ -z "$trimmed" ]] && continue
@@ -97,7 +99,7 @@ read_batch() {
       terminated=1
       break
     fi
-    [[ "$trimmed" == *=* ]] || fail BATCH_MALFORMED_LINE
+    [[ "$trimmed" == *=* ]] || fail "BATCH_MALFORMED_LINE line=$line_number"
     key=${trimmed%%=*}
     value=${trimmed#*=}
     trim_horizontal "$key"

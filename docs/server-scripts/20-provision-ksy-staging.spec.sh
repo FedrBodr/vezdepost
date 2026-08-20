@@ -360,7 +360,7 @@ test_rejects_batch_safety_failures_before_mutation() {
   assert_rejection duplicate-key BATCH_DUPLICATE_KEY duplicate_order_batch
   assert_rejection duplicate-proxy BATCH_DUPLICATE_KEY duplicate_proxy_batch
   assert_rejection unknown-key BATCH_UNKNOWN_KEY unknown_key_batch
-  assert_rejection malformed-line BATCH_MALFORMED_LINE malformed_line_batch
+  assert_rejection malformed-line 'BATCH_MALFORMED_LINE line=13' malformed_line_batch
   assert_rejection missing-key BATCH_MISSING_KEY missing_admin_batch
   assert_rejection empty-value BATCH_EMPTY_VALUE empty_platprices_batch
   assert_rejection invalid-proxy PLATPRICES_PROXY_URL_INVALID invalid_proxy_batch
