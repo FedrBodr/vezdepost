@@ -38,7 +38,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   dto = TikTokDto;
   editor = 'normal' as const;
   maxLength() {
-    return 2000;
+    return 2200;
   }
 
   override async checkValidity(

@@ -1,5 +1,6 @@
 import { Integration } from '@prisma/client';
 import { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
 
 export interface ClientInformation {
   client_id: string;
@@ -170,6 +171,9 @@ export interface SocialProvider
   refreshCron?: boolean;
   dto?: any;
   maxLength: (additionalSettings?: any) => number;
+  fetchCapabilityRuntime?(
+    integration: Integration
+  ): Promise<CapabilityRuntimeOverlay | undefined>;
   checkValidity(
     posts: Array<{ path: string; thumbnail?: string }[]>,
     settings: any,

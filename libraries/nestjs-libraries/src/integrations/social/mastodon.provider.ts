@@ -10,6 +10,7 @@ import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/s
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { number, string } from 'yup';
+import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
 
 export class MastodonProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 5; // Mastodon instances typically have generous limits
@@ -20,6 +21,56 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
   editor = 'normal' as const;
   maxLength() {
     return 500;
+  }
+
+  async fetchCapabilityRuntime(
+    _integration: Integration
+  ): Promise<CapabilityRuntimeOverlay | undefined> {
+    try {
+      const response = await fetch(
+        `${
+          process.env.MASTODON_URL || 'https://mastodon.social'
+        }/api/v2/instance`,
+        {
+          // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+          dispatcher: getSsrfSafeDispatcher(),
+        }
+      );
+      if (!response.ok) {
+        return undefined;
+      }
+
+      const configuration = (await response.json())?.configuration?.statuses;
+      const maximumCharacters = configuration?.max_characters;
+      const maximumMedia = configuration?.max_media_attachments;
+      if (
+        !Number.isInteger(maximumCharacters) ||
+        maximumCharacters <= 0 ||
+        !Number.isInteger(maximumMedia) ||
+        maximumMedia <= 0
+      ) {
+        return undefined;
+      }
+
+      return {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          body: {
+            max: maximumCharacters,
+            unit: 'graphemes',
+            source: 'runtime',
+          },
+        },
+        mediaRule: {
+          type: 'optional',
+          images: { min: 1, max: maximumMedia },
+          videos: { min: 1, max: maximumMedia },
+          mixed: true,
+        },
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   override handleErrors(

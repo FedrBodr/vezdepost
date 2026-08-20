@@ -28,7 +28,7 @@ export class SlackProvider extends SocialAbstract implements SocialProvider {
   dto = SlackDto;
 
   maxLength() {
-    return 400000;
+    return 40000;
   }
 
   async refreshToken(refreshToken: string): Promise<AuthTokenDetails> {

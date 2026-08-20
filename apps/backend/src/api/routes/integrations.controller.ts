@@ -112,6 +112,13 @@ export class IntegrationsController {
               p.providerIdentifier,
               additionalSettings
             ),
+            capabilitiesV2:
+              await this._integrationManager.resolveCapabilitiesV2({
+                providerName: p.providerIdentifier,
+                settings: additionalSettings,
+                media: [],
+                integration: p,
+              }),
             stripLinks: !!findIntegration?.stripLinks?.(),
             picture: p.picture || '/no-picture.jpg',
             identifier: p.providerIdentifier,

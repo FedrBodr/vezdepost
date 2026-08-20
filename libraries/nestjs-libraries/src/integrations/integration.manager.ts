@@ -43,6 +43,12 @@ import { SkoolProvider } from '@gitroom/nestjs-libraries/integrations/social/sko
 import { WhopProvider } from '@gitroom/nestjs-libraries/integrations/social/whop.provider';
 import { MeweProvider } from '@gitroom/nestjs-libraries/integrations/social/mewe.provider';
 import { TumblrProvider } from '@gitroom/nestjs-libraries/integrations/social/tumblr.provider';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
+import type {
+  CapabilityResolutionContext,
+  ResolvedPlatformCapabilityV2,
+} from '@gitroom/helpers/utils/platform.capability.types';
+import type { Integration } from '@prisma/client';
 
 export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new XProvider(),
@@ -203,6 +209,37 @@ export class IntegrationManager {
         }
       : capabilities;
   }
+
+  async resolveCapabilitiesV2({
+    providerName,
+    settings,
+    media,
+    integration,
+  }: {
+    providerName: string;
+    settings: unknown;
+    media: CapabilityResolutionContext['media'];
+    integration?: Integration;
+  }): Promise<ResolvedPlatformCapabilityV2> {
+    const provider = this.getSocialIntegration(providerName);
+    const runtimeOverlay =
+      integration && provider.fetchCapabilityRuntime
+        ? await provider.fetchCapabilityRuntime(integration)
+        : undefined;
+
+    return resolvePlatformCapabilityV2({
+      identifier: providerName,
+      settings: (settings ?? {}) as Readonly<Record<string, unknown>>,
+      media,
+      ...(runtimeOverlay ? { runtimeOverlay } : {}),
+      adapter: {
+        editor: provider.editor,
+        maximum: provider.maxLength(settings),
+        stripRawUrls: !!provider.stripLinks?.(),
+      },
+    });
+  }
+
   getSocialIntegration(integration: string): SocialProvider {
     return socialIntegrationList.find((i) => i.identifier === integration)!;
   }
