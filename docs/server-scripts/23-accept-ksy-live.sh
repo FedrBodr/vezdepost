@@ -108,6 +108,10 @@ quota_header() {
   }' "$path"
 }
 
+proxy_response_status() {
+  awk '/^HTTP\// { status=$2 } END { print status }' "$1"
+}
+
 [[ "$TEST_MODE" == 1 || $EUID -eq 0 ]] || fail ROOT_REQUIRED
 [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]] || fail KSY_INSTALLATION_MISSING
 [[ "$(file_mode "$ENV_FILE")" == 600 ]] || fail KSY_ENV_MODE_INVALID
@@ -146,11 +150,13 @@ invalid_secret="invalid-${TELEGRAM_WEBHOOK_SECRET:0:16}"
 [[ "$(webhook_probe "$invalid_secret" invalid)" == 403 ]] || fail INVALID_SECRET_NOT_REJECTED
 [[ "$(webhook_probe "$TELEGRAM_WEBHOOK_SECRET" configured)" == 204 ]] || fail CONFIGURED_SECRET_NOT_ACCEPTED
 
-[[ "$(proxy_probe no-auth http://185.158.249.84:3128 https://platprices.com/api/v2/account 0)" == 407 ]] ||
+proxy_probe no-auth http://185.158.249.84:3128 https://platprices.com/api/v2/account 0 >/dev/null 2>&1 || true
+[[ "$(proxy_response_status "$WORK_DIR/proxy-no-auth.headers")" == 407 ]] ||
   fail PROXY_NO_AUTH_NOT_REJECTED
 authenticated_proxy="http://${PROXY_USERNAME}:${PROXY_PASSWORD}@185.158.249.84:3128"
-destination_status=$(proxy_probe destination "$authenticated_proxy" https://example.com/ 0)
-[[ "$destination_status" == 403 ]] || fail PROXY_DESTINATION_NOT_REJECTED
+proxy_probe destination "$authenticated_proxy" https://example.com/ 0 >/dev/null 2>&1 || true
+[[ "$(proxy_response_status "$WORK_DIR/proxy-destination.headers")" == 403 ]] ||
+  fail PROXY_DESTINATION_NOT_REJECTED
 [[ "$(proxy_probe provider "$authenticated_proxy" https://platprices.com/api/v2/account 1)" == 200 ]] ||
   fail PLATPRICES_PROXY_HTTP_FAILED
 provider_headers="$WORK_DIR/proxy-provider.headers"

@@ -39,12 +39,18 @@ printf '%s\n' "$config" >> "$CURL_CONFIGS"
 [[ "$(stat -c '%a' "$config" 2>/dev/null || stat -f '%Lp' "$config")" == 600 ]] || exit 92
 if grep -q 'url = "https://platprices.com/api/v2/account"' "$config" &&
   grep -q 'proxy = "http://185.158.249.84:3128"' "$config"; then
+  headers=$(sed -n 's/^dump-header = "\(.*\)"$/\1/p' "$config")
+  printf 'HTTP/1.0 407 Proxy Authentication Required\r\n\r\n' > "$headers"
   printf 'noAuth\n' >> "$PROXY_CALLS"
-  printf '407'
+  printf '000'
+  exit 56
 elif grep -q 'url = "https://example.com/"' "$config"; then
   grep -q 'proxy = "http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128"' "$config" || exit 94
+  headers=$(sed -n 's/^dump-header = "\(.*\)"$/\1/p' "$config")
+  printf 'HTTP/1.0 403 Forbidden\r\n\r\n' > "$headers"
   printf 'destinationDenied\n' >> "$PROXY_CALLS"
-  printf '403'
+  printf '000'
+  exit 56
 elif grep -q 'url = "https://platprices.com/api/v2/account"' "$config"; then
   grep -q 'proxy = "http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128"' "$config" || exit 95
   grep -q 'header = "X-API-Key: platprices-live-api-key"' "$config" || exit 96
