@@ -131,3 +131,84 @@ rtk ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
 The script backs up the production `.env`, checkout, and application image,
 holds the autodeploy lock, validates Compose, and recreates only `postiz`. It
 rolls all changed state back if verification fails and never publishes a Pin.
+
+## Gated shared Caddy sites
+
+Caddy remains the only public listener. It keeps the Vezdepost routes on
+`postiz-network` and also joins the external `caddy-edge` network for isolated
+co-hosted applications. Additional host blocks are imported from the
+host-owned `/etc/caddy/sites` directory; deploys never place an application
+hostname directly in the tracked base `deploy/Caddyfile`.
+
+Before a Compose revision containing the import is deployed, the numbered
+application provisioner must create `caddy-edge`, `/etc/caddy/sites`, and an
+empty `/etc/caddy/sites/00-empty.caddy`. This makes the import glob valid while
+keeping every new route disabled. A separate numbered route script may install
+an application site only after its loopback readiness gate passes. That script
+must validate Caddy, reload it, verify all existing Vezdepost probes, and remove
+only its own site file if acceptance fails.
+
+### Provision KSY before deploying the Caddy import
+
+Stage the reviewed KSY Compose file and script 20 before the shared-edge commit
+reaches `prod`:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  /Users/d.fedorenko/IdeaProjects/fedrbodr/ksy-deals/infra/docker-compose.yml \
+  vezdepost:/tmp/ksy-deals-docker-compose.yml
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/20-provision-ksy-staging.sh \
+  vezdepost:/tmp/20-provision-ksy-staging.sh
+rtk ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/20-provision-ksy-staging.sh || status=$?; rm -f /tmp/20-provision-ksy-staging.sh; exit "$status"'
+```
+
+The script performs disk, immutable-digest and input validation before
+mutation. Copy values from the Bitwarden note `KSY Deals / staging` only into
+its hidden prompts. It atomically installs the root-only env and reviewed
+Compose file, creates `caddy-edge` and the empty imported-site placeholder,
+migrates the isolated database, and requires loopback liveness/readiness. A
+failed replacement restores the previous KSY files and restarts its previous
+image without touching Vezdepost or rolling migrations back.
+
+Because the KSY repository and GHCR package are private, the note also contains
+`GHCR_USERNAME` and a dedicated `GHCR_READ_TOKEN` with package-read access only.
+The provisioner passes that token to `docker login ghcr.io` through standard
+input, suppresses command output, and never writes it to the KSY application
+env or deployment evidence. Do not reuse the package-publish credential.
+
+After the shared-edge commit is the successful deployed `prod` revision and
+both authoritative nameservers return `201.51.7.50`, activate the route:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/21-enable-ksy-route.sh \
+  vezdepost:/tmp/21-enable-ksy-route.sh
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/21-enable-ksy-route.sh || status=$?; rm -f /tmp/21-enable-ksy-route.sh; exit "$status"'
+```
+
+Script 21 accepts only the exact authoritative A record, requires loopback and
+Caddy-network readiness, installs only `/etc/caddy/sites/ksy-deals.caddy`, and
+validates/reloads Caddy. It then requires KSY HTTPS `200` and the unchanged
+Vezdepost `200/200/401` probes. Any failed acceptance restores the previous KSY
+site state and reloads the last valid Caddy configuration.
+
+Install KSY backup automation only after the private stack is ready:
+
+```bash
+rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
+  docs/server-scripts/22-install-ksy-backup.sh \
+  vezdepost:/tmp/22-install-ksy-backup.sh
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  'status=0; bash /tmp/22-install-ksy-backup.sh || status=$?; rm -f /tmp/22-install-ksy-backup.sh; exit "$status"'
+rtk ssh -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
+  '/usr/local/sbin/ksy-deals-backup'
+```
+
+Script 22 refuses missing, placeholder or non-private KSY/B2 env files. The
+installed wrapper calls only the `ksy-deals` maintenance backup service and
+uploads only the new encrypted `.dump.gpg` to the separate B2 `ksy-deals/`
+prefix. Acceptance still requires a disposable `ksy_deals_restore` restore;
+upload success alone is insufficient.

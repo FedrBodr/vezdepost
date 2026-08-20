@@ -72,4 +72,19 @@ describe('production configuration', () => {
     expect(readme).toContain('Trial access');
     expect(readme).toContain('19-deploy-pinterest-trial.sh');
   });
+
+  it('loads gated external Caddy sites through the shared edge network', () => {
+    const override = readRootFile('docker-compose.override.yaml');
+    const caddyfile = readRootFile('deploy/Caddyfile');
+
+    expect(override).toContain('/etc/caddy/sites:/etc/caddy/sites:ro');
+    expect(override).toMatch(
+      /caddy:[\s\S]*networks:[\s\S]*- postiz-network[\s\S]*- caddy-edge/
+    );
+    expect(override).toMatch(
+      /caddy-edge:[\s\S]*external: true[\s\S]*name: caddy-edge/
+    );
+    expect(caddyfile).toContain('import /etc/caddy/sites/*.caddy');
+    expect(caddyfile).not.toContain('ksy-deals.fedrbodr.com');
+  });
 });
