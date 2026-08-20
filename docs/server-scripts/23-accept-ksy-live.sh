@@ -77,6 +77,37 @@ CONFIG
   curl --config "$config"
 }
 
+proxy_probe() {
+  local label=$1 proxy=$2 url=$3 include_api_key=$4
+  local config="$WORK_DIR/proxy-$label.conf"
+  KSY_LIVE_CURL_BODY="$WORK_DIR/proxy-$label.body"
+  KSY_LIVE_CURL_HEADERS="$WORK_DIR/proxy-$label.headers"
+  export KSY_LIVE_CURL_BODY
+  cat > "$config" <<CONFIG
+silent
+show-error
+output = "$KSY_LIVE_CURL_BODY"
+dump-header = "$KSY_LIVE_CURL_HEADERS"
+write-out = "%{http_code}"
+proxy = "$proxy"
+connect-timeout = 10
+max-time = 20
+url = "$url"
+CONFIG
+  if [[ "$include_api_key" == 1 ]]; then
+    printf 'header = "X-API-Key: %s"\n' "$PLATPRICES_API_KEY" >> "$config"
+  fi
+  chmod 600 "$config"
+  curl --config "$config"
+}
+
+quota_header() {
+  local name=$1 path=$2
+  awk -F: -v expected="$name" 'tolower($1) == tolower(expected) {
+    sub(/^[^:]*:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit
+  }' "$path"
+}
+
 [[ "$TEST_MODE" == 1 || $EUID -eq 0 ]] || fail ROOT_REQUIRED
 [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]] || fail KSY_INSTALLATION_MISSING
 [[ "$(file_mode "$ENV_FILE")" == 600 ]] || fail KSY_ENV_MODE_INVALID
@@ -86,16 +117,19 @@ fi
 used=$(disk_used_percent)
 [[ "$used" =~ ^[0-9]+$ && "$used" -lt 85 ]] || fail DISK_USAGE_LIMIT
 
-set -a
 # shellcheck disable=SC1090
 . "$ENV_FILE"
-set +a
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" && "$TELEGRAM_BOT_TOKEN" != *$'\n'* ]] || fail TELEGRAM_BOT_TOKEN_INVALID
 [[ "${TELEGRAM_WEBHOOK_SECRET:-}" =~ ^[a-f0-9]{64}$ ]] || fail TELEGRAM_WEBHOOK_SECRET_INVALID
 [[ "${TELEGRAM_WEBHOOK_URL:-}" == https://ksy-deals.fedrbodr.com/telegram/webhook ]] || fail TELEGRAM_WEBHOOK_URL_INVALID
 [[ "${POSTGRES_DB:-}" == ksy_deals && "${POSTGRES_USER:-}" == ksy_deals ]] || fail POSTGRES_IDENTITY_INVALID
 [[ "${KSY_DEALS_IMAGE:-}" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] || fail KSY_DEALS_IMAGE_INVALID
 safe_token "$TELEGRAM_BOT_TOKEN" || fail TELEGRAM_BOT_TOKEN_INVALID
+safe_token "${PLATPRICES_API_KEY:-}" || fail PLATPRICES_API_KEY_INVALID
+[[ "${PLATPRICES_PROXY_URL:-}" =~ ^http://([A-Za-z0-9_-]{8,32}):([A-Za-z0-9_-]{43,86})@185\.158\.249\.84:3128$ ]] ||
+  fail PLATPRICES_PROXY_URL_INVALID
+PROXY_USERNAME=${BASH_REMATCH[1]}
+PROXY_PASSWORD=${BASH_REMATCH[2]}
 
 curl --fail --silent --show-error http://127.0.0.1:4300/health/live >/dev/null || fail LIVE_FAILED
 curl --fail --silent --show-error http://127.0.0.1:4300/health/ready >/dev/null || fail READY_FAILED
@@ -111,6 +145,23 @@ webhook_info=$(tr -d '[:space:]' < "$WORK_DIR/telegram-getWebhookInfo.body")
 invalid_secret="invalid-${TELEGRAM_WEBHOOK_SECRET:0:16}"
 [[ "$(webhook_probe "$invalid_secret" invalid)" == 403 ]] || fail INVALID_SECRET_NOT_REJECTED
 [[ "$(webhook_probe "$TELEGRAM_WEBHOOK_SECRET" configured)" == 204 ]] || fail CONFIGURED_SECRET_NOT_ACCEPTED
+
+[[ "$(proxy_probe no-auth http://185.158.249.84:3128 https://platprices.com/api/v2/account 0)" == 407 ]] ||
+  fail PROXY_NO_AUTH_NOT_REJECTED
+authenticated_proxy="http://${PROXY_USERNAME}:${PROXY_PASSWORD}@185.158.249.84:3128"
+destination_status=$(proxy_probe destination "$authenticated_proxy" https://example.com/ 0)
+[[ "$destination_status" == 403 ]] || fail PROXY_DESTINATION_NOT_REJECTED
+[[ "$(proxy_probe provider "$authenticated_proxy" https://platprices.com/api/v2/account 1)" == 200 ]] ||
+  fail PLATPRICES_PROXY_HTTP_FAILED
+provider_headers="$WORK_DIR/proxy-provider.headers"
+quota_limit=$(quota_header X-RateLimit-Limit "$provider_headers")
+quota_used=$(quota_header X-RateLimit-Used "$provider_headers")
+quota_remaining=$(quota_header X-RateLimit-Remaining "$provider_headers")
+quota_reset=$(quota_header X-RateLimit-Reset "$provider_headers")
+[[ "$quota_limit" =~ ^[0-9]+$ && "$quota_used" =~ ^[0-9]+$ && "$quota_remaining" =~ ^[0-9]+$ &&
+  "$quota_reset" != "" && "$quota_remaining" -gt 0 &&
+  $((quota_used + quota_remaining)) -eq "$quota_limit" ]] || fail PLATPRICES_QUOTA_UNHEALTHY
+unset authenticated_proxy PROXY_USERNAME PROXY_PASSWORD PLATPRICES_PROXY_URL PLATPRICES_API_KEY
 
 read_ids() {
   "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --no-psqlrc --tuples-only --no-align \
@@ -182,6 +233,7 @@ db_memory=$(docker stats --no-stream --format '{{.MemUsage}}' "$db_id" | cut -d/
 
 unset TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET
 printf 'KSY_LIVE_ACCEPTED webhook=PASS invalid_secret=403 configured_secret=204\n'
+printf 'KSY_PROXY_ACCEPTED noAuth=407 destinationDenied=true provider=200 quotaHealthy=true\n'
 printf 'KSY_PROVIDER_ACCEPTED first=2_confirmed+1_mapping_required second=2_existing+1_mapping_required editions=2 observations=2 identities=UNCHANGED\n'
 printf 'KSY_RESOURCE_EVIDENCE server_restart=0 server_oom=false server_health=healthy server_limit=1g db_restart=0 db_oom=false db_health=healthy db_limit=512m server_memory=%s db_memory=%s disk_used_percent=%s\n' \
   "$server_memory" "$db_memory" "$used"

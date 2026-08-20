@@ -18,11 +18,14 @@ TELEGRAM_WEBHOOK_URL=https://ksy-deals.fedrbodr.com/telegram/webhook
 POSTGRES_DB=ksy_deals
 POSTGRES_USER=ksy_deals
 KSY_DEALS_IMAGE=ghcr.io/fedrbodr/ksy-deals@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+PLATPRICES_API_KEY=platprices-live-api-key
+PLATPRICES_PROXY_URL=http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128
 ENV
   chmod 600 "$case_dir/opt/ksy-deals/.env"
   printf 'services: {}\n' > "$case_dir/opt/ksy-deals/docker-compose.yml"
   cat > "$case_dir/bin/curl" <<'STUB'
 #!/usr/bin/env bash
+[[ -z "${PLATPRICES_API_KEY:-}" && -z "${PLATPRICES_PROXY_URL:-}" ]] || exit 93
 config=''
 while (($#)); do
   [[ "$1" == --config ]] && { config=$2; shift 2; continue; }
@@ -34,7 +37,24 @@ done
 [[ -n "$config" ]] || exit 91
 printf '%s\n' "$config" >> "$CURL_CONFIGS"
 [[ "$(stat -c '%a' "$config" 2>/dev/null || stat -f '%Lp' "$config")" == 600 ]] || exit 92
-if grep -q '/setWebhook' "$config"; then
+if grep -q 'url = "https://platprices.com/api/v2/account"' "$config" &&
+  grep -q 'proxy = "http://185.158.249.84:3128"' "$config"; then
+  printf 'noAuth\n' >> "$PROXY_CALLS"
+  printf '407'
+elif grep -q 'url = "https://example.com/"' "$config"; then
+  grep -q 'proxy = "http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128"' "$config" || exit 94
+  printf 'destinationDenied\n' >> "$PROXY_CALLS"
+  printf '403'
+elif grep -q 'url = "https://platprices.com/api/v2/account"' "$config"; then
+  grep -q 'proxy = "http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128"' "$config" || exit 95
+  grep -q 'header = "X-API-Key: platprices-live-api-key"' "$config" || exit 96
+  headers=$(sed -n 's/^dump-header = "\(.*\)"$/\1/p' "$config")
+  [[ -n "$headers" ]] || exit 97
+  printf 'X-RateLimit-Limit: 20000\r\nX-RateLimit-Used: 100\r\nX-RateLimit-Remaining: 19900\r\nX-RateLimit-Reset: 2026-09-01T00:00:00.000Z\r\n' > "$headers"
+  printf '{"success":true}\n' > "$KSY_LIVE_CURL_BODY"
+  printf 'provider\n' >> "$PROXY_CALLS"
+  printf '200'
+elif grep -q '/setWebhook' "$config"; then
   if [[ "${KSY_TEST_TELEGRAM_BAD:-0}" == 1 ]]; then printf '{"ok":true,"result":false}\n'; else printf '{"ok":true,"result":true}\n'; fi > "$KSY_LIVE_CURL_BODY"
   printf '200'
 elif grep -q '/getWebhookInfo' "$config"; then
@@ -78,6 +98,7 @@ STUB
   : > "$case_dir/curl.configs"
   : > "$case_dir/docker.calls"
   : > "$case_dir/provision.calls"
+  : > "$case_dir/proxy.calls"
 }
 
 run_case() {
@@ -85,7 +106,7 @@ run_case() {
   PATH="$case_dir/bin:$PATH" KSY_LIVE_TEST_MODE=1 KSY_LIVE_TEST_DISK_USED_PERCENT=72 \
     KSY_ROOT="$case_dir/opt/ksy-deals" KSY_LIVE_WORK_PARENT="$case_dir" \
     CURL_CONFIGS="$case_dir/curl.configs" DOCKER_CALLS="$case_dir/docker.calls" \
-    PROVISION_CALLS="$case_dir/provision.calls" \
+    PROVISION_CALLS="$case_dir/provision.calls" PROXY_CALLS="$case_dir/proxy.calls" \
     bash "$SCRIPT" > "$output" 2>&1
 }
 
@@ -94,12 +115,15 @@ test_accepts_without_leaking_secrets() {
   make_case "$case_dir"
   run_case "$case_dir" "$output" || { cat "$output" >&2; cat "$case_dir/docker.calls" >&2; fail 'success case failed'; }
   grep -q 'KSY_LIVE_ACCEPTED webhook=PASS invalid_secret=403 configured_secret=204' "$output" || fail 'acceptance summary missing'
+  grep -q 'KSY_PROXY_ACCEPTED noAuth=407 destinationDenied=true provider=200 quotaHealthy=true' "$output" || fail 'proxy acceptance summary missing'
+  [[ "$(<"$case_dir/proxy.calls")" == $'noAuth\ndestinationDenied\nprovider' ]] || fail 'proxy probes were not ordered'
   grep -q 'first=2_confirmed+1_mapping_required second=2_existing+1_mapping_required' "$output" || fail 'provider counts missing'
   grep -q 'editions=2 observations=2 identities=UNCHANGED' "$output" || fail 'identity evidence missing'
   grep -q 'server_restart=0 server_oom=false server_health=healthy server_limit=1g db_restart=0 db_oom=false db_health=healthy db_limit=512m' "$output" || fail 'container evidence missing'
   [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'watchlist CLI was not invoked twice'
   grep -q 'run --rm --no-deps server node apps/server/dist/src/provision-approved-watchlist-cli.js' "$case_dir/docker.calls" || fail 'image-contained CLI missing'
-  for secret in telegram-token-secret aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa observation-a observation-b; do
+  for secret in telegram-token-secret aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    platprices-live-api-key ksy_user_01 abcdefghijklmnopqrstuvwxyzABCDEFGH123456789 observation-a observation-b; do
     ! grep -Fq "$secret" "$output" || fail "secret or identity leaked: $secret"
     ! grep -Fq "$secret" "$case_dir/docker.calls" || fail "secret reached argv: $secret"
   done
@@ -122,7 +146,7 @@ test_stops_at_disk_gate() {
   if PATH="$case_dir/bin:$PATH" KSY_LIVE_TEST_MODE=1 KSY_LIVE_TEST_DISK_USED_PERCENT=85 \
     KSY_ROOT="$case_dir/opt/ksy-deals" KSY_LIVE_WORK_PARENT="$case_dir" \
     CURL_CONFIGS="$case_dir/curl.configs" DOCKER_CALLS="$case_dir/docker.calls" \
-    PROVISION_CALLS="$case_dir/provision.calls" bash "$SCRIPT" > "$output" 2>&1; then
+    PROVISION_CALLS="$case_dir/provision.calls" PROXY_CALLS="$case_dir/proxy.calls" bash "$SCRIPT" > "$output" 2>&1; then
     fail 'disk gate accepted 85 percent'
   fi
   grep -q 'KSY_LIVE_ACCEPT_FAILED DISK_USAGE_LIMIT' "$output" || fail 'wrong disk failure'
@@ -136,7 +160,7 @@ expect_failure() {
   if env "$knob=1" PATH="$case_dir/bin:$PATH" KSY_LIVE_TEST_MODE=1 KSY_LIVE_TEST_DISK_USED_PERCENT=72 \
     KSY_ROOT="$case_dir/opt/ksy-deals" KSY_LIVE_WORK_PARENT="$case_dir" \
     CURL_CONFIGS="$case_dir/curl.configs" DOCKER_CALLS="$case_dir/docker.calls" \
-    PROVISION_CALLS="$case_dir/provision.calls" bash "$SCRIPT" > "$output" 2>&1; then
+    PROVISION_CALLS="$case_dir/provision.calls" PROXY_CALLS="$case_dir/proxy.calls" bash "$SCRIPT" > "$output" 2>&1; then
     fail "$name unexpectedly passed"
   fi
   grep -q "KSY_LIVE_ACCEPT_FAILED $reason" "$output" || fail "$name returned wrong failure"
