@@ -5,6 +5,7 @@ import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.conten
 import { measureContent } from '@gitroom/helpers/utils/platform.content.measurement';
 import { normalizedFieldMeasurementValue } from '@gitroom/helpers/utils/platform.content.normalizers';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+import { getEditorSemanticPolicy } from './platform.editor.semantic-policy';
 import type {
   CapabilityDiagnostic,
   CapabilityResolutionContext,
@@ -97,6 +98,15 @@ const intersectFormatting = (
     ),
   };
 };
+
+export const deriveActiveEditorFormatting = (
+  destinations: readonly Pick<EditorDestinationCapabilityV2, 'activeField'>[]
+): TextFieldCapability['formatting'] =>
+  intersectFormatting(
+    destinations.flatMap(({ activeField }) =>
+      activeField ? [activeField] : []
+    )
+  );
 
 const editorFromSerializedCapability = (
   capability?: ResolvedPlatformCapabilityV2
@@ -271,9 +281,7 @@ export const resolveEditorCapabilityV2 = (
 
   return {
     identifier: current,
-    formatting: intersectFormatting(
-      destinations.flatMap(({ canonicalFields }) => canonicalFields)
-    ),
+    formatting: deriveActiveEditorFormatting(destinations),
     destinations,
     counters: resolved.flatMap(({ counter }) => (counter ? [counter] : [])),
     diagnostics,
@@ -282,16 +290,15 @@ export const resolveEditorCapabilityV2 = (
   };
 };
 
-const supportsInlineControl = (support: FormattingSupport) =>
-  support === 'native' || support === 'unicode';
-
 export const getFormattingControls = (
   capability: Pick<EditorCapabilityV2, 'formatting'>
-): FormattingControl[] =>
-  [
-    supportsInlineControl(capability.formatting.bold) && 'bold',
-    supportsInlineControl(capability.formatting.underline) && 'underline',
-    capability.formatting.links === 'native' && 'link',
-    capability.formatting.lists === 'native' && 'list',
-    capability.formatting.headings === 'native' && 'heading',
+): FormattingControl[] => {
+  const policy = getEditorSemanticPolicy(capability);
+  return [
+    policy.bold && 'bold',
+    policy.underline && 'underline',
+    policy.link && 'link',
+    policy.list && 'list',
+    policy.heading && 'heading',
   ].filter(Boolean) as FormattingControl[];
+};

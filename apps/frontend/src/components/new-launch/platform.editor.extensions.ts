@@ -4,36 +4,24 @@ import Heading from '@tiptap/extension-heading';
 import Link from '@tiptap/extension-link';
 import { BulletList, ListItem } from '@tiptap/extension-list';
 import Underline from '@tiptap/extension-underline';
-import type { TextFieldCapability } from '@gitroom/helpers/utils/platform.capability.types';
+import {
+  getEditorSemanticPolicy,
+  getEditorSemanticPolicyKey,
+  type EditorSemanticPolicy,
+  type SemanticEditorCapability,
+} from './platform.editor.semantic-policy';
 
-export type SemanticEditorCapability = Pick<TextFieldCapability, 'formatting'>;
+export type { SemanticEditorCapability } from './platform.editor.semantic-policy';
 
-export interface EditorCreationPolicy {
-  bold: boolean;
-  underline: boolean;
-  link: boolean;
-  list: boolean;
-  heading: boolean;
-}
+export type EditorCreationPolicy = EditorSemanticPolicy;
 
 export const getEditorCreationPolicy = (
   capabilities: SemanticEditorCapability
-): EditorCreationPolicy => ({
-  bold: capabilities.formatting.bold !== 'unsupported',
-  underline: capabilities.formatting.underline !== 'unsupported',
-  link: capabilities.formatting.links === 'native',
-  list: capabilities.formatting.lists === 'native',
-  heading: capabilities.formatting.headings === 'native',
-});
+): EditorCreationPolicy => getEditorSemanticPolicy(capabilities);
 
 export const getEditorCreationPolicyKey = (
   capabilities: SemanticEditorCapability
-): string => {
-  const policy = getEditorCreationPolicy(capabilities);
-  return Object.values(policy)
-    .map((enabled) => (enabled ? '1' : '0'))
-    .join('');
-};
+): string => getEditorSemanticPolicyKey(capabilities);
 
 const InterceptBoldShortcut = Extension.create({
   name: 'preventBoldWithUnderline',

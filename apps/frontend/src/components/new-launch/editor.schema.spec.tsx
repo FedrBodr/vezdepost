@@ -12,6 +12,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
+import type { TextFieldCapability } from '@gitroom/helpers/utils/platform.capability.types';
 
 const { launchStoreState } = vi.hoisted(() => ({
   launchStoreState: {
@@ -130,7 +131,7 @@ afterEach(() => {
 });
 
 const renderEditor = async (
-  capabilities: ReturnType<typeof getPlatformCapabilities>,
+  capabilities: Pick<TextFieldCapability, 'formatting'>,
   value = '<p></p>'
 ) => {
   const ref = createRef<{ editor: any }>();
@@ -150,6 +151,33 @@ const renderPlainEditor = (value = '<p></p>') =>
   renderEditor(getPlatformCapabilities('linkedin'), value);
 
 describe('canonical editor schema and creation policy', () => {
+  it('blocks direct commands and shortcuts for plain inline formatting', async () => {
+    const capabilities: Pick<TextFieldCapability, 'formatting'> = {
+      formatting: {
+        bold: 'plain',
+        underline: 'plain',
+        links: 'plain',
+        lists: 'plain',
+        headings: 'plain',
+      },
+    };
+    const { editor } = await renderEditor(capabilities, '<p>Text</p>');
+    let boldResult: boolean | undefined;
+    let underlineResult: boolean | undefined;
+
+    act(() => {
+      editor.commands.setTextSelection({ from: 1, to: 5 });
+      boldResult = editor.commands.setBold();
+      underlineResult = editor.commands.setUnderline();
+      editor.commands.keyboardShortcut('Mod-b');
+      editor.commands.keyboardShortcut('Mod-u');
+    });
+
+    expect(boldResult).toBe(false);
+    expect(underlineResult).toBe(false);
+    expect(editor.getHTML()).toBe('<p>Text</p>');
+  });
+
   it('keeps the canonical editor and HTML stable when TikTok media changes the active variant', async () => {
     const selectedIntegration = {
       integration: {

@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import {
+  deriveActiveEditorFormatting,
+  type EditorDestinationCapabilityV2,
   getFormattingControls,
   resolveEditorCapabilityV2,
 } from './platform.editor.capabilities';
+import { getEditorCreationPolicyKey } from './platform.editor.extensions';
+import type { TextFieldCapability } from '@gitroom/helpers/utils/platform.capability.types';
 
 const selected = (
   id: string,
@@ -28,6 +32,62 @@ const selected = (
   } as any);
 
 describe('platform editor capabilities v2', () => {
+  it('intersects only the active canonical field from each global destination', () => {
+    const field = (
+      key: string,
+      support: TextFieldCapability['formatting']['bold']
+    ): TextFieldCapability => ({
+      key,
+      label: key,
+      required: false,
+      source: 'canonical-editor',
+      dialect: 'html',
+      formatting: {
+        bold: support,
+        underline: support,
+        links: support,
+        lists: support,
+        headings: support,
+      },
+    });
+    const active = field('body', 'native');
+    const inactive = field('caption', 'unsupported');
+    const destination: Pick<
+      EditorDestinationCapabilityV2,
+      'canonicalFields' | 'activeField'
+    > = {
+      canonicalFields: [active, inactive],
+      activeField: active,
+    };
+
+    const formatting = deriveActiveEditorFormatting([destination]);
+    const inactiveChanged = deriveActiveEditorFormatting([
+      {
+        ...destination,
+        canonicalFields: [active, field('caption', 'plain')],
+      },
+    ]);
+    const stricterActive = deriveActiveEditorFormatting([
+      { ...destination, activeField: inactive },
+    ]);
+
+    expect(getFormattingControls({ formatting })).toEqual([
+      'bold',
+      'underline',
+      'link',
+      'list',
+      'heading',
+    ]);
+    expect(inactiveChanged).toEqual(formatting);
+    expect(getEditorCreationPolicyKey({ formatting: inactiveChanged })).toBe(
+      getEditorCreationPolicyKey({ formatting })
+    );
+    expect(getFormattingControls({ formatting: stricterActive })).toEqual([]);
+    expect(getEditorCreationPolicyKey({ formatting: stricterActive })).not.toBe(
+      getEditorCreationPolicyKey({ formatting })
+    );
+  });
+
   it('uses Telegram native bold and underline controls', () => {
     const result = resolveEditorCapabilityV2(
       'telegram-account',
