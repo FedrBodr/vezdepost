@@ -69,6 +69,9 @@ const mediaMatchesStaticRule = (
   if (knownCount !== media.length) {
     return false;
   }
+  if (rule.maxTotal !== undefined && knownCount > rule.maxTotal) {
+    return false;
+  }
 
   if (rule.type === 'none') {
     return media.length === 0;
@@ -139,6 +142,9 @@ const mediaMatchesRule = (
   rule.type === 'provider-runtime'
     ? mediaMatchesStaticRule(rule.fallback, media)
     : mediaMatchesStaticRule(rule, media);
+
+const staticMediaRule = (rule: MediaRule): StaticMediaRule =>
+  rule.type === 'provider-runtime' ? rule.fallback : rule;
 
 type FormattingKey = keyof TextFieldCapability['formatting'];
 
@@ -290,7 +296,21 @@ export const analyzePlatformContentV2 = ({
     }
   }
 
-  if (!mediaMatchesRule(capability.media, media)) {
+  const knownMediaCount = media.filter(
+    ({ type }) => type === 'image' || type === 'video'
+  ).length;
+  const maxTotal = staticMediaRule(capability.media).maxTotal;
+  if (maxTotal !== undefined && knownMediaCount > maxTotal) {
+    diagnostics.push({
+      code: 'too-many-media',
+      severity: 'error',
+      destination: capability.identifier,
+      variant: capability.variant,
+      measured: knownMediaCount,
+      limit: maxTotal,
+      message: `Attached media exceeds the ${maxTotal}-item total limit.`,
+    });
+  } else if (!mediaMatchesRule(capability.media, media)) {
     diagnostics.push({
       code: 'unsupported-media',
       severity: 'error',

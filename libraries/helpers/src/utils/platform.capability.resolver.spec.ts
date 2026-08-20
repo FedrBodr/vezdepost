@@ -307,6 +307,7 @@ describe('Batch 0 platform capability resolution', () => {
       mediaRule: {
         type: 'exclusive',
         alternatives: [{ kind: 'images', min: 1, max: 4 }],
+        maxTotal: 4,
       },
     };
     const resolved = resolvePlatformCapabilityV2(
@@ -328,6 +329,11 @@ describe('Batch 0 platform capability resolution', () => {
     expect(Object.isFrozen(resolved.structuredFields)).toBe(true);
     expect(Object.isFrozen(resolved.structuredFields[0])).toBe(true);
     expect(Object.isFrozen(resolved.media)).toBe(true);
+    expect(
+      resolved.media.type === 'provider-runtime'
+        ? resolved.media.fallback.maxTotal
+        : resolved.media.maxTotal
+    ).toBe(4);
     expect(Object.isFrozen(resolved.delivery)).toBe(true);
     expect(Object.isFrozen(resolved.diagnostics)).toBe(true);
     expect(Object.isFrozen(resolved.runtimeOverlay)).toBe(true);

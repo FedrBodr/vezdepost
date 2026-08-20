@@ -41,7 +41,7 @@ export interface StructuredFieldCapability {
   required: boolean;
 }
 
-export type StaticMediaRule =
+export type StaticMediaRule = (
   | { type: 'none' }
   | {
       type: 'optional' | 'required';
@@ -55,7 +55,8 @@ export type StaticMediaRule =
         | { kind: 'images'; min: number; max: number }
         | { kind: 'video'; min: 1; max: 1; coverRequired?: boolean }
       >;
-    };
+    }
+) & { maxTotal?: number };
 
 export type MediaRule =
   | StaticMediaRule

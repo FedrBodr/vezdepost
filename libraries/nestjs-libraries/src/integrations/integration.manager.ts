@@ -234,7 +234,7 @@ export class IntegrationManager {
       ...(runtimeOverlay ? { runtimeOverlay } : {}),
       adapter: {
         editor: provider.editor,
-        maximum: provider.maxLength(settings),
+        maximum: provider.maxLength(),
         stripRawUrls: !!provider.stripLinks?.(),
       },
     });

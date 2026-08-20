@@ -149,6 +149,48 @@ describe('analyzePlatformContentV2', () => {
     expect(result.blocking).toBe(true);
   });
 
+  it('blocks media that exceeds a runtime total even when per-type maxima pass', () => {
+    const media = [
+      ...Array.from({ length: 6 }, () => ({ type: 'image' as const })),
+      ...Array.from({ length: 6 }, () => ({ type: 'video' as const })),
+    ];
+    const result = analyze({
+      canonicalHtml: '<p>Status</p>',
+      media,
+      resolved: capability(
+        'mastodon',
+        media,
+        {},
+        {
+          now: '2026-08-20T10:01:00.000Z',
+          runtimeOverlay: {
+            observedAt: '2026-08-20T10:00:00.000Z',
+            mediaRule: {
+              type: 'optional',
+              images: { min: 1, max: 6 },
+              videos: { min: 1, max: 6 },
+              mixed: true,
+              maxTotal: 6,
+            },
+          },
+        }
+      ),
+    });
+
+    expect(result.diagnostics).toEqual([
+      {
+        code: 'too-many-media',
+        severity: 'error',
+        destination: 'mastodon',
+        variant: 'status',
+        measured: 12,
+        limit: 6,
+        message: 'Attached media exceeds the 6-item total limit.',
+      },
+    ]);
+    expect(result.blocking).toBe(true);
+  });
+
   it.each([
     ['no media', []],
     [

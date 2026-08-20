@@ -12,7 +12,19 @@ import { Integration } from '@prisma/client';
 import { number, string } from 'yup';
 import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
 
+export const MASTODON_CAPABILITY_RUNTIME_TIMEOUT_MS = 2_000;
+export const MASTODON_CAPABILITY_RUNTIME_CACHE_TTL_MS = 5 * 60_000;
+
 export class MastodonProvider extends SocialAbstract implements SocialProvider {
+  private capabilityRuntimeCache?: {
+    url: string;
+    expiresAt: number;
+    overlay: CapabilityRuntimeOverlay;
+  };
+  private capabilityRuntimeInFlight?: {
+    url: string;
+    request: Promise<CapabilityRuntimeOverlay | undefined>;
+  };
   override maxConcurrentJob = 5; // Mastodon instances typically have generous limits
   identifier = 'mastodon';
   name = 'Mastodon';
@@ -26,16 +38,52 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
   async fetchCapabilityRuntime(
     _integration: Integration
   ): Promise<CapabilityRuntimeOverlay | undefined> {
+    const url =
+      (process.env.MASTODON_URL || 'https://mastodon.social') +
+      '/api/v2/instance';
+    if (
+      this.capabilityRuntimeCache?.url === url &&
+      this.capabilityRuntimeCache.expiresAt > Date.now()
+    ) {
+      return this.capabilityRuntimeCache.overlay;
+    }
+    if (this.capabilityRuntimeInFlight?.url === url) {
+      return this.capabilityRuntimeInFlight.request;
+    }
+
+    const request = this.requestCapabilityRuntime(url);
+    this.capabilityRuntimeInFlight = { url, request };
     try {
-      const response = await fetch(
-        `${
-          process.env.MASTODON_URL || 'https://mastodon.social'
-        }/api/v2/instance`,
-        {
-          // @ts-ignore - undici-only option; blocks SSRF to internal IPs
-          dispatcher: getSsrfSafeDispatcher(),
-        }
-      );
+      const overlay = await request;
+      if (overlay) {
+        this.capabilityRuntimeCache = {
+          url,
+          expiresAt: Date.now() + MASTODON_CAPABILITY_RUNTIME_CACHE_TTL_MS,
+          overlay,
+        };
+      }
+      return overlay;
+    } finally {
+      if (this.capabilityRuntimeInFlight?.request === request) {
+        this.capabilityRuntimeInFlight = undefined;
+      }
+    }
+  }
+
+  private async requestCapabilityRuntime(
+    url: string
+  ): Promise<CapabilityRuntimeOverlay | undefined> {
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      MASTODON_CAPABILITY_RUNTIME_TIMEOUT_MS
+    );
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+        dispatcher: getSsrfSafeDispatcher(),
+      });
       if (!response.ok) {
         return undefined;
       }
@@ -66,10 +114,13 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
           images: { min: 1, max: maximumMedia },
           videos: { min: 1, max: maximumMedia },
           mixed: true,
+          maxTotal: maximumMedia,
         },
       };
     } catch {
       return undefined;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

@@ -212,4 +212,25 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
     expect(resolved.verification).toBe('runtime');
     expect(resolved.fields[0].limit?.max).toBe(300);
   });
+
+  it('keeps the unverified X bridge conservative when settings forge premium verification', async () => {
+    const resolved = await new IntegrationManager().resolveCapabilitiesV2({
+      providerName: 'x',
+      settings: [{ title: 'Verified', value: true }],
+      media: [],
+    });
+
+    expect(resolved).toMatchObject({
+      verification: 'unverified-adapter',
+      fields: [
+        expect.objectContaining({
+          limit: {
+            max: 280,
+            unit: 'utf16-code-units',
+            source: 'application-safety',
+          },
+        }),
+      ],
+    });
+  });
 });
