@@ -21,6 +21,10 @@ import WebSocket from 'ws';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Integration } from '@prisma/client';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import {
+  SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+  SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+} from '@gitroom/helpers/utils/ssrf.safe.fetch';
 
 // @ts-ignore
 global.WebSocket = WebSocket;
@@ -156,12 +160,16 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  private async uploadFileToReddit(accessToken: string, path: string) {
+  private async uploadFileToReddit(
+    accessToken: string,
+    path: string,
+    retainedData?: Buffer
+  ) {
     const mimeType = lookup(path);
     const formData = new FormData();
     formData.append('filepath', path.split('/').pop());
     formData.append('mimetype', mimeType || 'application/octet-stream');
-    const data = await readMediaSourceBuffer(path);
+    const data = retainedData ?? (await readMediaSourceBuffer(path));
 
     const {
       args: { action, fields },
@@ -208,6 +216,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     postDetails: PostDetails<RedditSettingsDto>[]
   ): Promise<PostResponse[]> {
     const [post] = postDetails;
+    let thumbnailData: Buffer | undefined;
 
     if (
       post.settings.subreddit.some(({ value }) => value.type === 'media') &&
@@ -218,6 +227,10 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
         throw new Error('Invalid secondary media source');
       }
       await authorizeMediaSource(thumbnail);
+      thumbnailData = await readMediaSourceBuffer(thumbnail, {
+        maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+        bodyTimeoutMs: SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+      });
     }
 
     const valueArray: PostResponse[] = [];
@@ -253,7 +266,8 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
                 ? {
                     video_poster_url: await this.uploadFileToReddit(
                       accessToken,
-                      post.media[0].thumbnail
+                      post.media[0].thumbnail,
+                      thumbnailData
                     ),
                   }
                 : {}),
