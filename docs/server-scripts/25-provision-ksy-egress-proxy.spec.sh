@@ -81,8 +81,16 @@ STUB
 printf '%s\n' "$*" >> "$EGRESS_UFW_CALLS"
 touch "$EGRESS_UFW_RULES"
 if [[ "$1" == status ]]; then
-  [[ -f "$EGRESS_UFW_ACTIVE" ]] && printf 'Status: active\n' || printf 'Status: inactive\n'
-  cat "$EGRESS_UFW_RULES"
+  if [[ -f "$EGRESS_UFW_ACTIVE" ]]; then
+    printf 'Status: active\n'
+    cat "$EGRESS_UFW_RULES"
+  else
+    printf 'Status: inactive\n'
+  fi
+elif [[ "$1 $2" == 'show added' ]]; then
+  grep -Fxq 'OpenSSH ALLOW Anywhere' "$EGRESS_UFW_RULES" && printf 'ufw allow OpenSSH\n'
+  grep -Fxq '3128/tcp ALLOW 201.51.7.50' "$EGRESS_UFW_RULES" && printf 'ufw allow from 201.51.7.50 to any port 3128 proto tcp\n'
+  true
 elif [[ "$1 $2" == '--force enable' ]]; then
   : > "$EGRESS_UFW_ACTIVE"
 elif [[ "$1 $2" == '--force disable' ]]; then
@@ -202,12 +210,15 @@ test_rejects_invalid_hidden_input() {
 }
 
 assert_failure_rolls_back() {
-  local name=$1 knob=$2 expected=$3 case_dir output
+  local name=$1 knob=$2 expected=$3 preconfigured=${4:-0} case_dir output
   case_dir="$TMP_DIR/$name"
   output="$TMP_DIR/$name.out"
   make_case "$case_dir"
   printf 'previous-config\n' > "$case_dir/root/etc/3proxy/3proxy.cfg"
   chmod 600 "$case_dir/root/etc/3proxy/3proxy.cfg"
+  if [[ "$preconfigured" == 1 ]]; then
+    printf 'OpenSSH ALLOW Anywhere\n3128/tcp ALLOW 201.51.7.50\n' > "$case_dir/ufw.rules"
+  fi
   if env "$knob=1" PROXY_USERNAME=inherited_user PROXY_PASSWORD=abcdefghijklmnopqrstuvwxyzABCDEFGH987654321 \
     PATH="$case_dir/bin:$PATH" KSY_EGRESS_TEST_MODE=1 \
     KSY_EGRESS_TEST_ROOT="$case_dir/root" KSY_EGRESS_TEST_DISK_USED_PERCENT=20 \
@@ -221,7 +232,13 @@ assert_failure_rolls_back() {
   fi
   grep -q "KSY_EGRESS_PROXY_FAILED $expected" "$output" || fail "$name returned wrong failure"
   [[ "$(<"$case_dir/root/etc/3proxy/3proxy.cfg")" == previous-config ]] || fail "$name did not restore config"
-  [[ ! -f "$case_dir/ufw.active" && ! -s "$case_dir/ufw.rules" ]] || fail "$name did not restore firewall"
+  [[ ! -f "$case_dir/ufw.active" ]] || fail "$name did not restore inactive UFW state"
+  if [[ "$preconfigured" == 1 ]]; then
+    [[ "$(<"$case_dir/ufw.rules")" == $'OpenSSH ALLOW Anywhere\n3128/tcp ALLOW 201.51.7.50' ]] ||
+      fail "$name did not preserve preconfigured inactive rules"
+  else
+    [[ ! -s "$case_dir/ufw.rules" ]] || fail "$name did not remove rules added by the failed run"
+  fi
   assert_secrets_absent "$case_dir" "$output"
 }
 
@@ -230,6 +247,7 @@ test_rolls_back_failures() {
   assert_failure_rolls_back package KSY_TEST_PACKAGE_FAIL PACKAGE_INSTALL_FAILED
   assert_failure_rolls_back service KSY_TEST_SERVICE_FAIL SERVICE_START_FAILED
   assert_failure_rolls_back listener KSY_TEST_LISTENER_FAIL LISTENER_MISSING
+  assert_failure_rolls_back listener-preconfigured KSY_TEST_LISTENER_FAIL LISTENER_MISSING 1
 }
 
 test_installs_exact_config_idempotently

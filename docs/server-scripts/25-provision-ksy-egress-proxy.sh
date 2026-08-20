@@ -166,15 +166,16 @@ if [[ -f "$CONFIG_FILE" ]]; then
 fi
 if systemctl is-active --quiet 3proxy; then SERVICE_WAS_ACTIVE=1; fi
 if systemctl is-enabled --quiet 3proxy; then SERVICE_WAS_ENABLED=1; fi
-ufw_before=$(ufw status)
-[[ "$ufw_before" != 'Status: active'* ]] || UFW_WAS_ACTIVE=1
+ufw_status=$(ufw status) || fail UFW_STATUS_FAILED
+ufw_added=$(ufw show added) || fail UFW_INVENTORY_FAILED
+[[ "$ufw_status" != 'Status: active'* ]] || UFW_WAS_ACTIVE=1
 
 MUTATION_STARTED=1
-if ! grep -Eq '^OpenSSH[[:space:]]+ALLOW[[:space:]]+' <<<"$ufw_before"; then
+if ! grep -Fxq 'ufw allow OpenSSH' <<<"$ufw_added"; then
   ufw allow OpenSSH >/dev/null || fail UFW_SSH_RULE_FAILED
   ADDED_SSH_RULE=1
 fi
-if ! grep -Eq '^3128/tcp[[:space:]]+ALLOW[[:space:]]+201\.51\.7\.50$' <<<"$ufw_before"; then
+if ! grep -Fxq 'ufw allow from 201.51.7.50 to any port 3128 proto tcp' <<<"$ufw_added"; then
   ufw allow from "$SOURCE_IP" to any port "$PROXY_PORT" proto tcp >/dev/null || fail UFW_PROXY_RULE_FAILED
   ADDED_PROXY_RULE=1
 fi
