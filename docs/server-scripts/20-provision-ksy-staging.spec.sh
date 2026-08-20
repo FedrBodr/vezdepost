@@ -207,6 +207,19 @@ assert_synthetic_secrets_absent() {
   done
 }
 
+assert_progress_contract() {
+  local output=$1
+  local phases
+  phases=$(sed -n 's/^KSY_PROGRESS step=[0-9]\/9 phase=\([^ ]*\).*/\1/p' "$output" |
+    awk '!seen[$0]++')
+  assert_eq $'preflight\nsecrets\ninstall\npull\ndatabase\nmigrations\nserver\nhealth\nevidence' \
+    "$phases" 'progress phases must be complete and ordered'
+  grep -q '^KSY_PROGRESS step=8/9 phase=health .*endpoint=live attempt=1/30 result=PASS$' "$output" ||
+    fail 'successful live health progress is missing'
+  grep -q '^KSY_PROGRESS step=8/9 phase=health .*endpoint=ready attempt=1/30 result=PASS$' "$output" ||
+    fail 'successful ready health progress is missing'
+}
+
 assert_rejection() {
   local case_name=$1
   local expected=$2
@@ -276,6 +289,9 @@ test_provisions_idempotently_without_secret_leaks() {
   run_case "$case_dir" "$output" 0 out_of_order_batch
   run_case "$case_dir" "$case_dir/output-second" 0 out_of_order_batch
 
+  assert_progress_contract "$output"
+  assert_progress_contract "$case_dir/output-second"
+
   assert_eq 600 "$(file_mode "$case_dir/opt/ksy-deals/.env")" \
     'staging env must be owner-readable only'
   assert_eq 600 "$(file_mode "$case_dir/opt/ksy-deals/deployment-evidence.json")" \
@@ -289,6 +305,8 @@ test_provisions_idempotently_without_secret_leaks() {
   [[ -f "$case_dir/network.created" ]] || fail 'caddy-edge was not created'
   grep -q 'compose --project-name ksy-deals .* config --quiet' "$case_dir/docker.calls" ||
     fail 'Compose config was not validated'
+  grep -q 'compose --project-name ksy-deals --progress plain ' "$case_dir/docker.calls" ||
+    fail 'Compose plain progress was not configured'
   grep -q '^login ghcr.io --username FedrBodr --password-stdin$' "$case_dir/docker.calls" ||
     fail 'private GHCR login did not use password stdin'
   grep -q 'compose --project-name ksy-deals .* up -d db' "$case_dir/docker.calls" ||
@@ -610,6 +628,10 @@ test_restores_previous_installation_after_failed_readiness() {
     fail 'previous Compose file was not restored'
   [[ "$(grep -c 'compose --project-name ksy-deals .* up -d server' "$case_dir/docker.calls")" -ge 2 ]] ||
     fail 'previous server was not restarted after failure'
+  grep -q '^KSY_PROGRESS step=8/9 phase=health .*endpoint=live attempt=30/30 result=WAIT$' "$output" ||
+    fail 'failed health progress did not reach its visible bound'
+  grep -q '^KSY_PROVISION_FAILED READINESS_FAILED$' "$output" ||
+    fail 'failed readiness lost its compatible failure record'
   assert_synthetic_secrets_absent "$output"
 }
 

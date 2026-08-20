@@ -55,6 +55,16 @@ fail() {
   exit 1
 }
 
+PROGRESS_TOTAL=9
+
+progress() {
+  local step=$1
+  local phase=$2
+  local message=$3
+  printf 'KSY_PROGRESS step=%s/%s phase=%s message="%s"\n' \
+    "$step" "$PROGRESS_TOTAL" "$phase" "$message"
+}
+
 [[ $# -eq 2 && $1 == --image ]] || fail IMAGE_ARGUMENT_REQUIRED
 KSY_DEALS_IMAGE=$2
 
@@ -174,6 +184,7 @@ install_public() {
   fi
 }
 
+progress 1 preflight 'Checking host prerequisites'
 [[ "$TEST_MODE" == 1 || $EUID -eq 0 ]] || fail ROOT_REQUIRED
 [[ -f "$STAGED_COMPOSE" ]] || fail STAGED_COMPOSE_MISSING
 if [[ -e "$ENV_FILE" && ! -e "$COMPOSE_FILE" ]] ||
@@ -183,6 +194,7 @@ fi
 used=$(disk_used_percent)
 [[ "$used" =~ ^[0-9]+$ && "$used" -lt 85 ]] || fail DISK_USAGE_LIMIT
 
+progress 2 secrets 'Reading hidden secret assignments'
 read_batch
 
 [[ "$KSY_DEALS_IMAGE" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] ||
@@ -205,6 +217,7 @@ safe_token "$PLATPRICES_API_KEY" || fail PLATPRICES_API_KEY_INVALID
 [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]] ||
   fail ADMIN_TELEGRAM_IDS_DUPLICATE
 
+progress 3 install 'Installing reviewed configuration'
 encoded_password=$POSTGRES_PASSWORD
 candidate_env="$WORK_DIR/ksy.env"
 cat > "$candidate_env" <<ENV
@@ -265,35 +278,44 @@ docker network inspect caddy-edge >/dev/null 2>&1 ||
 install_public "$STAGED_COMPOSE" "$COMPOSE_FILE"
 install_private "$candidate_env" "$ENV_FILE"
 
-compose=(docker compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+compose=(docker compose --project-name ksy-deals --progress plain --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 
 wait_for_health() {
-  local url=$1
+  local endpoint=$1
+  local url=$2
   local attempt
   for attempt in $(seq 1 30); do
-    if curl --fail --silent --show-error "$url" >/dev/null; then
+    if curl --fail --silent "$url" >/dev/null 2>&1; then
+      printf 'KSY_PROGRESS step=8/%s phase=health message="Checking %s endpoint" endpoint=%s attempt=%s/30 result=PASS\n' \
+        "$PROGRESS_TOTAL" "$endpoint" "$endpoint" "$attempt"
       return 0
     fi
+    printf 'KSY_PROGRESS step=8/%s phase=health message="Waiting for %s endpoint" endpoint=%s attempt=%s/30 result=WAIT\n' \
+      "$PROGRESS_TOTAL" "$endpoint" "$endpoint" "$attempt"
     [[ "$TEST_MODE" == 1 ]] || sleep 2
   done
   return 1
 }
 
 deploy_stack() {
+  progress 4 pull 'Pulling immutable images'
   "${compose[@]}" config --quiet || return
   "${compose[@]}" pull || return
+  progress 5 database 'Starting PostgreSQL'
   "${compose[@]}" up -d db || return
+  progress 6 migrations 'Applying database migrations'
   "${compose[@]}" run --rm migrate || return
+  progress 7 server 'Starting KSY server'
   "${compose[@]}" up -d server || return
-  wait_for_health http://127.0.0.1:4300/health/live || return
-  wait_for_health http://127.0.0.1:4300/health/ready
+  wait_for_health live http://127.0.0.1:4300/health/live || return
+  wait_for_health ready http://127.0.0.1:4300/health/ready
 }
 
 rollback() {
   if [[ "$had_previous" == 1 ]]; then
     install_private "$WORK_DIR/previous.env" "$ENV_FILE"
     install_public "$WORK_DIR/previous-compose.yml" "$COMPOSE_FILE"
-    local previous=(docker compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+    local previous=(docker compose --project-name ksy-deals --progress plain --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
     "${previous[@]}" config --quiet >/dev/null 2>&1 &&
       "${previous[@]}" up -d server >/dev/null 2>&1 || true
   else
@@ -306,6 +328,7 @@ if ! deploy_stack; then
   fail READINESS_FAILED
 fi
 
+progress 9 evidence 'Writing deployment evidence'
 deployed_at=$(date -u +%FT%TZ)
 rollback_json=null
 if [[ -n "$rollback_image" ]]; then

@@ -30,7 +30,7 @@
 - Consumes: the existing `deploy_stack`, `wait_for_health`, test-mode stubs, and public Compose output.
 - Produces: `progress(step, phase, message)`, nine ordered phase records, and health records containing `endpoint`, `attempt`, and `result`.
 
-- [ ] **Step 1: Write the failing progress contract**
+- [x] **Step 1: Write the failing progress contract**
 
 Add this helper to the spec:
 
@@ -67,7 +67,7 @@ grep -q '^KSY_PROVISION_FAILED READINESS_FAILED$' "$output" ||
 
 Keep calling `assert_synthetic_secrets_absent` for success and failure output.
 
-- [ ] **Step 2: Run the focused spec and verify RED**
+- [x] **Step 2: Run the focused spec and verify RED**
 
 Run:
 
@@ -77,7 +77,7 @@ bash docs/server-scripts/20-provision-ksy-staging.spec.sh
 
 Expected: FAIL because no `KSY_PROGRESS` phases or Compose plain-progress option exist yet.
 
-- [ ] **Step 3: Add the minimal progress renderer**
+- [x] **Step 3: Add the minimal progress renderer**
 
 Add near `fail()`:
 
@@ -117,7 +117,7 @@ Configure the existing Compose array as:
 compose=(docker compose --project-name ksy-deals --progress plain --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 ```
 
-- [ ] **Step 4: Make health polling visible and quiet**
+- [x] **Step 4: Make health polling visible and quiet**
 
 Replace `wait_for_health` with:
 
@@ -147,7 +147,7 @@ wait_for_health live http://127.0.0.1:4300/health/live || return
 wait_for_health ready http://127.0.0.1:4300/health/ready
 ```
 
-- [ ] **Step 5: Verify GREEN and syntax**
+- [x] **Step 5: Verify GREEN and syntax**
 
 Run:
 
@@ -160,7 +160,7 @@ git diff --check
 
 Expected: `KSY staging provisioner tests passed`; both syntax checks and diff check are silent.
 
-- [ ] **Step 6: Commit the reviewed change**
+- [x] **Step 6: Commit the reviewed change**
 
 ```bash
 git add docs/server-scripts/20-provision-ksy-staging.sh \
