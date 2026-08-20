@@ -60,33 +60,18 @@ import {
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { PlainTextPasteExtension } from '@gitroom/frontend/components/new-launch/plain-text-paste.extension';
 import {
+  type EditorCapabilityV2,
   getFormattingControls,
-  resolveEditorCapabilities,
+  resolveEditorCapabilityV2,
 } from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
 import {
   createCanonicalEditorExtensions,
   getEditorCreationPolicyKey,
 } from '@gitroom/frontend/components/new-launch/platform.editor.extensions';
-import {
-  resolveIntegrationCapabilities,
-  type PlatformCapabilities,
-} from '@gitroom/helpers/utils/platform.capabilities';
-import {
-  analyzePlatformContent,
-  analyzeSelectedPlatformContent,
-  type PlatformContentAnalysis,
-} from '@gitroom/helpers/utils/platform.content';
 import { PlatformContentNotice } from '@gitroom/frontend/components/new-launch/platform.content.notice';
 import { deriveGlobalTargets } from '@gitroom/frontend/components/new-launch/global.targets';
 
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
-
-const analyzeSourceOnlyContent = (
-  input: Parameters<typeof analyzePlatformContent>[0]
-): PlatformContentAnalysis => {
-  const analysis = analyzePlatformContent(input);
-  return { ...analysis, blocking: false, messages: [] };
-};
 
 export const EditorWrapper: FC<{
   totalPosts: number;
@@ -123,7 +108,6 @@ export const EditorWrapper: FC<{
     loadedState,
     setLoadedState,
     selectedIntegration,
-    chars,
     comments,
   } = useLaunchStore(
     useShallow((state) => ({
@@ -157,7 +141,6 @@ export const EditorWrapper: FC<{
       loadedState: state.loaded,
       setLoadedState: state.setLoaded,
       selectedIntegration: state.selectedIntegrations,
-      chars: state.chars,
     }))
   );
 
@@ -180,17 +163,6 @@ export const EditorWrapper: FC<{
   const globalTargets = useMemo(
     () => deriveGlobalTargets(selectedIntegration, internalChannels),
     [selectedIntegration, internalChannels]
-  );
-
-  const capabilities = useMemo(
-    () =>
-      resolveEditorCapabilities(
-        current,
-        selectedIntegration,
-        internalChannels,
-        chars
-      ),
-    [current, selectedIntegration, internalChannels, chars]
   );
 
   const customizePlatform = useCallback(
@@ -463,7 +435,6 @@ export const EditorWrapper: FC<{
                 identifier={current}
                 contentOwnerId={current}
                 postId={g.id}
-                capabilities={capabilities}
                 allValues={items}
                 onChange={changeValue(index)}
                 key={index}
@@ -474,7 +445,6 @@ export const EditorWrapper: FC<{
                 setImages={changeImages(index)}
                 autoComplete={canEdit}
                 validateChars={true}
-                totalChars={capabilities.text.max}
                 appendImages={appendImages(index)}
                 dummy={dummy}
                 selectedIntegration={
@@ -483,7 +453,6 @@ export const EditorWrapper: FC<{
                 onCustomize={
                   current === 'global' ? customizePlatform : undefined
                 }
-                chars={chars}
                 childButton={
                   <>
                     {(canEdit && items.length - 1 === index) || !comments ? (
@@ -562,7 +531,7 @@ export const Editor: FC<{
   identifier?: string;
   contentOwnerId?: string;
   postId?: string;
-  capabilities?: PlatformCapabilities;
+  editorCapability?: EditorCapabilityV2;
   totalPosts: number;
   value: string;
   num?: number;
@@ -577,7 +546,8 @@ export const Editor: FC<{
   totalChars?: number;
   selectedIntegration: SelectedIntegrations[];
   dummy: boolean;
-  chars: Record<string, number>;
+  /** @deprecated V2 counters do not trust the client-writable chars map. */
+  chars?: Record<string, number>;
   onCustomize?: (targetIntegrationId: string) => void;
   childButton?: React.ReactNode;
 }> = (props) => {
@@ -589,59 +559,34 @@ export const Editor: FC<{
     num,
     appendImages,
     dummy,
-    chars,
     childButton,
     comments,
   } = props;
-  const capabilities = useMemo(
+  const editorCapability = useMemo(
     () =>
-      props.capabilities ||
-      resolveEditorCapabilities('global', props.selectedIntegration, [], chars),
-    [props.capabilities, props.selectedIntegration, chars]
-  );
-  const formattingControls = useMemo(
-    () => getFormattingControls(capabilities),
-    [capabilities]
-  );
-  const editorCreationPolicyKey = useMemo(
-    () => getEditorCreationPolicyKey(capabilities),
-    [capabilities]
-  );
-  const analysis = useMemo(
-    () =>
-      props.identifier === 'global'
-        ? props.selectedIntegration.length
-          ? analyzeSelectedPlatformContent({
-              content: props.value || '',
-              media: props.pictures || [],
-              capabilities: props.selectedIntegration.map((item) =>
-                resolveIntegrationCapabilities(
-                  item.integration,
-                  chars[item.integration.id]
-                )
-              ),
-              targetIntegrationIds: props.selectedIntegration.map(
-                (item) => item.integration.id
-              ),
-            })
-          : analyzeSourceOnlyContent({
-              content: props.value || '',
-              media: props.pictures || [],
-              capabilities,
-            })
-        : analyzePlatformContent({
-            content: props.value || '',
-            media: props.pictures || [],
-            capabilities,
-          }),
+      props.editorCapability ||
+      resolveEditorCapabilityV2(
+        props.identifier ?? 'global',
+        props.selectedIntegration,
+        [],
+        props.value || '',
+        props.pictures || []
+      ),
     [
+      props.editorCapability,
       props.identifier,
+      props.selectedIntegration,
       props.value,
       props.pictures,
-      props.selectedIntegration,
-      capabilities,
-      chars,
     ]
+  );
+  const formattingControls = useMemo(
+    () => getFormattingControls(editorCapability),
+    [editorCapability]
+  );
+  const editorCreationPolicyKey = useMemo(
+    () => getEditorCreationPolicyKey(editorCapability),
+    [editorCapability]
   );
   const [id] = useState(makeId(10));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -807,7 +752,7 @@ export const Editor: FC<{
                   editorCreationPolicyKey,
                 ])}
                 value={props.value}
-                capabilities={capabilities}
+                capability={editorCapability}
                 onChange={props.onChange}
                 onEditorChange={setActiveEditor}
                 paste={paste}
@@ -860,11 +805,8 @@ export const Editor: FC<{
                   name="image"
                   information={
                     <InformationComponent
-                      analysis={analysis}
+                      capability={editorCapability}
                       isPicture={pictures?.length > 0}
-                      chars={chars}
-                      totalChars={analysis.visibleLength}
-                      totalAllowedChars={capabilities.text.max}
                     />
                   }
                   toolBar={
@@ -945,9 +887,9 @@ export const Editor: FC<{
           </div>
         </div>
       </div>
-      {!!analysis.messages.length && (
+      {!!editorCapability.diagnostics.length && (
         <PlatformContentNotice
-          messages={analysis.messages}
+          diagnostics={editorCapability.diagnostics}
           onCustomize={props.onCustomize}
         />
       )}
@@ -958,18 +900,22 @@ export const Editor: FC<{
 export const OnlyEditor = forwardRef<
   any,
   {
-    capabilities: PlatformCapabilities;
+    capability: Pick<EditorCapabilityV2, 'formatting'>;
     value: string;
     onChange: (value: string) => void;
     onEditorChange?: (editor: any) => void;
     paste?: (event: ClipboardEvent | File[]) => void;
   }
->(({ capabilities, value, onChange, onEditorChange, paste }, ref) => {
+>(({ capability, value, onChange, onEditorChange, paste }, ref) => {
   const t = useT();
   const fetch = useFetch();
+  const { bold, underline, links, lists, headings } = capability.formatting;
   const canonicalEditorExtensions = useMemo(
-    () => createCanonicalEditorExtensions(capabilities),
-    [capabilities]
+    () =>
+      createCanonicalEditorExtensions({
+        formatting: { bold, underline, links, lists, headings },
+      }),
+    [bold, headings, links, lists, underline]
   );
 
   const { internal } = useLaunchStore(

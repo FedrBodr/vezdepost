@@ -79,6 +79,7 @@ export const withProvider = function <T extends object>(params: {
       setChars,
       setComments,
       setHide,
+      setSelectedIntegrationSettings,
     } = useLaunchStore(
       useShallow((state) => ({
         date: state.date,
@@ -98,6 +99,7 @@ export const withProvider = function <T extends object>(params: {
         setPostComment: state.setPostComment,
         setEditor: state.setEditor,
         setChars: state.setChars,
+        setSelectedIntegrationSettings: state.setSelectedIntegrationSettings,
         selectedIntegration: state.selectedIntegrations.find(
           (p) => p.integration.id === props.id
         ),
@@ -176,6 +178,14 @@ export const withProvider = function <T extends object>(params: {
       criteriaMode: 'all',
       reValidateMode: 'onChange',
     });
+
+    useEffect(() => {
+      const subscription = form.watch((settings) => {
+        setSelectedIntegrationSettings(props.id, { ...settings });
+      });
+
+      return () => subscription.unsubscribe();
+    }, [form, props.id, setSelectedIntegrationSettings]);
 
     useImperativeHandle(
       ref,

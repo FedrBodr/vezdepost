@@ -4,7 +4,9 @@ import Heading from '@tiptap/extension-heading';
 import Link from '@tiptap/extension-link';
 import { BulletList, ListItem } from '@tiptap/extension-list';
 import Underline from '@tiptap/extension-underline';
-import type { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import type { TextFieldCapability } from '@gitroom/helpers/utils/platform.capability.types';
+
+export type SemanticEditorCapability = Pick<TextFieldCapability, 'formatting'>;
 
 export interface EditorCreationPolicy {
   bold: boolean;
@@ -15,7 +17,7 @@ export interface EditorCreationPolicy {
 }
 
 export const getEditorCreationPolicy = (
-  capabilities: PlatformCapabilities
+  capabilities: SemanticEditorCapability
 ): EditorCreationPolicy => ({
   bold: capabilities.formatting.bold !== 'unsupported',
   underline: capabilities.formatting.underline !== 'unsupported',
@@ -25,7 +27,7 @@ export const getEditorCreationPolicy = (
 });
 
 export const getEditorCreationPolicyKey = (
-  capabilities: PlatformCapabilities
+  capabilities: SemanticEditorCapability
 ): string => {
   const policy = getEditorCreationPolicy(capabilities);
   return Object.values(policy)
@@ -120,7 +122,7 @@ const shouldAutoLink = (url: string) => {
 const rejectEditorCommand = () => () => false;
 
 export const createCanonicalEditorExtensions = (
-  capabilities: PlatformCapabilities
+  capabilities: SemanticEditorCapability
 ): Extensions => {
   const policy = getEditorCreationPolicy(capabilities);
   const CapabilityAwareUnderline = Underline.extend({

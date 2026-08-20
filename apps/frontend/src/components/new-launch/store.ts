@@ -6,6 +6,7 @@ import { Integrations } from '@gitroom/frontend/components/launches/calendar.con
 import { createRef, RefObject } from 'react';
 import { PostComment } from '@gitroom/frontend/components/new-launch/providers/post-comment.enum';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
+import { isEqual } from 'lodash';
 
 interface Values {
   id: string;
@@ -108,6 +109,10 @@ interface StoreState {
   reset: () => void;
   setSelectedIntegrations: (
     params: { selectedIntegrations: Integrations; settings: any }[]
+  ) => void;
+  setSelectedIntegrationSettings: (
+    integrationId: string,
+    settings: any
   ) => void;
   setTab: (tab: 0 | 1) => void;
   setHide: (hide: boolean) => void;
@@ -369,7 +374,10 @@ export const useLaunchStore = create<StoreState>()((set) => ({
           if (item.integration.id === integrationId) {
             const targetIndex = direction === 'up' ? index - 1 : index + 1;
 
-            if (targetIndex < 0 || targetIndex >= item.integrationValue.length) {
+            if (
+              targetIndex < 0 ||
+              targetIndex >= item.integrationValue.length
+            ) {
               return item;
             }
 
@@ -555,6 +563,25 @@ export const useLaunchStore = create<StoreState>()((set) => ({
         ref: createRef(),
       })),
     })),
+  setSelectedIntegrationSettings: (integrationId: string, settings: any) =>
+    set((state) => {
+      const selectedIntegration = state.selectedIntegrations.find(
+        (item) => item.integration.id === integrationId
+      );
+
+      if (
+        !selectedIntegration ||
+        isEqual(selectedIntegration.settings, settings)
+      ) {
+        return state;
+      }
+
+      return {
+        selectedIntegrations: state.selectedIntegrations.map((item) =>
+          item.integration.id === integrationId ? { ...item, settings } : item
+        ),
+      };
+    }),
   setGlobalValue: (value: Values[]) =>
     set((state) => ({
       global: value,

@@ -11,6 +11,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 
 const { launchStoreState } = vi.hoisted(() => ({
   launchStoreState: {
@@ -115,7 +116,7 @@ vi.mock('@gitroom/react/helpers/delete.dialog', () => ({
 }));
 
 import { Editor, EditorWrapper, OnlyEditor } from './editor';
-import { resolveEditorCapabilities } from './platform.editor.capabilities';
+import { resolveEditorCapabilityV2 } from './platform.editor.capabilities';
 
 afterEach(() => {
   cleanup();
@@ -136,7 +137,7 @@ const renderEditor = async (
   const result = render(
     <OnlyEditor
       ref={ref}
-      capabilities={capabilities}
+      capability={capabilities}
       value={value}
       onChange={() => undefined}
     />
@@ -149,6 +150,86 @@ const renderPlainEditor = (value = '<p></p>') =>
   renderEditor(getPlatformCapabilities('linkedin'), value);
 
 describe('canonical editor schema and creation policy', () => {
+  it('keeps the canonical editor and HTML stable when TikTok media changes the active variant', async () => {
+    const selectedIntegration = {
+      integration: {
+        id: 'tiktok-account',
+        identifier: 'tiktok',
+        name: 'TikTok',
+        capabilitiesV2: resolvePlatformCapabilityV2({
+          identifier: 'tiktok',
+          settings: {},
+          media: [],
+        }),
+      },
+      settings: {},
+    } as any;
+    const value = '<p><strong>Keep canonical HTML</strong></p>';
+    const videoMedia = [{ path: 'clip.mp4' }];
+    const photoMedia = [{ path: 'photo.jpg' }];
+    const videoCapability = resolveEditorCapabilityV2(
+      'tiktok-account',
+      [selectedIntegration],
+      [],
+      value,
+      videoMedia
+    );
+    const photoCapability = resolveEditorCapabilityV2(
+      'tiktok-account',
+      [selectedIntegration],
+      [],
+      value,
+      photoMedia
+    );
+    const onChange = vi.fn();
+    const view = render(
+      <Editor
+        identifier="tiktok-account"
+        editorCapability={videoCapability}
+        comments={true}
+        chars={{}}
+        selectedIntegration={[selectedIntegration]}
+        onChange={onChange}
+        value={value}
+        pictures={videoMedia}
+        totalPosts={1}
+        dummy={false}
+      />
+    );
+    const editable = await waitFor(() => {
+      const element = view.container.querySelector<HTMLElement>(
+        '[contenteditable="true"]'
+      );
+      expect(element).toBeTruthy();
+      return element!;
+    });
+
+    view.rerender(
+      <Editor
+        identifier="tiktok-account"
+        editorCapability={photoCapability}
+        comments={true}
+        chars={{}}
+        selectedIntegration={[selectedIntegration]}
+        onChange={onChange}
+        value={value}
+        pictures={photoMedia}
+        totalPosts={1}
+        dummy={false}
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        view.container.querySelector<HTMLElement>('[contenteditable="true"]')
+      ).toBe(editable)
+    );
+    expect(editable.innerHTML).toContain(
+      '<strong>Keep canonical HTML</strong>'
+    );
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('switches exact same-provider owners before emitting the first edit', async () => {
     const capabilities = getPlatformCapabilities('linkedin');
     const first = {
@@ -493,7 +574,6 @@ describe('canonical editor schema and creation policy', () => {
     render(
       <Editor
         identifier="global"
-        capabilities={resolveEditorCapabilities('global', [])}
         comments={true}
         chars={{}}
         selectedIntegration={[]}
@@ -509,7 +589,7 @@ describe('canonical editor schema and creation policy', () => {
     ).toBeNull();
   });
 
-  it('analyzes a global legacy target without serialized capabilities', () => {
+  it('analyzes a global legacy target from its conservative serialized V2 limit', () => {
     const legacy = {
       integration: {
         id: 'legacy-account',
@@ -517,6 +597,16 @@ describe('canonical editor schema and creation policy', () => {
         name: 'Legacy Provider',
         editor: 'normal',
         stripLinks: false,
+        capabilitiesV2: resolvePlatformCapabilityV2({
+          identifier: 'legacy-provider',
+          settings: {},
+          media: [],
+          adapter: {
+            editor: 'normal',
+            maximum: 5,
+            stripRawUrls: false,
+          },
+        }),
       },
       settings: {},
     } as any;
@@ -535,7 +625,7 @@ describe('canonical editor schema and creation policy', () => {
     );
 
     expect(screen.getByRole('alert').textContent).toContain(
-      'legacy-provider: Text exceeds the 5-character limit.'
+      'legacy-provider: Body exceeds the 5-UTF-16-code-unit limit.'
     );
   });
 });

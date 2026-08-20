@@ -11,97 +11,118 @@ afterEach(() => {
 });
 
 describe('PlatformContentNotice', () => {
-  it('renders information without marking the post invalid', () => {
+  it('renders Telegram media caption overflow as nonblocking split information', () => {
     render(
       <PlatformContentNotice
-        messages={[
+        diagnostics={[
           {
+            destination: 'telegram',
+            variant: 'media',
+            field: 'caption',
             severity: 'information',
             code: 'media-text-split',
-            text: 'Media will be published first, followed by the full text as a separate message.',
+            message:
+              'Media will be published first, followed by the full text as a separate message.',
           },
         ]}
       />
     );
+
     expect(screen.getByRole('status').textContent).toContain(
       'separate message'
     );
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('renders blocking errors as alerts', () => {
+  it('renders blocking V2 diagnostics as alerts', () => {
     render(
       <PlatformContentNotice
-        messages={[
+        diagnostics={[
           {
+            destination: 'pinterest',
+            variant: 'pin',
             severity: 'error',
-            code: 'media-required',
-            text: 'This platform requires media.',
+            code: 'unsupported-media',
+            message: 'Attached media does not match the pin requirements.',
           },
         ]}
       />
     );
-    expect(screen.getByRole('alert').textContent).toContain('requires media');
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      'does not match the pin requirements'
+    );
   });
 
-  it('renders raw URL removal as a nonblocking warning', () => {
+  it('renders recommended limits as a distinct nonblocking recommendation', () => {
     render(
       <PlatformContentNotice
-        messages={[
+        diagnostics={[
           {
+            destination: 'slack',
+            variant: 'message',
+            field: 'body',
             severity: 'warning',
-            code: 'raw-url-removed',
-            text: 'Raw HTTP(S) URLs will be removed before publishing.',
+            code: 'recommended-limit-exceeded',
+            measured: 4_001,
+            limit: 4_000,
+            unit: 'utf16-code-units',
+            message:
+              'Body exceeds the recommended 4000-UTF-16-code-unit limit.',
           },
         ]}
       />
     );
 
+    expect(screen.getByRole('status').textContent).toContain('Recommended:');
     expect(screen.getByRole('status').textContent).toContain(
-      'removed before publishing'
+      'recommended 4000-UTF-16-code-unit limit'
     );
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('uses the exact target account while keeping the provider label readable', () => {
+  it('customizes the exact destination account while keeping its provider label readable', () => {
     const onCustomize = vi.fn();
     render(
       <PlatformContentNotice
-        messages={[
+        diagnostics={[
           {
-            platform: 'linkedin',
+            destination: 'linkedin',
+            variant: 'feed',
             targetIntegrationId: 'linkedin-account-2',
             severity: 'warning',
             code: 'formatting-loss',
-            text: 'linkedin: Some formatting will be converted to plain text.',
+            message: 'Some formatting in Body will be converted or removed.',
           },
         ]}
         onCustomize={onCustomize}
       />
     );
+
     fireEvent.click(
       screen.getByRole('button', { name: 'Customize for linkedin' })
     );
     expect(onCustomize).toHaveBeenCalledWith('linkedin-account-2');
   });
 
-  it('keeps repeated notice identities unique and stable', () => {
+  it('keeps repeated V2 diagnostic identities unique and stable', () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
     const first = {
-      platform: 'pinterest',
+      destination: 'pinterest',
+      variant: 'pin',
       targetIntegrationId: 'pinterest-account-1',
       severity: 'error' as const,
-      code: 'text-too-long' as const,
-      text: 'pinterest: Text exceeds the 500-character limit.',
+      code: 'text-too-long',
+      message: 'Body exceeds the 500-grapheme limit.',
     };
     const second = {
       ...first,
       targetIntegrationId: 'pinterest-account-2',
     };
     const { rerender } = render(
-      <PlatformContentNotice messages={[first, second]} />
+      <PlatformContentNotice diagnostics={[first, second]} />
     );
     const originalNodes = new Map(
       screen
@@ -112,7 +133,7 @@ describe('PlatformContentNotice', () => {
         ])
     );
 
-    rerender(<PlatformContentNotice messages={[second, first]} />);
+    rerender(<PlatformContentNotice diagnostics={[second, first]} />);
 
     const reordered = screen.getAllByRole('alert');
     expect(reordered[0]).toBe(originalNodes.get(second.targetIntegrationId));
