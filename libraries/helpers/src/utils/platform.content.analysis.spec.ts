@@ -297,6 +297,35 @@ describe('analyzePlatformContentV2', () => {
     expect(result.blocking).toBe(false);
   });
 
+  it('counts generic HTML structural boundaries as visible content', () => {
+    const resolved = resolvePlatformCapabilityV2({
+      identifier: 'legacy-html',
+      settings: {},
+      media: [],
+      adapter: {
+        editor: 'html',
+        maximum: 2,
+        stripRawUrls: false,
+      },
+    });
+    const result = analyze({
+      canonicalHtml: '<p>a</p><p>b</p>',
+      resolved,
+    });
+
+    expect(result.diagnostics).toContainEqual({
+      code: 'text-too-long',
+      severity: 'error',
+      destination: 'legacy-html',
+      variant: 'adapter',
+      field: 'body',
+      measured: 3,
+      limit: 2,
+      unit: 'utf16-code-units',
+      message: 'Body exceeds the 2-UTF-16-code-unit limit.',
+    });
+  });
+
   it('treats markup-only required HTML as missing', () => {
     const telegram = capability('telegram');
     const requiredBody: ResolvedPlatformCapabilityV2 = {

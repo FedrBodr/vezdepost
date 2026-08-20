@@ -1,12 +1,11 @@
 import { parseFragment, serialize } from 'parse5';
 import type {
-  FormattingDialect,
   ResolvedPlatformCapabilityV2,
   TextFieldCapability,
 } from './platform.capability.types';
 import { convertHtmlStructureToText } from './html.structure';
 import { getHttpUrlRanges, stripLinks, type HttpUrlRange } from './strip.links';
-import { stripHtmlValidation } from './strip.html.validation';
+import { convertMention, stripHtmlValidation } from './strip.html.validation';
 import { normalizeVerifiedHtml } from './verified.html.normalization';
 
 type HtmlAttribute = {
@@ -89,6 +88,23 @@ const escapeLinkDestination = (value: string, style: RenderStyle): string =>
         .replace(/\\/g, '\\\\')
         .replace(/[()]/g, '\\$&')
         .replace(/[<>\s]/g, (character) => encodeURIComponent(character));
+
+const ALLOWED_GENERATED_LINK_PROTOCOLS = new Set([
+  'http:',
+  'https:',
+  'mailto:',
+]);
+
+const normalizeGeneratedLinkHref = (value: string): string | undefined => {
+  const normalized = value.trim().replace(/[\u0000-\u001f\u007f]/g, '');
+  try {
+    return ALLOWED_GENERATED_LINK_PROTOCOLS.has(new URL(normalized).protocol)
+      ? normalized
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const renderInline = (
   node: HtmlNode,
@@ -217,7 +233,8 @@ const renderNode = (
     return;
   }
   if (tagName === 'a') {
-    const href = getAttribute(node, 'href');
+    const rawHref = getAttribute(node, 'href');
+    const href = rawHref ? normalizeGeneratedLinkHref(rawHref) : undefined;
     if (!href) {
       tokens.push(inner);
     } else if (style === 'slack-mrkdwn') {
@@ -276,12 +293,19 @@ const renderMarkupDialect = (
 
 const normalizePlain = (
   canonicalHtml: string,
-  convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction']
+  convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction'],
+  unicodeFallback = true
 ): string => {
   if (!/<\/?[a-z][\s\S]*>/i.test(canonicalHtml)) {
     return canonicalHtml;
   }
   const structured = convertHtmlStructureToText(canonicalHtml);
+  if (!unicodeFallback) {
+    return stripHtmlValidation(
+      'none',
+      convertMention(structured, convertMentionFunction)
+    );
+  }
   return stripHtmlValidation(
     'normal',
     `<p>${structured}</p>`,
@@ -322,11 +346,11 @@ const normalizeHtml = (
 
 const normalizeCanonicalField = (
   canonicalHtml: string,
-  dialect: FormattingDialect,
+  field: TextFieldCapability,
   capability: ResolvedPlatformCapabilityV2,
   convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction']
 ): string => {
-  switch (dialect) {
+  switch (field.dialect) {
     case 'html':
       return normalizeHtml(canonicalHtml, capability, convertMentionFunction);
     case 'markdown':
@@ -344,22 +368,68 @@ const normalizeCanonicalField = (
       );
     case 'plain':
     case 'bluesky-facets':
-      return normalizePlain(canonicalHtml, convertMentionFunction);
+      return normalizePlain(
+        canonicalHtml,
+        convertMentionFunction,
+        field.formatting.bold === 'unicode' ||
+          field.formatting.underline === 'unicode'
+      );
   }
 };
+
+const visibleBoundaryTags = new Set([
+  'p',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'li',
+]);
 
 const collectVisibleText = (root: HtmlNode) => {
   const textNodes: TextNodeRange[] = [];
   let visibleText = '';
+  let pendingBoundary = false;
+
+  const markBoundary = () => {
+    if (visibleText.length > 0 && !visibleText.endsWith('\n')) {
+      pendingBoundary = true;
+    }
+  };
+
   const visit = (node: HtmlNode) => {
     if (node.nodeName === '#text') {
       const value = node.value ?? '';
+      if (pendingBoundary && !/\S/.test(value)) {
+        return;
+      }
+      if (pendingBoundary) {
+        if (!/^\r?\n/.test(value)) {
+          visibleText += '\n';
+        }
+        pendingBoundary = false;
+      }
       const start = visibleText.length;
       visibleText += value;
       textNodes.push({ node, start, end: start + value.length });
       return;
     }
+
+    if (node.tagName === 'br') {
+      markBoundary();
+      return;
+    }
+    const introducesBoundary =
+      node.tagName !== undefined && visibleBoundaryTags.has(node.tagName);
+    if (introducesBoundary) {
+      markBoundary();
+    }
     getChildNodes(node).forEach(visit);
+    if (introducesBoundary) {
+      markBoundary();
+    }
   };
   visit(root);
   return { textNodes, visibleText };
@@ -519,7 +589,7 @@ export const normalizePlatformFields = ({
           : canonicalHtml;
         return normalizeCanonicalField(
           effectiveCanonicalHtml,
-          field.dialect,
+          field,
           capability,
           convertMentionFunction
         );

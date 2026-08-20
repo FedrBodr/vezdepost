@@ -225,6 +225,23 @@ const applyRuntimeOverlay = (
   };
 };
 
+const cloneAndDeepFreeze = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map(cloneAndDeepFreeze)) as T;
+  }
+  if (value && typeof value === 'object') {
+    return Object.freeze(
+      Object.fromEntries(
+        Object.entries(value).map(([key, child]) => [
+          key,
+          cloneAndDeepFreeze(child),
+        ])
+      )
+    ) as T;
+  }
+  return value;
+};
+
 export const resolvePlatformCapabilityV2 = (
   context: CapabilityResolutionContext
 ): ResolvedPlatformCapabilityV2 => {
@@ -246,7 +263,7 @@ export const resolvePlatformCapabilityV2 = (
   }
 
   const runtime = applyRuntimeOverlay(variant, profile, context);
-  return {
+  return cloneAndDeepFreeze({
     identifier: context.identifier,
     profileIdentifier: profile.identifier,
     verification: profile.verification,
@@ -265,5 +282,5 @@ export const resolvePlatformCapabilityV2 = (
         }
       : {}),
     diagnostics: [...diagnostics, ...runtime.diagnostics],
-  };
+  });
 };

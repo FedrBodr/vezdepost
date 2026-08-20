@@ -294,6 +294,99 @@ describe('Batch 0 platform capability resolution', () => {
     });
   });
 
+  it('deep-freezes a fully cloned resolved capability graph', () => {
+    const overlay: CapabilityRuntimeOverlay = {
+      observedAt: '2026-08-20T10:00:00.000Z',
+      textLimits: {
+        body: {
+          max: 777,
+          unit: 'graphemes',
+          source: 'platform',
+        },
+      },
+      mediaRule: {
+        type: 'exclusive',
+        alternatives: [{ kind: 'images', min: 1, max: 4 }],
+      },
+    };
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('mastodon', [], {
+        runtimeOverlay: overlay,
+        now: '2026-08-20T10:01:00.000Z',
+      })
+    );
+    const pinterest = resolvePlatformCapabilityV2(
+      ctx('pinterest', [{ type: 'image' }])
+    );
+    const invalidTiktok = resolvePlatformCapabilityV2(ctx('tiktok'));
+
+    expect(Object.isFrozen(resolved)).toBe(true);
+    expect(Object.isFrozen(resolved.fields)).toBe(true);
+    expect(Object.isFrozen(resolved.fields[0])).toBe(true);
+    expect(Object.isFrozen(resolved.fields[0].limit)).toBe(true);
+    expect(Object.isFrozen(resolved.fields[0].formatting)).toBe(true);
+    expect(Object.isFrozen(resolved.structuredFields)).toBe(true);
+    expect(Object.isFrozen(resolved.structuredFields[0])).toBe(true);
+    expect(Object.isFrozen(resolved.media)).toBe(true);
+    expect(Object.isFrozen(resolved.delivery)).toBe(true);
+    expect(Object.isFrozen(resolved.diagnostics)).toBe(true);
+    expect(Object.isFrozen(resolved.runtimeOverlay)).toBe(true);
+    expect(Object.isFrozen(resolved.runtimeOverlay?.textLimits)).toBe(true);
+    expect(Object.isFrozen(resolved.runtimeOverlay?.textLimits?.body)).toBe(
+      true
+    );
+    expect(Object.isFrozen(resolved.runtimeOverlay?.mediaRule)).toBe(true);
+    expect(
+      Object.isFrozen(
+        resolved.runtimeOverlay?.mediaRule?.type === 'exclusive'
+          ? resolved.runtimeOverlay.mediaRule.alternatives
+          : undefined
+      )
+    ).toBe(true);
+    expect(
+      Object.isFrozen(
+        resolved.runtimeOverlay?.mediaRule?.type === 'exclusive'
+          ? resolved.runtimeOverlay.mediaRule.alternatives[0]
+          : undefined
+      )
+    ).toBe(true);
+    expect(Object.isFrozen(pinterest.structuredFields[2])).toBe(true);
+    expect(Object.isFrozen(pinterest.media)).toBe(true);
+    expect(
+      Object.isFrozen(
+        pinterest.media.type === 'exclusive'
+          ? pinterest.media.alternatives
+          : undefined
+      )
+    ).toBe(true);
+    expect(
+      Object.isFrozen(
+        pinterest.media.type === 'exclusive'
+          ? pinterest.media.alternatives[0]
+          : undefined
+      )
+    ).toBe(true);
+    expect(Object.isFrozen(invalidTiktok.diagnostics[0])).toBe(true);
+
+    expect(resolved.runtimeOverlay).not.toBe(overlay);
+    expect(resolved.runtimeOverlay?.textLimits).not.toBe(overlay.textLimits);
+    expect(resolved.runtimeOverlay?.mediaRule).not.toBe(overlay.mediaRule);
+    expect(Object.isFrozen(overlay)).toBe(false);
+    expect(Object.isFrozen(overlay.textLimits)).toBe(false);
+    expect(Object.isFrozen(overlay.mediaRule)).toBe(false);
+
+    expect(() => {
+      (resolved.fields[0].limit as unknown as { max: number }).max = 999_999;
+    }).toThrow(TypeError);
+    expect(() => {
+      (
+        pinterest.structuredFields[2] as unknown as { required: boolean }
+      ).required = false;
+    }).toThrow(TypeError);
+    expect(resolved.fields[0].limit?.max).toBe(777);
+    expect(pinterest.structuredFields[2].required).toBe(true);
+  });
+
   it('bridges an unaudited adapter without claiming platform verification', () => {
     const profile = createUnverifiedAdapterProfile(
       ctx('unknown', [], {

@@ -221,6 +221,61 @@ describe('normalizePlatformFields', () => {
     ).toBe('<https://example.com/a%7Cb|site>');
   });
 
+  it.each([
+    ['javascript:alert(1)', 'unsafe'],
+    ['java&#x0A;script:alert(1)', 'obfuscated'],
+    [' data:text/html,unsafe ', 'data'],
+    ['vbscript:msgbox(1)', 'vbscript'],
+  ])('renders unsafe generated link %s as inert text', (href, label) => {
+    const markdown = capability('legacy-markdown', [], {
+      editor: 'markdown',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+    const canonicalHtml = `<p><a href="${href}">${label}</a></p>`;
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe(label);
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: capability('slack'),
+      }).body.value
+    ).toBe(label);
+  });
+
+  it('generates Markdown and Slack links only for allowed protocols', () => {
+    const markdown = capability('legacy-markdown', [], {
+      editor: 'markdown',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+    const canonicalHtml =
+      '<p><a href=" https://example.com/path ">web</a> ' +
+      '<a href="mailto:user@example.com">mail</a></p>';
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe('[web](https://example.com/path) [mail](mailto:user@example.com)');
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: capability('slack'),
+      }).body.value
+    ).toBe('<https://example.com/path|web> <mailto:user@example.com|mail>');
+  });
+
   it('retains first-wave plain-text structure, Unicode emphasis, and link targets', () => {
     expect(
       normalizePlatformFields({
@@ -243,6 +298,35 @@ describe('normalizePlatformFields', () => {
         capability: capability('linkedin'),
       }).body.value
     ).toBe(canonicalHtml);
+  });
+
+  it('uses ordinary text for the all-unsupported none bridge', () => {
+    const none = capability('legacy-none', [], {
+      editor: 'none',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+    const normal = capability('legacy-normal', [], {
+      editor: 'normal',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+
+    expect(none.fields[0].formatting.bold).toBe('unsupported');
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p><strong>Bold</strong></p>',
+        settings: {},
+        capability: none,
+      }).body.value
+    ).toBe('Bold');
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p><strong>Bold</strong></p>',
+        settings: {},
+        capability: normal,
+      }).body.value
+    ).toBe('𝗕𝗼𝗹𝗱');
   });
 
   it('retains the legacy HTML adapter structural subset', () => {
@@ -278,6 +362,22 @@ describe('normalizePlatformFields', () => {
         capability: stripping,
       }).body.value
     ).toBe('');
+  });
+
+  it('does not join or remove a URL split across block boundaries', () => {
+    const stripping = capability('legacy-normal', [], {
+      editor: 'normal',
+      maximum: 280,
+      stripRawUrls: true,
+    });
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>https://exa</p><p>mple.com</p>',
+        settings: {},
+        capability: stripping,
+      }).body.value
+    ).toBe('https://exa\nmple.com');
   });
 
   it('strips Markdown visible URLs before escaping while retaining link metadata', () => {
