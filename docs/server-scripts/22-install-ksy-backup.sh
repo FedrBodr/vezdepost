@@ -20,7 +20,7 @@ fail() {
 }
 
 file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
 
 install_file() {
@@ -76,11 +76,11 @@ REMOTE_KEEP_DAYS=90
 TEST_MODE=${KSY_BACKUP_TEST_MODE:-0}
 
 file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
 
 file_owner() {
-  stat -f '%Su:%Sg' "$1" 2>/dev/null || stat -c '%U:%G' "$1"
+  stat -c '%U:%G' "$1" 2>/dev/null || stat -f '%Su:%Sg' "$1"
 }
 
 log() {

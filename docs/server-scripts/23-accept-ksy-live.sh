@@ -13,7 +13,7 @@ WORK_DIR=$(mktemp -d "$WORK_PARENT/ksy-live-accept.XXXXXX")
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 fail() { printf 'KSY_LIVE_ACCEPT_FAILED %s\n' "$1" >&2; exit 1; }
-file_mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
+file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 
 disk_used_percent() {
   if [[ "$TEST_MODE" == 1 ]]; then

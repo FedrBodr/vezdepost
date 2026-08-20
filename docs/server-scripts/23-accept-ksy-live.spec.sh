@@ -33,7 +33,7 @@ while (($#)); do
 done
 [[ -n "$config" ]] || exit 91
 printf '%s\n' "$config" >> "$CURL_CONFIGS"
-[[ "$(stat -f '%Lp' "$config" 2>/dev/null || stat -c '%a' "$config")" == 600 ]] || exit 92
+[[ "$(stat -c '%a' "$config" 2>/dev/null || stat -f '%Lp' "$config")" == 600 ]] || exit 92
 if grep -q '/setWebhook' "$config"; then
   if [[ "${KSY_TEST_TELEGRAM_BAD:-0}" == 1 ]]; then printf '{"ok":true,"result":false}\n'; else printf '{"ok":true,"result":true}\n'; fi > "$KSY_LIVE_CURL_BODY"
   printf '200'

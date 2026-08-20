@@ -10,8 +10,8 @@ TEST_MODE=${KSY_RESTORE_TEST_MODE:-0}
 restore_created=0
 
 fail() { printf 'KSY_RESTORE_ACCEPT_FAILED %s\n' "$1" >&2; exit 1; }
-file_mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
-mtime() { stat -f '%m' "$1" 2>/dev/null || stat -c '%Y' "$1"; }
+file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
+mtime() { stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1"; }
 fingerprint() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print $1}'
   else LC_ALL=C shasum -a 256 | awk '{print $1}'; fi
