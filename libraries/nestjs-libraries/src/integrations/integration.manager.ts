@@ -1,10 +1,6 @@
 import 'reflect-metadata';
 
 import { Injectable } from '@nestjs/common';
-import {
-  getPlatformCapabilities,
-  PlatformCapabilities,
-} from '@gitroom/helpers/utils/platform.capabilities';
 import { XProvider } from '@gitroom/nestjs-libraries/integrations/social/x.provider';
 import { SocialProvider } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { LinkedinProvider } from '@gitroom/nestjs-libraries/integrations/social/linkedin.provider';
@@ -100,7 +96,11 @@ export class IntegrationManager {
           identifier: p.identifier,
           toolTip: p.toolTip,
           editor: p.editor,
-          capabilities: this.getCapabilities(p.identifier),
+          capabilitiesV2: await this.resolveCapabilitiesV2({
+            providerName: p.identifier,
+            settings: {},
+            media: [],
+          }),
           isExternal: !!p.externalUrl,
           isWeb3: !!p.isWeb3,
           isChromeExtension: !!p.isChromeExtension,
@@ -189,26 +189,6 @@ export class IntegrationManager {
   getAllowedSocialsIntegrations() {
     return socialIntegrationList.map((p) => p.identifier);
   }
-  getCapabilities(
-    providerName: string,
-    providerSettings?: any
-  ): PlatformCapabilities {
-    const provider = this.getSocialIntegration(providerName);
-    const stripRawUrls = !!provider.stripLinks?.();
-    const capabilities =
-      provider.capabilities ||
-      getPlatformCapabilities(providerName, {
-        editor: provider.editor,
-        maximumCharacters: provider.maxLength(providerSettings),
-        stripRawUrls,
-      });
-    return stripRawUrls && !capabilities.delivery.stripRawUrls
-      ? {
-          ...capabilities,
-          delivery: { ...capabilities.delivery, stripRawUrls: true },
-        }
-      : capabilities;
-  }
 
   async resolveCapabilitiesV2({
     providerName,
@@ -226,6 +206,14 @@ export class IntegrationManager {
       integration && provider.fetchCapabilityRuntime
         ? await provider.fetchCapabilityRuntime(integration)
         : undefined;
+    let additionalSettings: unknown = undefined;
+    if (integration) {
+      try {
+        additionalSettings = JSON.parse(integration.additionalSettings || '[]');
+      } catch {
+        additionalSettings = [];
+      }
+    }
 
     return resolvePlatformCapabilityV2({
       identifier: providerName,
@@ -234,7 +222,7 @@ export class IntegrationManager {
       ...(runtimeOverlay ? { runtimeOverlay } : {}),
       adapter: {
         editor: provider.editor,
-        maximum: provider.maxLength(),
+        maximum: provider.maxLength(additionalSettings),
         stripRawUrls: !!provider.stripLinks?.(),
       },
     });

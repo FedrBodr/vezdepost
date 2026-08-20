@@ -18,7 +18,6 @@ import {
   PostDetails,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
-import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 import { authorizeMediaSource } from '@gitroom/helpers/utils/media.source';
 import { collectPublicationMediaSourcePaths } from './publication.media.sources';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
@@ -243,17 +242,13 @@ export class PostActivity {
           false
         )) as MediaContent[];
         const analyze = async (media: MediaContent[]) => {
-          const resolvedCapabilities =
+          const capabilities =
             await this._integrationManager.resolveCapabilitiesV2({
               providerName: integration.providerIdentifier,
               settings,
               media: media.map(({ type }) => ({ type })),
               integration,
             });
-          const capabilities = this.withLegacyBridgeMaximum(
-            resolvedCapabilities,
-            integration
-          );
           const analysis = analyzePlatformContentV2({
             canonicalHtml: post.content,
             settings,
@@ -299,34 +294,6 @@ export class PostActivity {
         };
       })
     );
-  }
-
-  private withLegacyBridgeMaximum(
-    capabilities: ResolvedPlatformCapabilityV2,
-    integration: Integration
-  ): ResolvedPlatformCapabilityV2 {
-    if (capabilities.verification !== 'unverified-adapter') {
-      return capabilities;
-    }
-
-    let additionalSettings: unknown = [];
-    try {
-      additionalSettings = JSON.parse(integration.additionalSettings || '[]');
-    } catch {
-      additionalSettings = [];
-    }
-    const maximum = this._integrationManager.getCapabilities(
-      integration.providerIdentifier,
-      additionalSettings
-    ).text.max;
-    return {
-      ...capabilities,
-      fields: capabilities.fields.map((field) =>
-        field.source === 'canonical-editor' && field.limit
-          ? { ...field, limit: { ...field.limit, max: maximum } }
-          : field
-      ),
-    };
   }
 
   @ActivityMethod()

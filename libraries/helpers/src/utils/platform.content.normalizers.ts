@@ -614,3 +614,11 @@ export const normalizedFieldMeasurementValue = (
   return collectVisibleText(parseFragment(value) as unknown as HtmlNode)
     .visibleText;
 };
+
+export const containsVisibleRawUrl = (value: string): boolean => {
+  const visibleText = /<\/?[a-z][\s\S]*>/i.test(value)
+    ? collectVisibleText(parseFragment(value) as unknown as HtmlNode)
+        .visibleText
+    : value;
+  return getHttpUrlRanges(visibleText).length > 0;
+};

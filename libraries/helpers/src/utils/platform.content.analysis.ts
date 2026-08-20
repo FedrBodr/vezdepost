@@ -7,6 +7,7 @@ import type {
 } from './platform.capability.types';
 import { measureContent } from './platform.content.measurement';
 import {
+  containsVisibleRawUrl,
   normalizePlatformFields,
   normalizedFieldMeasurementValue,
   type NormalizePlatformFieldsInput,
@@ -228,6 +229,27 @@ export const analyzePlatformContentV2 = ({
           capability,
           field,
           `Some formatting in ${field.label} will be converted or removed.`
+        )
+      );
+    }
+    const settingValue = settings[field.key];
+    const sourceValue =
+      field.source === 'canonical-editor'
+        ? canonicalHtml
+        : typeof settingValue === 'string'
+        ? settingValue
+        : '';
+    if (
+      capability.delivery.stripRawUrls &&
+      containsVisibleRawUrl(sourceValue)
+    ) {
+      diagnostics.push(
+        fieldDiagnostic(
+          'raw-url-removed',
+          'warning',
+          capability,
+          field,
+          'Raw HTTP(S) URLs will be removed before publishing.'
         )
       );
     }

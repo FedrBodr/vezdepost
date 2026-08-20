@@ -63,11 +63,12 @@ const adapterDialect = (
 export const createUnverifiedAdapterProfile = (
   context: CapabilityResolutionContext
 ): PlatformCapabilityProfileV2 => {
-  const adapter = context.adapter ?? {
-    editor: 'normal' as const,
-    maximum: 1_000_000,
-    stripRawUrls: false,
-  };
+  if (!context.adapter) {
+    throw new Error(
+      `Unverified platform ${context.identifier} requires explicit adapter capabilities`
+    );
+  }
+  const adapter = context.adapter;
   const field: TextFieldCapability = {
     key: 'body',
     label: 'Body',

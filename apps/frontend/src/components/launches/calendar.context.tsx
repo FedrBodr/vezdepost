@@ -26,7 +26,6 @@ import {
   expandPostsList,
   expandPosts,
 } from '@gitroom/helpers/utils/posts.list.minify';
-import { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 extend(isoWeek);
 extend(weekOfYear);
@@ -98,8 +97,6 @@ export interface Integrations {
   inBetweenSteps: boolean;
   editor: 'none' | 'normal' | 'markdown' | 'html';
   capabilitiesV2?: ResolvedPlatformCapabilityV2;
-  /** @deprecated Kept for frontend consumers that migrate in Task 7. */
-  capabilities?: PlatformCapabilities;
   stripLinks?: boolean;
   display: string;
   identifier: string;

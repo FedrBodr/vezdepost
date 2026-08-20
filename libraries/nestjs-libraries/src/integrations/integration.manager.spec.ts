@@ -6,56 +6,6 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('IntegrationManager capability metadata', () => {
-  it('uses the shared registry as the source of the VK limit', () => {
-    const manager = new IntegrationManager();
-    expect(manager.getCapabilities('vk')).toMatchObject({
-      identifier: 'vk',
-      verified: true,
-      text: { max: 16384 },
-    });
-  });
-
-  it('passes provider settings to legacy capability limits', () => {
-    const manager = new IntegrationManager();
-    expect(
-      manager.getCapabilities('x', [{ title: 'Verified', value: true }])
-    ).toMatchObject({
-      identifier: 'x',
-      verified: false,
-      text: { max: 4000 },
-    });
-  });
-
-  it('derives raw URL stripping from an X-style legacy provider', () => {
-    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
-
-    expect(new IntegrationManager().getCapabilities('x')).toMatchObject({
-      identifier: 'x',
-      verified: false,
-      delivery: { stripRawUrls: true },
-    });
-  });
-
-  it('overlays explicit provider URL stripping on a verified profile', () => {
-    const manager = new IntegrationManager();
-    const capabilities = manager.getCapabilities('telegram');
-    const provider = new Proxy(manager.getSocialIntegration('telegram'), {
-      get(target, property, receiver) {
-        if (property === 'capabilities') return capabilities;
-        if (property === 'stripLinks') return () => true;
-        return Reflect.get(target, property, receiver);
-      },
-    });
-    vi.spyOn(manager, 'getSocialIntegration').mockReturnValue(provider);
-
-    expect(manager.getCapabilities('future-verified')).toMatchObject({
-      verified: true,
-      delivery: { stripRawUrls: true },
-    });
-  });
-});
-
 describe('IntegrationManager trusted V2 capability resolution', () => {
   it('resolves LinkedIn Page through the LinkedIn profile without losing its identifier', async () => {
     const resolved = await new IntegrationManager().resolveCapabilitiesV2({
@@ -231,6 +181,32 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
           },
         }),
       ],
+    });
+  });
+
+  it('derives an unverified bridge limit only from stored integration settings', async () => {
+    const manager = new IntegrationManager();
+    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
+
+    const resolved = await manager.resolveCapabilitiesV2({
+      providerName: 'x',
+      settings: {},
+      media: [],
+      integration: {
+        additionalSettings: JSON.stringify([
+          { title: 'Verified', value: true },
+        ]),
+      } as never,
+    });
+
+    expect(resolved).toMatchObject({
+      verification: 'unverified-adapter',
+      fields: [
+        expect.objectContaining({
+          limit: expect.objectContaining({ max: 4_000 }),
+        }),
+      ],
+      delivery: { stripRawUrls: true },
     });
   });
 });

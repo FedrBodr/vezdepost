@@ -1,5 +1,4 @@
 import { Integration } from '@prisma/client';
-import { PlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
 
 export interface ClientInformation {
@@ -167,7 +166,6 @@ export interface SocialProvider
   extends IAuthenticator,
     ISocialMediaIntegration {
   identifier: string;
-  capabilities?: PlatformCapabilities;
   refreshWait?: boolean;
   convertToJPEG?: boolean;
   stripLinks?: () => boolean;

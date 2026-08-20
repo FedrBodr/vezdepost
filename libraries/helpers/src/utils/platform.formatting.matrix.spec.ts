@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getPlatformCapabilities } from './platform.capabilities';
-import { analyzePlatformContent } from './platform.content';
+import { analyzePlatformContentV2 } from './platform.content.analysis';
+import { resolvePlatformCapabilityV2 } from './platform.capability.resolver';
 import { MaxProvider } from '@gitroom/nestjs-libraries/integrations/social/max.provider';
 import { TumblrProvider } from '@gitroom/nestjs-libraries/integrations/social/tumblr.provider';
 import { VkGroupProvider } from '@gitroom/nestjs-libraries/integrations/social/vk.group.provider';
@@ -19,14 +19,26 @@ const canonical =
 
 describe.each(active)('%s formatting matrix', (identifier) => {
   it('normalizes deterministically and stays under its configured limit', () => {
-    const analysis = analyzePlatformContent({
-      content: canonical,
-      media: identifier === 'pinterest' ? [{ type: 'image' }] : [],
-      capabilities: getPlatformCapabilities(identifier),
+    const media =
+      identifier === 'pinterest' ? [{ type: 'image' as const }] : [];
+    const settings = identifier === 'pinterest' ? { board: 'board' } : {};
+    const capability = resolvePlatformCapabilityV2({
+      identifier,
+      settings,
+      media,
     });
-    expect(analysis.normalized).toMatchSnapshot();
+    const analysis = analyzePlatformContentV2({
+      canonicalHtml: canonical,
+      settings,
+      media,
+      capability,
+    });
+    const field = capability.fields.find(
+      ({ source }) => source === 'canonical-editor'
+    )!;
+    expect(analysis.fields[field.key].value).toMatchSnapshot();
     expect(
-      analysis.messages.filter((item) => item.severity === 'error')
+      analysis.diagnostics.filter((item) => item.severity === 'error')
     ).toEqual([]);
   });
 });
@@ -40,39 +52,52 @@ it.each([
   ['vk', 16384],
   ['vk-group', 16384],
 ] as const)('%s accepts its limit and rejects limit + 1', (identifier, max) => {
-  const capabilities = getPlatformCapabilities(identifier);
   const media = identifier === 'pinterest' ? [{ type: 'image' as const }] : [];
+  const capability = resolvePlatformCapabilityV2({
+    identifier,
+    settings: identifier === 'pinterest' ? { board: 'board' } : {},
+    media,
+  });
   expect(
-    analyzePlatformContent({
-      content: `<p>${'a'.repeat(max)}</p>`,
+    analyzePlatformContentV2({
+      canonicalHtml: `<p>${'a'.repeat(max)}</p>`,
+      settings: identifier === 'pinterest' ? { board: 'board' } : {},
       media,
-      capabilities,
+      capability,
     }).blocking
   ).toBe(false);
   expect(
-    analyzePlatformContent({
-      content: `<p>${'a'.repeat(max + 1)}</p>`,
+    analyzePlatformContentV2({
+      canonicalHtml: `<p>${'a'.repeat(max + 1)}</p>`,
+      settings: identifier === 'pinterest' ? { board: 'board' } : {},
       media,
-      capabilities,
-    }).messages
+      capability,
+    }).diagnostics
   ).toContainEqual(expect.objectContaining({ code: 'text-too-long' }));
 });
 
 it('splits a Telegram media caption only above 1024 visible characters', () => {
-  const capabilities = getPlatformCapabilities('telegram');
+  const media = [{ type: 'image' as const }];
+  const capability = resolvePlatformCapabilityV2({
+    identifier: 'telegram',
+    settings: {},
+    media,
+  });
   expect(
-    analyzePlatformContent({
-      content: `<p>${'a'.repeat(1024)}</p>`,
-      media: [{ type: 'image' }],
-      capabilities,
-    }).messages
+    analyzePlatformContentV2({
+      canonicalHtml: `<p>${'a'.repeat(1024)}</p>`,
+      settings: {},
+      media,
+      capability,
+    }).diagnostics
   ).not.toContainEqual(expect.objectContaining({ code: 'media-text-split' }));
   expect(
-    analyzePlatformContent({
-      content: `<p>${'a'.repeat(1025)}</p>`,
-      media: [{ type: 'image' }],
-      capabilities,
-    }).messages
+    analyzePlatformContentV2({
+      canonicalHtml: `<p>${'a'.repeat(1025)}</p>`,
+      settings: {},
+      media,
+      capability,
+    }).diagnostics
   ).toContainEqual(expect.objectContaining({ code: 'media-text-split' }));
 });
 

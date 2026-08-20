@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PostActivity } from './post.activity';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
+import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { authorizeMediaSource } from '@gitroom/helpers/utils/media.source';
 
@@ -28,23 +28,36 @@ vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => {
 
 const createCapabilityManager = (
   provider: any,
-  capabilities: ReturnType<typeof getPlatformCapabilities>
+  capability: ResolvedPlatformCapabilityV2
 ) => ({
   getSocialIntegration: vi.fn().mockReturnValue(provider),
-  getCapabilities: vi.fn().mockReturnValue(capabilities),
   resolveCapabilitiesV2: vi.fn(async ({ providerName, settings, media }: any) =>
     resolvePlatformCapabilityV2({
       identifier: providerName,
       settings,
       media,
       adapter: {
-        editor: provider.editor,
-        maximum: capabilities.text.max,
-        stripRawUrls: capabilities.delivery.stripRawUrls,
+        editor: provider.editor ?? 'normal',
+        maximum:
+          capability.fields.find(
+            ({ source, limit }) => source === 'canonical-editor' && !!limit
+          )?.limit?.max ?? 1_000_000,
+        stripRawUrls: capability.delivery.stripRawUrls,
       },
     })
   ),
 });
+
+const resolvedCapability = (
+  identifier: string,
+  adapter?: { editor: 'normal'; maximum: number; stripRawUrls: boolean }
+) =>
+  resolvePlatformCapabilityV2({
+    identifier,
+    settings: {},
+    media: [],
+    ...(adapter ? { adapter } : {}),
+  });
 
 describe('PostActivity platform formatting', () => {
   it('passes registry-normalized Telegram content to the provider', async () => {
@@ -77,7 +90,7 @@ describe('PostActivity platform formatting', () => {
     };
     const integrationManager = createCapabilityManager(
       provider,
-      getPlatformCapabilities('telegram')
+      resolvedCapability('telegram')
     );
     const activity = new PostActivity(
       postService as any,
@@ -158,7 +171,7 @@ describe('PostActivity platform formatting', () => {
       };
       const integrationManager = createCapabilityManager(
         provider,
-        getPlatformCapabilities(identifier)
+        resolvedCapability(identifier)
       );
       const activity = new PostActivity(
         postService as any,
@@ -276,7 +289,7 @@ describe('PostActivity platform formatting', () => {
     };
     const integrationManager = createCapabilityManager(
       provider,
-      getPlatformCapabilities('linkedin')
+      resolvedCapability('linkedin')
     );
     const activity = new PostActivity(
       postService as any,
@@ -339,9 +352,9 @@ describe('PostActivity platform formatting', () => {
     };
     const integrationManager = createCapabilityManager(
       provider,
-      getPlatformCapabilities('x', {
+      resolvedCapability('x', {
         editor: 'normal',
-        maximumCharacters: 280,
+        maximum: 280,
         stripRawUrls: true,
       })
     );
@@ -637,7 +650,7 @@ describe('PostActivity platform formatting', () => {
     };
     const integrationManager = createCapabilityManager(
       provider,
-      getPlatformCapabilities('tiktok')
+      resolvedCapability('tiktok')
     );
     const activity = new PostActivity(
       postService as any,

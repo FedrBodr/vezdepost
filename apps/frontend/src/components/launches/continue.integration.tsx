@@ -13,7 +13,6 @@ import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { useChannelConnectAnalytics } from '@gitroom/frontend/components/launches/channel-connect.analytics';
 import { ChannelSupportLink } from '@gitroom/frontend/components/launches/channel-support-link';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 
 export const getSafeErrorMessage = (data: unknown, fallback: string) => {
   if (!data || typeof data !== 'object') {
@@ -438,7 +437,6 @@ export const ContinueIntegration: FC<{
                 allIntegrations: [],
                 integration: {
                   editor: 'normal',
-                  capabilities: getPlatformCapabilities(provider),
                   additionalSettings: '',
                   display: '',
                   time: [{ time: 0 }],

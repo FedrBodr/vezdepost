@@ -59,10 +59,8 @@ import {
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { analyzePlatformContent } from '@gitroom/helpers/utils/platform.content';
 import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
 import { normalizedFieldMeasurementValue } from '@gitroom/helpers/utils/platform.content.normalizers';
-import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 import {
   PostValidationFailure,
   selectPostValidationFailure,
@@ -929,18 +927,13 @@ export class PostsService {
         const contentAnalyses = await Promise.all(
           (post.value || []).map(async (item) => {
             const resolvedMedia = await this.validationMedia(item.image || []);
-            const resolvedCapabilities =
+            const capabilities =
               await this._integrationManager.resolveCapabilitiesV2({
                 providerName: integration.providerIdentifier,
                 settings,
                 media: resolvedMedia,
                 integration,
               });
-            const capabilities = this.withLegacyBridgeMaximum(
-              resolvedCapabilities,
-              integration.providerIdentifier,
-              additionalSettings
-            );
             const analysis = analyzePlatformContentV2({
               canonicalHtml: item.content || '',
               settings,
@@ -948,40 +941,21 @@ export class PostsService {
               capability: capabilities,
               convertMentionFunction: provider.mentionFormat,
             });
-            const legacyAnalysis =
-              capabilities.verification === 'unverified-adapter'
-                ? analyzePlatformContent({
-                    content: item.content || '',
-                    media: resolvedMedia,
-                    capabilities: this._integrationManager.getCapabilities(
-                      integration.providerIdentifier,
-                      additionalSettings
-                    ),
-                  })
-                : undefined;
 
             return {
               analysis,
               capabilities,
-              legacyMessages: legacyAnalysis?.messages || [],
               media: resolvedMedia,
             };
           })
         );
         const contentMessages = contentAnalyses.flatMap(
-          ({ analysis, legacyMessages }) => [
-            ...analysis.diagnostics,
-            ...legacyMessages,
-          ]
+          ({ analysis }) => analysis.diagnostics
         );
         const contentError =
           contentAnalyses
             .flatMap(({ analysis }) => analysis.diagnostics)
-            .find((item) => item.severity === 'error')?.message ||
-          contentAnalyses
-            .flatMap(({ legacyMessages }) => legacyMessages)
-            .find((item) => item.severity === 'error')?.text ||
-          '';
+            .find((item) => item.severity === 'error')?.message || '';
         const emptyContent = contentAnalyses.some(
           ({ analysis, capabilities, media: resolvedMedia }) =>
             resolvedMedia.length === 0 &&
@@ -1084,29 +1058,6 @@ export class PostsService {
       }
       throw new BadRequestException('Invalid media attachment.');
     }
-  }
-
-  private withLegacyBridgeMaximum(
-    capabilities: ResolvedPlatformCapabilityV2,
-    providerIdentifier: string,
-    additionalSettings: unknown
-  ): ResolvedPlatformCapabilityV2 {
-    if (capabilities.verification !== 'unverified-adapter') {
-      return capabilities;
-    }
-
-    const maximum = this._integrationManager.getCapabilities(
-      providerIdentifier,
-      additionalSettings
-    ).text.max;
-    return {
-      ...capabilities,
-      fields: capabilities.fields.map((field) =>
-        field.source === 'canonical-editor' && field.limit
-          ? { ...field, limit: { ...field.limit, max: maximum } }
-          : field
-      ),
-    };
   }
 
   async createPost(

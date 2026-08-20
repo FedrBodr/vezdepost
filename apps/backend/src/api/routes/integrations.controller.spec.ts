@@ -42,7 +42,6 @@ describe('IntegrationsController capability metadata', () => {
         editor: 'normal',
         maxLength: () => 500,
       }),
-      getCapabilities: vi.fn().mockReturnValue({ identifier: 'mastodon' }),
       resolveCapabilitiesV2: vi.fn().mockResolvedValue(capabilitiesV2),
     };
     const integrationService = {
@@ -60,6 +59,7 @@ describe('IntegrationsController capability metadata', () => {
     } as never);
 
     expect(response.integrations[0]).toMatchObject({ capabilitiesV2 });
+    expect(response.integrations[0]).not.toHaveProperty('capabilities');
     expect(manager.resolveCapabilitiesV2).toHaveBeenCalledExactlyOnceWith({
       providerName: 'mastodon',
       settings: [{ title: 'Visibility', value: 'public' }],

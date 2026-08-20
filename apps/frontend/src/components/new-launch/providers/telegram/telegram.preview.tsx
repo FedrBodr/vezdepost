@@ -1,8 +1,8 @@
 import React, { FC } from 'react';
 import { GeneralPreviewComponent } from '../../../launches/general.preview.component';
 import { useIntegration } from '../../../launches/helpers/use.integration';
-import { analyzePlatformContent } from '@gitroom/helpers/utils/platform.content';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import { PlatformContentNotice } from '@gitroom/frontend/components/new-launch/platform.content.notice';
 
 type TelegramPreviewPost = {
@@ -10,18 +10,22 @@ type TelegramPreviewPost = {
   image?: Array<{ path: string }>;
 };
 
-const telegramCapabilities = getPlatformCapabilities('telegram');
-
 const getTelegramSplitMessages = (posts: TelegramPreviewPost[]) => {
   const message = posts
-    .flatMap(
-      (post) =>
-        analyzePlatformContent({
-          content: post.content,
-          media: (post.image || []).map(() => ({ type: 'image' as const })),
-          capabilities: telegramCapabilities,
-        }).messages
-    )
+    .flatMap((post) => {
+      const media = (post.image || []).map(() => ({ type: 'image' as const }));
+      const capability = resolvePlatformCapabilityV2({
+        identifier: 'telegram',
+        settings: {},
+        media,
+      });
+      return analyzePlatformContentV2({
+        canonicalHtml: post.content,
+        settings: {},
+        media,
+        capability,
+      }).diagnostics;
+    })
     .find((item) => item.code === 'media-text-split');
 
   return message ? [message] : [];
@@ -40,7 +44,7 @@ export const TelegramPreview: FC<{ maximumCharacters?: number }> = (props) => {
       <GeneralPreviewComponent {...props} />
       {!!messages.length && (
         <div className="mx-[15px] mb-[15px]">
-          <PlatformContentNotice messages={messages} />
+          <PlatformContentNotice diagnostics={messages} />
         </div>
       )}
     </>

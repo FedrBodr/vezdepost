@@ -22,6 +22,7 @@ import { InternalChannels } from '@gitroom/frontend/components/launches/internal
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import SafeImage from '@gitroom/react/helpers/safe.image';
+import { resolveEditorCapabilityV2 } from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
 
 class Empty {
   @IsOptional()
@@ -106,8 +107,22 @@ export const withProvider = function <T extends object>(params: {
       }))
     );
 
+    const value = useMemo(() => {
+      if (internal?.integrationValue?.length) {
+        return internal.integrationValue;
+      }
+
+      return global;
+    }, [internal, global, isGlobal]);
+    const activePreviewLimit = resolveEditorCapabilityV2(
+      props.id,
+      [selectedIntegration],
+      [],
+      value[0]?.content ?? '',
+      value[0]?.media ?? []
+    ).destinations[0]?.activeField?.limit?.max;
     const resolvedMaximumCharacters =
-      selectedIntegration.integration.capabilities?.text.max ??
+      activePreviewLimit ??
       (typeof maximumCharacters === 'number'
         ? maximumCharacters
         : maximumCharacters(
@@ -160,14 +175,6 @@ export const withProvider = function <T extends object>(params: {
         revalidateOnReconnect: true,
       }
     );
-
-    const value = useMemo(() => {
-      if (internal?.integrationValue?.length) {
-        return internal.integrationValue;
-      }
-
-      return global;
-    }, [internal, global, isGlobal]);
 
     const form = useForm({
       resolver: classValidatorResolver(dto || Empty),

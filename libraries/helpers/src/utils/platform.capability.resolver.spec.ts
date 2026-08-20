@@ -64,6 +64,18 @@ describe('Batch 0 platform capability resolution', () => {
     }
   );
 
+  it('requires explicit adapter metadata for an unverified destination', () => {
+    expect(() =>
+      resolvePlatformCapabilityV2({
+        identifier: 'future-provider',
+        settings: {},
+        media: [],
+      })
+    ).toThrow(
+      'Unverified platform future-provider requires explicit adapter capabilities'
+    );
+  });
+
   it('models Slack API and recommended limits independently', () => {
     expect(resolvePlatformCapabilityV2(ctx('slack')).fields[0].limit).toEqual({
       max: 40_000,

@@ -3,7 +3,7 @@
 import { render } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 
 const previewContext = vi.hoisted(() => ({
   current: 'integration',
@@ -11,6 +11,7 @@ const previewContext = vi.hoisted(() => ({
   maximumCharacters: 10,
   stripRawUrls: false,
   hasCapabilities: true,
+  serializedCapability: undefined as any,
   editor: 'html' as 'none' | 'normal' | 'markdown' | 'html',
   value: [] as Array<{
     content: string;
@@ -22,7 +23,16 @@ vi.mock(
   '@gitroom/frontend/components/launches/helpers/use.integration',
   () => ({
     useIntegration: () => {
-      const capabilities = getPlatformCapabilities(previewContext.identifier);
+      const capability = resolvePlatformCapabilityV2({
+        identifier: previewContext.identifier,
+        settings: {},
+        media: [],
+        adapter: {
+          editor: previewContext.editor,
+          maximum: previewContext.maximumCharacters,
+          stripRawUrls: previewContext.stripRawUrls,
+        },
+      });
       return {
         value: previewContext.value,
         integration: {
@@ -34,14 +44,26 @@ vi.mock(
           picture: '/account.jpg',
           ...(previewContext.hasCapabilities
             ? {
-                capabilities: {
-                  ...capabilities,
-                  text: { max: previewContext.maximumCharacters },
-                  delivery: {
-                    ...capabilities.delivery,
-                    stripRawUrls: previewContext.stripRawUrls,
-                  },
-                },
+                capabilitiesV2:
+                  previewContext.serializedCapability ??
+                  ({
+                    ...capability,
+                    fields: capability.fields.map((field) => ({
+                      ...field,
+                      ...(field.limit
+                        ? {
+                            limit: {
+                              ...field.limit,
+                              max: previewContext.maximumCharacters,
+                            },
+                          }
+                        : {}),
+                    })),
+                    delivery: {
+                      ...capability.delivery,
+                      stripRawUrls: previewContext.stripRawUrls,
+                    },
+                  } as typeof capability),
               }
             : {}),
         },
@@ -81,6 +103,7 @@ beforeEach(() => {
   previewContext.maximumCharacters = 10;
   previewContext.stripRawUrls = false;
   previewContext.hasCapabilities = true;
+  previewContext.serializedCapability = undefined;
   previewContext.editor = 'html';
   previewContext.value = [];
 });
@@ -97,7 +120,7 @@ describe('GeneralPreviewComponent content safety', () => {
     expect(preview.querySelector('mark')).toBeNull();
   });
 
-  it('uses the supplied legacy maximum and sanitizes when capabilities are missing', () => {
+  it('uses the supplied adapter maximum and sanitizes when capabilities are missing', () => {
     previewContext.identifier = 'legacy-html';
     previewContext.hasCapabilities = false;
     previewContext.editor = 'html';
@@ -201,7 +224,37 @@ describe('GeneralPreviewComponent content safety', () => {
 });
 
 describe('GeneralPreviewComponent visible-length cropping', () => {
+  it('re-resolves a stale Mastodon overlay to the safe fallback limit', () => {
+    previewContext.identifier = 'mastodon';
+    previewContext.maximumCharacters = 777;
+    const runtimeCapability = resolvePlatformCapabilityV2({
+      identifier: 'mastodon',
+      settings: {},
+      media: [],
+      now: '2026-08-21T10:00:00.000Z',
+      runtimeOverlay: {
+        observedAt: '2026-08-21T10:00:00.000Z',
+        textLimits: {
+          body: { max: 777, unit: 'graphemes', source: 'runtime' },
+        },
+      },
+    });
+    previewContext.serializedCapability = {
+      ...runtimeCapability,
+      runtimeOverlay: {
+        ...runtimeCapability.runtimeOverlay!,
+        observedAt: '2000-01-01T00:00:00.000Z',
+      },
+      runtimeObservedAt: '2000-01-01T00:00:00.000Z',
+    };
+
+    const preview = renderPreview('a'.repeat(501));
+
+    expect(preview.querySelector('mark')?.textContent).toBe('a');
+  });
+
   it('does not crop formatted HTML at the visible-character boundary', () => {
+    previewContext.identifier = 'legacy-html';
     const preview = renderPreview(`<p><strong>${'x'.repeat(10)}</strong></p>`);
 
     expect(preview.textContent).toBe('x'.repeat(10));
@@ -210,6 +263,7 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
   });
 
   it('renders a valid plain-text crop marker for formatted over-limit HTML', () => {
+    previewContext.identifier = 'legacy-html';
     const preview = renderPreview(`<p><strong>${'x'.repeat(11)}</strong></p>`);
 
     expect(preview.textContent).toBe('x'.repeat(11));
@@ -275,13 +329,18 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
     'crops %s mention labels with special characters exactly once',
     (identifier) => {
       previewContext.identifier = identifier;
-      previewContext.maximumCharacters = 6;
+      const maximumCharacters = identifier === 'telegram' ? 4_096 : 4_000;
+      previewContext.maximumCharacters = maximumCharacters;
 
       const preview = renderPreview(
-        '<p>Hello <span data-mention-id="1">@AT&amp;T &lt;B&gt;</span></p>'
+        `<p>${'x'.repeat(
+          maximumCharacters
+        )}<span data-mention-id="1">@AT&amp;T &lt;B&gt;</span></p>`
       );
 
-      expect(preview.textContent).toBe('Hello @AT&T <B>');
+      expect(preview.textContent).toBe(
+        `${'x'.repeat(maximumCharacters)}@AT&T <B>`
+      );
       expect(preview.querySelector('mark .font-bold')?.textContent).toBe(
         '@AT&T <B>'
       );

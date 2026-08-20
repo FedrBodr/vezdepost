@@ -1,7 +1,7 @@
 import * as safeRemoteFetch from '@gitroom/helpers/utils/ssrf.safe.fetch';
 import * as mediaReader from '@gitroom/helpers/utils/read.or.fetch';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
+import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { selectPostValidationFailure } from './post.validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -37,23 +37,28 @@ const createService = ({
 
 const createCapabilityManager = (
   provider: any,
-  capabilities: ReturnType<typeof getPlatformCapabilities>
+  capability: ResolvedPlatformCapabilityV2
 ) => ({
   getSocialIntegration: vi.fn().mockReturnValue(provider),
-  getCapabilities: vi.fn().mockReturnValue(capabilities),
   resolveCapabilitiesV2: vi.fn(async ({ providerName, settings, media }: any) =>
     resolvePlatformCapabilityV2({
       identifier: providerName,
       settings,
       media,
       adapter: {
-        editor: provider.editor,
-        maximum: capabilities.text.max,
-        stripRawUrls: capabilities.delivery.stripRawUrls,
+        editor: provider.editor ?? 'normal',
+        maximum:
+          capability.fields.find(
+            ({ source, limit }) => source === 'canonical-editor' && !!limit
+          )?.limit?.max ?? 1_000_000,
+        stripRawUrls: capability.delivery.stripRawUrls,
       },
     })
   ),
 });
+
+const resolvedCapability = (identifier: string) =>
+  resolvePlatformCapabilityV2({ identifier, settings: {}, media: [] });
 
 describe('PostsService.validatePosts', () => {
   it('ignores forged Slack capability metadata and enforces the trusted V2 limit', async () => {
@@ -326,7 +331,7 @@ describe('PostsService.validatePosts', () => {
     const service = createService({
       integrationManager: createCapabilityManager(
         provider,
-        getPlatformCapabilities('vk-group')
+        resolvedCapability('vk-group')
       ),
       integrationService: {
         getIntegrationById: vi.fn().mockResolvedValue({
@@ -368,7 +373,7 @@ describe('PostsService.validatePosts', () => {
     const service = createService({
       integrationManager: createCapabilityManager(
         provider,
-        getPlatformCapabilities('vk')
+        resolvedCapability('vk')
       ),
       integrationService: {
         getIntegrationById: vi.fn().mockResolvedValue({
@@ -398,7 +403,7 @@ describe('PostsService.validatePosts', () => {
     const service = createService({
       integrationManager: createCapabilityManager(
         provider,
-        getPlatformCapabilities('pinterest')
+        resolvedCapability('pinterest')
       ),
       integrationService: {
         getIntegrationById: vi.fn().mockResolvedValue({

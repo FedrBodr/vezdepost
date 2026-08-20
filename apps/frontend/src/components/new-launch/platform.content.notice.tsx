@@ -1,36 +1,15 @@
 import React from 'react';
 import type { EditorCapabilityDiagnosticV2 } from './platform.editor.capabilities';
 
-type LegacyContentNotice = {
-  platform?: string;
-  targetIntegrationId?: string;
-  severity: 'information' | 'warning' | 'error';
-  code: string;
-  text: string;
-};
-
 export const PlatformContentNotice = ({
   diagnostics,
-  messages,
   onCustomize,
 }: {
-  diagnostics?: readonly EditorCapabilityDiagnosticV2[];
-  /** @deprecated V1 preview callers migrate in Task 7. */
-  messages?: readonly LegacyContentNotice[];
+  diagnostics: readonly EditorCapabilityDiagnosticV2[];
   onCustomize?: (targetIntegrationId: string) => void;
 }) => {
-  const resolvedDiagnostics: readonly EditorCapabilityDiagnosticV2[] =
-    diagnostics ??
-    (messages ?? []).map((message) => ({
-      destination: message.platform ?? 'current',
-      variant: 'legacy',
-      targetIntegrationId: message.targetIntegrationId,
-      severity: message.severity,
-      code: message.code,
-      message: message.text,
-    }));
   const occurrences = new Map<string, number>();
-  const keyedDiagnostics = resolvedDiagnostics.map((diagnostic) => {
+  const keyedDiagnostics = diagnostics.map((diagnostic) => {
     const identity = JSON.stringify([
       diagnostic.targetIntegrationId || diagnostic.destination,
       diagnostic.variant,

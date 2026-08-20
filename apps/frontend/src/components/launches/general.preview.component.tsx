@@ -6,13 +6,12 @@ import { FC } from 'react';
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
-import {
-  analyzePlatformContent,
-  resolveEffectivePlatformContent,
-} from '@gitroom/helpers/utils/platform.content';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
+import { measureContent } from '@gitroom/helpers/utils/platform.content.measurement';
+import { normalizedFieldMeasurementValue } from '@gitroom/helpers/utils/platform.content.normalizers';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { resolveIntegrationCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 
 const escapeHtml = (content: string) =>
   content
@@ -107,45 +106,69 @@ export const GeneralPreviewComponent: FC<{
   const { value: topValue, integration } = useIntegration();
   const current = useLaunchStore((state) => state.current);
   const mediaDir = useMediaDirectory();
-  const capabilities = integration
-    ? resolveIntegrationCapabilities(integration, props.maximumCharacters)
-    : undefined;
 
   const renderContent = topValue.map((p) => {
-    const maximumCharacters =
-      capabilities?.text.max ?? props.maximumCharacters ?? 10000;
-    const analysis = capabilities
-      ? analyzePlatformContent({
-          content: p.content,
-          media: p.image?.map(() => ({})) || [],
-          capabilities,
+    const media =
+      p.image?.map(({ path }) => ({
+        type: path.split('?')[0].toLowerCase().endsWith('.mp4')
+          ? ('video' as const)
+          : ('image' as const),
+      })) ?? [];
+    const resolved = integration
+      ? resolvePlatformCapabilityV2({
+          identifier: integration.identifier,
+          settings: {},
+          media,
+          ...(integration.capabilitiesV2?.runtimeOverlay
+            ? { runtimeOverlay: integration.capabilitiesV2.runtimeOverlay }
+            : {}),
+          adapter: {
+            editor: integration.editor,
+            maximum:
+              integration.capabilitiesV2?.fields.find(
+                ({ source, limit }) => source === 'canonical-editor' && !!limit
+              )?.limit?.max ??
+              props.maximumCharacters ??
+              10_000,
+            stripRawUrls:
+              integration.capabilitiesV2?.delivery.stripRawUrls ??
+              !!integration.stripLinks,
+          },
         })
-      : {
-          normalized: p.content,
-          visibleLength: stripHtmlValidation('none', p.content).length,
-        };
-    const effectiveContent = capabilities
-      ? resolveEffectivePlatformContent({
-          content: p.content,
-          capabilities,
+      : undefined;
+    const capability = resolved;
+    const analysis = capability
+      ? analyzePlatformContentV2({
+          canonicalHtml: p.content,
+          settings: {},
+          media,
+          capability,
           convertMentionFunction: (_id, label) => `[[[${label}]]]`,
         })
-      : {
-          normalized: p.content,
-          visibleText: stripHtmlValidation('none', p.content),
-        };
-    const finalValue =
-      analysis.visibleLength > maximumCharacters
-        ? croppedMarkup({
-            content: effectiveContent.visibleText,
-            integrationType: integration?.identifier || '',
-            maximumCharacters,
-          })
-        : mentionMarkup(
-            effectiveContent.normalized,
-            integration?.identifier === 'telegram' ||
-              integration?.identifier === 'max'
-          );
+      : undefined;
+    const field = capability?.fields.find(
+      ({ source }) => source === 'canonical-editor'
+    );
+    const normalized = field ? analysis?.fields[field.key]?.value : p.content;
+    const visibleText = field
+      ? normalizedFieldMeasurementValue(normalized ?? '', field)
+      : stripHtmlValidation('none', p.content);
+    const maximumCharacters =
+      field?.limit?.max ?? props.maximumCharacters ?? 10_000;
+    const exceeded = field?.limit
+      ? measureContent(visibleText, field.limit).exceeded
+      : visibleText.length > maximumCharacters;
+    const finalValue = exceeded
+      ? croppedMarkup({
+          content: visibleText,
+          integrationType: integration?.identifier || '',
+          maximumCharacters,
+        })
+      : mentionMarkup(
+          normalized ?? p.content,
+          capability?.profileIdentifier === 'telegram' ||
+            capability?.profileIdentifier === 'max'
+        );
 
     return { text: sanitizePostContent(finalValue), images: p.image };
   });

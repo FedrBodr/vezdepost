@@ -11,14 +11,15 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useFormContext } from 'react-hook-form';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 
 const { providerState } = vi.hoisted(() => ({
   providerState: {
     date: undefined,
     tab: 0,
-    global: [],
+    global: [] as any[],
     dummy: false,
-    internal: [],
+    internal: [] as any[],
     integrations: [],
     current: 'global',
     selectedIntegrations: [
@@ -33,7 +34,7 @@ const { providerState } = vi.hoisted(() => ({
         },
         settings: {},
       },
-    ],
+    ] as any[],
     setHide: vi.fn(),
     setCurrent: vi.fn(),
     setComments: vi.fn(),
@@ -114,5 +115,58 @@ describe('withProvider live settings', () => {
         expect.objectContaining({ board: 'board-1' })
       )
     );
+  });
+
+  it('passes the active TikTok media variant limit to its custom preview', () => {
+    providerState.current = 'tiktok-account';
+    providerState.selectedIntegrations = [
+      {
+        integration: {
+          id: 'tiktok-account',
+          identifier: 'tiktok',
+          name: 'TikTok',
+          picture: '/tiktok.png',
+          editor: 'normal',
+          additionalSettings: '[]',
+          capabilitiesV2: resolvePlatformCapabilityV2({
+            identifier: 'tiktok',
+            settings: {},
+            media: [],
+          }),
+        },
+        settings: { title: 'Photo title' },
+      },
+    ];
+    providerState.global = [
+      {
+        id: 'post-1',
+        content: 'Photo description',
+        media: [{ path: 'photo.jpg', type: 'image' }],
+      },
+    ];
+    const Preview = ({ maximumCharacters }: { maximumCharacters?: number }) => (
+      <div data-testid="preview-maximum">{maximumCharacters}</div>
+    );
+    const Provider = withProvider({
+      postComment: PostComment.POST,
+      minimumCharacters: [],
+      SettingsComponent: null,
+      CustomPreviewComponent: Preview,
+      maximumCharacters: 2_200,
+    });
+
+    const view = render(<Provider id="tiktok-account" />);
+    expect(screen.getByTestId('preview-maximum').textContent).toBe('4000');
+
+    providerState.global = [
+      {
+        id: 'post-1',
+        content: 'Video caption',
+        media: [{ path: 'clip.mp4', type: 'video' }],
+      },
+    ];
+    view.rerender(<Provider id="tiktok-account" />);
+
+    expect(screen.getByTestId('preview-maximum').textContent).toBe('2200');
   });
 });

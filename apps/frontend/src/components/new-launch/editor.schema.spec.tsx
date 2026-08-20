@@ -10,7 +10,6 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import type { TextFieldCapability } from '@gitroom/helpers/utils/platform.capability.types';
 
@@ -147,8 +146,24 @@ const renderEditor = async (
   return { ...result, editor: ref.current!.editor };
 };
 
+const resolvedCapability = (
+  identifier: string,
+  editor: 'none' | 'normal' | 'markdown' | 'html' = 'normal'
+) =>
+  resolvePlatformCapabilityV2({
+    identifier,
+    settings: {},
+    media: [],
+    adapter: { editor, maximum: 1_000, stripRawUrls: false },
+  });
+
+const resolvedField = (
+  identifier: string,
+  editor: 'none' | 'normal' | 'markdown' | 'html' = 'normal'
+) => resolvedCapability(identifier, editor).fields[0];
+
 const renderPlainEditor = (value = '<p></p>') =>
-  renderEditor(getPlatformCapabilities('linkedin'), value);
+  renderEditor(resolvedField('linkedin'), value);
 
 describe('canonical editor schema and creation policy', () => {
   it('blocks direct commands and shortcuts for plain inline formatting', async () => {
@@ -259,13 +274,13 @@ describe('canonical editor schema and creation policy', () => {
   });
 
   it('switches exact same-provider owners before emitting the first edit', async () => {
-    const capabilities = getPlatformCapabilities('linkedin');
+    const capabilitiesV2 = resolvedCapability('linkedin');
     const first = {
       integration: {
         id: 'linkedin-first',
         identifier: 'linkedin',
         name: 'First LinkedIn',
-        capabilities,
+        capabilitiesV2,
       },
       settings: {},
     } as any;
@@ -274,7 +289,7 @@ describe('canonical editor schema and creation policy', () => {
         id: 'linkedin-second',
         identifier: 'linkedin',
         name: 'Second LinkedIn',
-        capabilities,
+        capabilitiesV2,
       },
       settings: {},
     } as any;
@@ -355,7 +370,7 @@ describe('canonical editor schema and creation policy', () => {
       integration: {
         id: 'pinterest-first',
         identifier: 'pinterest',
-        capabilities: getPlatformCapabilities('pinterest'),
+        capabilitiesV2: resolvedCapability('pinterest'),
       },
       settings: {},
     } as any;
@@ -363,7 +378,7 @@ describe('canonical editor schema and creation policy', () => {
       integration: {
         id: 'pinterest-second',
         identifier: 'pinterest',
-        capabilities: getPlatformCapabilities('pinterest'),
+        capabilitiesV2: resolvedCapability('pinterest'),
       },
       settings: {},
     } as any;
@@ -447,10 +462,7 @@ describe('canonical editor schema and creation policy', () => {
   ] as const)(
     'returns false without mutation for hidden %s commands',
     async (command, attributes) => {
-      const capabilities = getPlatformCapabilities('unsupported-profile', {
-        editor: 'none',
-        maximumCharacters: 1_000,
-      });
+      const capabilities = resolvedField('unsupported-profile', 'none');
       const { editor } = await renderEditor(capabilities, '<p>Text</p>');
       const originalHtml = editor.getHTML();
       let result: boolean | undefined;
@@ -474,10 +486,7 @@ describe('canonical editor schema and creation policy', () => {
   ] as const)(
     'returns false without changing parsed canonical markup for hidden %s commands',
     async (command, value) => {
-      const capabilities = getPlatformCapabilities('unsupported-profile', {
-        editor: 'none',
-        maximumCharacters: 1_000,
-      });
+      const capabilities = resolvedField('unsupported-profile', 'none');
       const { editor } = await renderEditor(capabilities, value);
       const originalHtml = editor.getHTML();
       let result: boolean | undefined;
@@ -515,10 +524,7 @@ describe('canonical editor schema and creation policy', () => {
   ] as const)(
     'keeps allowed native %s commands available',
     async (command, attributes, expectedMarkup) => {
-      const capabilities = getPlatformCapabilities('rich-profile', {
-        editor: 'html',
-        maximumCharacters: 1_000,
-      });
+      const capabilities = resolvedField('rich-profile', 'html');
       const { editor } = await renderEditor(capabilities, '<p>Text</p>');
       let result: boolean | undefined;
 
@@ -551,10 +557,7 @@ describe('canonical editor schema and creation policy', () => {
   });
 
   it('keeps native structural and link creation enabled for rich profiles', async () => {
-    const capabilities = getPlatformCapabilities('rich-profile', {
-      editor: 'html',
-      maximumCharacters: 1_000,
-    });
+    const capabilities = resolvedField('rich-profile', 'html');
     const headingEditor = (await renderEditor(capabilities)).editor;
     act(() => {
       headingEditor.commands.keyboardShortcut('Mod-Alt-1');
@@ -577,10 +580,7 @@ describe('canonical editor schema and creation policy', () => {
   it.each(['b', 'u'])(
     'consumes native Mod-%s when the inline mark is unsupported',
     async (key) => {
-      const capabilities = getPlatformCapabilities('unsupported-profile', {
-        editor: 'none',
-        maximumCharacters: 1_000,
-      });
+      const capabilities = resolvedField('unsupported-profile', 'none');
       const { editor } = await renderEditor(capabilities, '<p>Text</p>');
       const event = new KeyboardEvent('keydown', {
         key,

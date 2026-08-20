@@ -96,7 +96,7 @@ export class IntegrationsController {
           const findIntegration = this._integrationManager.getSocialIntegration(
             p.providerIdentifier
           );
-          let additionalSettings: any[] = [];
+          let additionalSettings: unknown = [];
           try {
             additionalSettings = JSON.parse(p.additionalSettings || '[]');
           } catch {
@@ -108,10 +108,6 @@ export class IntegrationsController {
             internalId: p.internalId,
             disabled: p.disabled,
             editor: findIntegration.editor,
-            capabilities: this._integrationManager.getCapabilities(
-              p.providerIdentifier,
-              additionalSettings
-            ),
             capabilitiesV2:
               await this._integrationManager.resolveCapabilitiesV2({
                 providerName: p.providerIdentifier,

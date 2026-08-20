@@ -4,7 +4,7 @@ import 'reflect-metadata';
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import { useIntegration } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 
@@ -71,7 +71,16 @@ const selected = (id: string, capabilitiesIdentifier: string) =>
       id,
       identifier: `test-${id}`,
       name: id,
-      capabilities: getPlatformCapabilities(capabilitiesIdentifier),
+      capabilitiesV2: resolvePlatformCapabilityV2({
+        identifier: capabilitiesIdentifier,
+        settings: {},
+        media: [],
+        adapter: {
+          editor: 'normal',
+          maximum: 1_000,
+          stripRawUrls: false,
+        },
+      }),
     },
     settings: {},
   } as any);

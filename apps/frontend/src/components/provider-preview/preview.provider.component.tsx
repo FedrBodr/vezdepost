@@ -10,7 +10,6 @@ import {
   type IntegrationContextType,
 } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 
 type MockIntegration = IntegrationContextType['integration'];
 
@@ -73,7 +72,6 @@ const DEFAULT_INTEGRATION: MockIntegration = {
   display: '',
   type: 'social',
   editor: 'normal' as const,
-  capabilities: getPlatformCapabilities(''),
   disabled: false,
   inBetweenSteps: false,
   additionalSettings: '[]',

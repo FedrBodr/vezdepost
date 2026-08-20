@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-20  
 **Linear:** FED-347  
-**Status:** Approved for implementation design; do not release or push
+**Status:** Batch 0 implemented and verified locally; do not release or push
 
 ## Goal
 
@@ -252,6 +252,33 @@ migration proceeds in independently testable batches:
 - make Mastodon runtime-controlled;
 - preserve an explicit unverified adapter bridge for not-yet-migrated
   providers.
+
+Batch 0 reached its verified local pause point on 2026-08-21. The V1 modules
+and compatibility properties are removed, and a matrix sourced directly from
+`socialIntegrationList` proves all 36 unique identifiers resolve through V2.
+The 11 Batch 0 identifiers resolve without the bridge; `linkedin-page` is the
+only alias. The remaining 25 identifiers use the named
+`verification: 'unverified-adapter'` bridge: `x`, `reddit`, `instagram`,
+`instagram-standalone`, `facebook`, `threads`, `youtube`, `gmb`, `dribbble`,
+`discord`, `kick`, `twitch`, `bluesky`, `lemmy`, `wrapcast`, `nostr`,
+`medium`, `devto`, `hashnode`, `wordpress`, `listmonk`, `moltbook`, `whop`,
+`skool`, and `mewe`.
+
+The verified corrections at this pause point are:
+
+- Slack uses `slack-mrkdwn`, a 40,000 UTF-16-code-unit platform maximum, and
+  a separate nonblocking 4,000 recommendation;
+- TikTok selects verified `video` and `photo` variants from media, with a
+  2,200 UTF-16-unit video caption, 90-unit photo title, 4,000-unit photo
+  description, and exact one-video or one-to-35-image rules;
+- Mastodon remains runtime-verified, reads instance text/media limits, and
+  falls back to a 500-grapheme `application-safety` limit with a warning when
+  runtime data is missing or stale.
+
+Verification used Node 22.20.0: the focused Task 7 gate passed 195/195 tests,
+the full `pnpm test` gate passed 976/976 tests, and the frontend, backend, and
+orchestrator production builds all exited successfully. No push, merge,
+release, deployment, database migration, or production-state change occurred.
 
 ### Batch 1: high-usage public publishing APIs
 
