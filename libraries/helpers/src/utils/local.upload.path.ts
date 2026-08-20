@@ -11,7 +11,18 @@ export function resolveLocalUploadFilePath(
   }
 
   const root = resolve(uploadDirectory);
-  const file = resolve(root, relativeMediaPath);
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(mediaPath.split(/[?#]/, 1)[0]).replace(
+      /\\/g,
+      '/'
+    );
+  } catch {
+    return undefined;
+  }
+  const file = isAbsolute(decodedPath)
+    ? resolve(decodedPath)
+    : resolve(root, relativeMediaPath);
   const relation = relative(root, file);
   if (
     relation === '..' ||

@@ -16,6 +16,7 @@ import { DribbbleDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-sett
 import mime from 'mime-types';
 import { DiscordDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/discord.dto';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
+import { withMediaSourceStream } from '@gitroom/helpers/utils/media.source';
 
 export class DribbbleProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 3; // Dribbble has moderate API limits
@@ -29,9 +30,9 @@ export class DribbbleProvider extends SocialAbstract implements SocialProvider {
   }
   dto = DribbbleDto;
 
-  override async checkValidity(
-    [firstItem]: Array<ValidityMedia[]>
-  ): Promise<string | true> {
+  override async checkValidity([firstItem]: Array<ValidityMedia[]>): Promise<
+    string | true
+  > {
     const isMp4 = firstItem?.find(
       (item) => (item?.path?.indexOf?.('mp4') ?? -1) > -1
     );
@@ -163,46 +164,42 @@ export class DribbbleProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     postDetails: PostDetails<DribbbleDto>[]
   ): Promise<PostResponse[]> {
-    const { data, status } = await axios.get(
-      postDetails?.[0]?.media?.[0]?.path!,
-      {
-        responseType: 'stream',
+    const mediaPath = postDetails?.[0]?.media?.[0]?.path!;
+    return withMediaSourceStream(mediaPath, {}, async ({ stream, size }) => {
+      const slash = mediaPath.split('/').at(-1);
+      const formData = new FormData();
+      formData.append('image', stream, {
+        filename: slash,
+        contentType: mime.lookup(slash!) || '',
+        knownLength: size,
+      });
+      formData.append('title', postDetails[0].settings.title);
+      formData.append('description', postDetails[0].message);
+      const headers = formData.getHeaders();
+      if (size !== undefined) {
+        headers['Content-Length'] = String(formData.getLengthSync());
       }
-    );
 
-    const slash = postDetails?.[0]?.media?.[0]?.path.split('/').at(-1);
-
-    const formData = new FormData();
-    formData.append('image', data, {
-      filename: slash,
-      contentType: mime.lookup(slash!) || '',
-    });
-
-    formData.append('title', postDetails[0].settings.title);
-    formData.append('description', postDetails[0].message);
-
-    const data2 = await axios.post(
-      'https://api.dribbble.com/v2/shots',
-      formData,
-      {
-        headers: {
-          ...formData.getHeaders(),
-          Authorization: `Bearer ${accessToken}`,
+      const data2 = await axios.post(
+        'https://api.dribbble.com/v2/shots',
+        formData,
+        {
+          headers: {
+            ...headers,
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+      const newId = data2.headers['location'].split('/').at(-1);
+      return [
+        {
+          id: postDetails?.[0]?.id,
+          status: 'completed',
+          postId: newId,
+          releaseURL: `https://dribbble.com/shots/${newId}`,
         },
-      }
-    );
-
-    const location = data2.headers['location'];
-    const newId = location.split('/').at(-1);
-
-    return [
-      {
-        id: postDetails?.[0]?.id,
-        status: 'completed',
-        postId: newId,
-        releaseURL: `https://dribbble.com/shots/${newId}`,
-      },
-    ];
+      ];
+    });
   }
 
   analytics(

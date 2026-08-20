@@ -6,6 +6,14 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('axios', () => ({ default: { get: mocks.axiosGet } }));
+vi.mock('@gitroom/helpers/utils/media.source', () => ({
+  readMediaSourceBuffer: vi.fn(async (path: string) => {
+    const response = await mocks.axiosGet(path, {
+      responseType: 'arraybuffer',
+    });
+    return Buffer.from(response.data);
+  }),
+}));
 vi.mock(
   '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface',
   () => ({})

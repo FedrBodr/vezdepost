@@ -11,7 +11,8 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { WordpressDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/wordpress.dto';
 import slugify from 'slugify';
 // import FormData from 'form-data';
-import axios from 'axios';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
+import { lookup } from 'mime-types';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { string } from 'yup';
@@ -300,9 +301,8 @@ export class WordpressProvider
         postDetails[0].settings.main_image.path
       );
 
-      const blob = await this.fetch(
-        postDetails[0].settings.main_image.path
-      ).then((r) => r.blob());
+      const mainImagePath = postDetails[0].settings.main_image.path;
+      const image = await readMediaSourceBuffer(mainImagePath);
 
       const mediaResponse = await (
         await this.fetch(`${body.domain}/wp-json/wp/v2/media`, {
@@ -312,9 +312,11 @@ export class WordpressProvider
             'Content-Disposition': `attachment; filename="${postDetails[0].settings.main_image.path
               .split('/')
               .pop()}"`,
-            'Content-Type': blob.type,
+            'Content-Type':
+              lookup(mainImagePath.split(/[?#]/, 1)[0]) ||
+              'application/octet-stream',
           },
-          body: blob,
+          body: image,
         })
       ).json();
 

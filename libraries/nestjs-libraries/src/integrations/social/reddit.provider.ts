@@ -13,7 +13,7 @@ import {
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { lookup } from 'mime-types';
-import axios from 'axios';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 import WebSocket from 'ws';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Integration } from '@prisma/client';
@@ -158,6 +158,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     const formData = new FormData();
     formData.append('filepath', path.split('/').pop());
     formData.append('mimetype', mimeType || 'application/octet-stream');
+    const data = await readMediaSourceBuffer(path);
 
     const {
       args: { action, fields },
@@ -176,10 +177,6 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
         true
       )
     ).json();
-
-    const { data } = await axios.get(path, {
-      responseType: 'arraybuffer',
-    });
 
     const upload = (fields as { name: string; value: string }[]).reduce(
       (acc, value) => {

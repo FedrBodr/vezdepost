@@ -21,6 +21,7 @@ import {
   refreshVkUser,
 } from './vk.oauth';
 import type { VkIdentifier } from './vk.oauth';
+import { withMediaSourceStream } from '@gitroom/helpers/utils/media.source';
 import {
   VK_GROUP_LEGACY_TOKEN_RECONNECT,
   VK_GROUP_PHOTO_ACCESS_MISSING,
@@ -296,47 +297,59 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     media: NonNullable<PostDetails['media']>[number]
   ): Promise<{ ownerId: string; id: string }> {
-    const uploadServer = await this.callPhotoVk<unknown>(
-      'photos.getWallUploadServer',
-      accessToken,
-      { group_id: positiveGroupId }
-    );
-    if (!uploadServer || typeof uploadServer !== 'object') {
-      this.badGroupResponse(
-        'VK photos.getWallUploadServer returned an invalid response'
-      );
-    }
-    const uploadUrl = this.parseHttpsUploadUrl(
-      (uploadServer as Record<string, unknown>).upload_url
-    );
-
-    let mediaStream: unknown;
-    try {
-      ({ data: mediaStream } = await axios.get(media.path, {
-        responseType: 'stream',
-      }));
-    } catch {
-      this.badGroupResponse('VK Group media download failed');
-    }
-
-    let formData: FormDataNew;
     let uploadPayload: unknown;
+    let sourceOpened = false;
     try {
       const pathTail = media.path.split('/').at(-1) || 'photo';
       const filename = pathTail.split(/[?#]/)[0] || 'photo';
-      formData = new FormDataNew();
-      formData.append('photo', mediaStream, {
-        filename,
-        contentType: mime.lookup(filename) || '',
-      });
-      uploadPayload = (
-        await axios.post(uploadUrl, formData, {
-          headers: formData.getHeaders(),
-          maxRedirects: 0,
-        })
-      ).data;
-    } catch {
-      this.badGroupResponse('VK Group photo upload failed');
+      uploadPayload = await withMediaSourceStream(
+        media.path,
+        {},
+        async ({ stream, size }) => {
+          sourceOpened = true;
+          const uploadServer = await this.callPhotoVk<unknown>(
+            'photos.getWallUploadServer',
+            accessToken,
+            { group_id: positiveGroupId }
+          );
+          if (!uploadServer || typeof uploadServer !== 'object') {
+            this.badGroupResponse(
+              'VK photos.getWallUploadServer returned an invalid response'
+            );
+          }
+          const uploadUrl = this.parseHttpsUploadUrl(
+            (uploadServer as Record<string, unknown>).upload_url
+          );
+          const formData = new FormDataNew();
+          formData.append('photo', stream, {
+            filename,
+            contentType: mime.lookup(filename) || '',
+            knownLength: size,
+          });
+          try {
+            const headers = formData.getHeaders();
+            if (size !== undefined) {
+              headers['Content-Length'] = String(formData.getLengthSync());
+            }
+            return (
+              await axios.post(uploadUrl, formData, {
+                headers,
+                maxRedirects: 0,
+              })
+            ).data;
+          } catch {
+            this.badGroupResponse('VK Group photo upload failed');
+          }
+        }
+      );
+    } catch (error) {
+      if (error instanceof BadBody || error instanceof RefreshToken)
+        throw error;
+      this.badGroupResponse(
+        sourceOpened
+          ? 'VK Group photo upload failed'
+          : 'VK Group media download failed'
+      );
     }
 
     const uploaded = this.parsePhotoUploadFields(uploadPayload);

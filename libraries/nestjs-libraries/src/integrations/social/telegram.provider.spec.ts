@@ -135,6 +135,30 @@ describe('TelegramProvider media captions', () => {
     expect(calls).toEqual([`photo:${shortText}`]);
   });
 
+  it.each([
+    'https://cdn.test/photo.jpg',
+    '/var/postiz/uploads/2026/08/21/photo.jpg',
+  ])(
+    'passes a local or remote media source through byte-identically: %s',
+    async (path) => {
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.post(
+        'channel',
+        '-1001',
+        details('caption', [{ id: 'media', path }])
+      );
+
+      expect(bot.sendPhoto).toHaveBeenCalledWith(
+        '-1001',
+        path,
+        expect.objectContaining({ caption: 'caption' }),
+        expect.objectContaining({ filename: 'photo.jpg' })
+      );
+    }
+  );
+
   it('sends captionless single media before the full long text', async () => {
     const { calls, bot } = makeBot();
     const provider = new TelegramProvider(bot as any);

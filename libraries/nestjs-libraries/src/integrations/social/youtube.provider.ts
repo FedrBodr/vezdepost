@@ -8,7 +8,11 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { google, youtube_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library/build/src/auth/oauth2client';
-import axios from 'axios';
+import {
+  readMediaSourceBuffer,
+  withMediaSourceStream,
+} from '@gitroom/helpers/utils/media.source';
+import { SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES } from '@gitroom/helpers/utils/ssrf.safe.fetch';
 import { YoutubeSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/youtube.settings.dto';
 import {
   BadBody,
@@ -20,6 +24,7 @@ import dayjs from 'dayjs';
 import { GaxiosResponse } from 'gaxios/build/src/common';
 import Schema$Video = youtube_v3.Schema$Video;
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { Readable } from 'node:stream';
 
 const clientAndYoutube = () => {
   const client = new google.auth.OAuth2({
@@ -94,8 +99,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     if (body.includes('invalidTags')) {
       return {
         type: 'bad-body',
-        value:
-          'The maximum allowed is 500 characters in total.',
+        value: 'The maximum allowed is 500 characters in total.',
       };
     }
 
@@ -423,52 +427,48 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     const youtubeClient = youtube(client);
 
     const { settings }: { settings: YoutubeSettingsDto } = firstPost;
+    const thumbnail = settings?.thumbnail?.path
+      ? await readMediaSourceBuffer(settings.thumbnail.path, {
+          maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+        })
+      : undefined;
 
-    const response = await axios({
-      url: firstPost?.media?.[0]?.path,
-      method: 'GET',
-      responseType: 'stream',
-    });
-
-    const all: GaxiosResponse<Schema$Video> = await this.runInConcurrent(
-      async () =>
-        youtubeClient.videos.insert({
-          part: ['id', 'snippet', 'status'],
-          notifySubscribers: true,
-          requestBody: {
-            snippet: {
-              title: settings.title,
-              description: firstPost?.message,
-              ...(settings?.tags?.length
-                ? { tags: settings.tags.map((p) => p.label) }
-                : {}),
-            },
-            status: {
-              privacyStatus: settings.type,
-              selfDeclaredMadeForKids:
-                settings.selfDeclaredMadeForKids === 'yes',
-            },
-          },
-          media: {
-            body: response.data,
-          },
-        }),
-      true
+    const all: GaxiosResponse<Schema$Video> = await withMediaSourceStream(
+      firstPost?.media?.[0]?.path,
+      {},
+      async ({ stream }) =>
+        this.runInConcurrent(
+          async () =>
+            youtubeClient.videos.insert({
+              part: ['id', 'snippet', 'status'],
+              notifySubscribers: true,
+              requestBody: {
+                snippet: {
+                  title: settings.title,
+                  description: firstPost?.message,
+                  ...(settings?.tags?.length
+                    ? { tags: settings.tags.map((p) => p.label) }
+                    : {}),
+                },
+                status: {
+                  privacyStatus: settings.type,
+                  selfDeclaredMadeForKids:
+                    settings.selfDeclaredMadeForKids === 'yes',
+                },
+              },
+              media: {
+                body: stream,
+              },
+            }),
+          true
+        )
     );
 
-    if (settings?.thumbnail?.path) {
+    if (thumbnail) {
       await this.runInConcurrent(async () =>
         youtubeClient.thumbnails.set({
           videoId: all?.data?.id!,
-          media: {
-            body: (
-              await axios({
-                url: settings?.thumbnail?.path,
-                method: 'GET',
-                responseType: 'stream',
-              })
-            ).data,
-          },
+          media: { body: Readable.from(thumbnail) },
         })
       );
     }

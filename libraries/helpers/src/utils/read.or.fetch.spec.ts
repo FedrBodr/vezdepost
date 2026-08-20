@@ -1,23 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('axios', () => ({
-  default: vi.fn().mockResolvedValue({ data: Buffer.from('unsafe') }),
-}));
-vi.mock('./ssrf.safe.fetch', () => ({
-  fetchRemoteBuffer: vi.fn(),
-}));
-vi.mock('fs', () => ({
-  readFileSync: vi.fn(),
+vi.mock('./media.source', () => ({
+  readMediaSourceBuffer: vi.fn(),
 }));
 
-import { fetchRemoteBuffer } from './ssrf.safe.fetch';
+import { readMediaSourceBuffer } from './media.source';
 import { readOrFetch } from './read.or.fetch';
-import { readFileSync } from 'fs';
 
 describe('readOrFetch remote media', () => {
   beforeEach(() => {
-    vi.mocked(fetchRemoteBuffer).mockReset();
-    vi.mocked(readFileSync).mockReset();
+    vi.mocked(readMediaSourceBuffer).mockReset();
   });
 
   afterEach(() => {
@@ -25,12 +17,12 @@ describe('readOrFetch remote media', () => {
   });
 
   it('routes remote reads through the shared SSRF-safe boundary', async () => {
-    vi.mocked(fetchRemoteBuffer).mockResolvedValue(Buffer.from('safe'));
+    vi.mocked(readMediaSourceBuffer).mockResolvedValue(Buffer.from('safe'));
 
     await expect(
       readOrFetch('https://media.example.test/photo.png')
     ).resolves.toEqual(Buffer.from('safe'));
-    expect(fetchRemoteBuffer).toHaveBeenCalledWith(
+    expect(readMediaSourceBuffer).toHaveBeenCalledWith(
       'https://media.example.test/photo.png'
     );
   });
@@ -39,12 +31,15 @@ describe('readOrFetch remote media', () => {
     vi.stubEnv('STORAGE_PROVIDER', 'local');
     vi.stubEnv('FRONTEND_URL', 'http://localhost:4200');
     vi.stubEnv('UPLOAD_DIRECTORY', '/uploads');
-    vi.mocked(readFileSync).mockReturnValue(Buffer.from('trusted-local'));
+    vi.mocked(readMediaSourceBuffer).mockResolvedValue(
+      Buffer.from('trusted-local')
+    );
 
     await expect(
       readOrFetch('http://localhost:4200/uploads/2026/08/20/photo.png')
     ).resolves.toEqual(Buffer.from('trusted-local'));
-    expect(readFileSync).toHaveBeenCalledWith('/uploads/2026/08/20/photo.png');
-    expect(fetchRemoteBuffer).not.toHaveBeenCalled();
+    expect(readMediaSourceBuffer).toHaveBeenCalledWith(
+      'http://localhost:4200/uploads/2026/08/20/photo.png'
+    );
   });
 });

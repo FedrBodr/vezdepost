@@ -11,7 +11,7 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TumblrDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/tumblr.dto';
 import { Integration } from '@prisma/client';
-import axios from 'axios';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 import { lookup } from 'mime-types';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import { randomBytes } from 'node:crypto';
@@ -564,9 +564,7 @@ export class TumblrProvider extends SocialAbstract implements SocialProvider {
     for (const [index, item] of media.entries()) {
       const identifier = `media-${index}`;
       const mimeType = this.getMimeType(item.path);
-      const { data } = await axios.get(this.getMediaUrl(item.path), {
-        responseType: 'arraybuffer',
-      });
+      const data = await readMediaSourceBuffer(this.getMediaUrl(item.path));
       parts.push({
         identifier,
         mimeType,

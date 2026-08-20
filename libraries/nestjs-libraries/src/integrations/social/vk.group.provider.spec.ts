@@ -11,6 +11,27 @@ vi.mock('axios', () => ({
   },
 }));
 
+vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => ({
+  ...(await importOriginal()),
+  withMediaSourceStream: vi.fn(
+    async (
+      path: string,
+      _options: unknown,
+      consume: (source: unknown) => Promise<unknown>
+    ) => {
+      const response = await axios.get(path, { responseType: 'stream' });
+      return consume({
+        stream: response.data,
+        size: Buffer.byteLength('image-data'),
+        finalUrl: path,
+        status: 200,
+        headers: new Headers(),
+        local: false,
+      });
+    }
+  ),
+}));
+
 const token = 'vk-community-secret-token';
 const upstreamPayload = 'vk-upstream-sensitive-payload';
 const mediaUrl = 'https://media.example/private-photo.jpg';
@@ -392,7 +413,9 @@ describe('VkGroupProvider photo publishing', () => {
   beforeEach(() => {
     provider = new VkGroupProvider();
     vi.clearAllMocks();
-    vi.mocked(axios.get).mockReset();
+    vi.mocked(axios.get)
+      .mockReset()
+      .mockResolvedValue({ data: Readable.from(['stored-image']) });
     vi.mocked(axios.post).mockReset();
   });
 
@@ -623,6 +646,7 @@ describe('VkGroupProvider photo publishing', () => {
     expect(multipartOptions?.headers).toEqual(
       expect.objectContaining({
         'content-type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': String(Buffer.byteLength(multipartBody)),
       })
     );
     expect(multipartOptions?.maxRedirects).toBe(0);
@@ -703,16 +727,16 @@ describe('VkGroupProvider photo publishing', () => {
     ]);
 
     expect(events).toEqual([
-      'get-upload-server:0',
       'download:0',
+      'get-upload-server:0',
       'multipart-upload:0',
       'save-photo:0',
-      'get-upload-server:1',
       'download:1',
+      'get-upload-server:1',
       'multipart-upload:1',
       'save-photo:1',
-      'get-upload-server:2',
       'download:2',
+      'get-upload-server:2',
       'multipart-upload:2',
       'save-photo:2',
       'wall-post',
@@ -990,7 +1014,7 @@ describe('VkGroupProvider photo publishing', () => {
         ]),
         fetchMock
       );
-      expect(axios.get).not.toHaveBeenCalled();
+      expect(axios.get).toHaveBeenCalledOnce();
     }
   );
 
@@ -1023,7 +1047,7 @@ describe('VkGroupProvider photo publishing', () => {
         secrets: typeof unsafeUrl === 'string' ? [unsafeUrl] : [],
       }
     );
-    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.get).toHaveBeenCalledOnce();
   });
 
   it('redacts a photo media download failure', async () => {
@@ -1492,8 +1516,8 @@ describe('VkGroupProvider photo publishing', () => {
       }
     );
     expect(events).toEqual([
-      'get-upload-server:0',
       'download',
+      'get-upload-server:0',
       'multipart-upload',
     ]);
     expect(axios.get).toHaveBeenCalledOnce();

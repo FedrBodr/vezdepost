@@ -37,7 +37,7 @@ import { UploadDto } from '@gitroom/nestjs-libraries/dtos/media/upload.dto';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { GetNotificationsDto } from '@gitroom/nestjs-libraries/dtos/notifications/get.notifications.dto';
 import { Readable } from 'stream';
-import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fromBuffer } = require('file-type');
 
@@ -107,32 +107,16 @@ export class PublicIntegrationsController {
     @Body() body: UploadDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    let response: globalThis.Response;
+    let buffer: Buffer;
     try {
-      response = await fetch(body.url, {
-        // @ts-ignore — undici option, not in lib.dom fetch types
-        dispatcher: ssrfSafeDispatcher,
+      buffer = await readMediaSourceBuffer(body.url, {
+        maxBytes: getMaxSize('video/mp4'),
       });
     } catch {
       // Network-level failure (DNS, connection refused, SSRF block, etc.) —
       // fetch rejects rather than returning a non-ok response.
       throw new HttpException({ msg: 'Failed to fetch URL' }, 400);
     }
-    if (!response.ok) {
-      throw new HttpException({ msg: 'Failed to fetch URL' }, 400);
-    }
-
-    // Guard against OOM: bail out before buffering the whole body into memory.
-    // Content-Length may be absent or wrong, so we re-check the real size after
-    // download too. The type isn't known yet (sniffed below), so the pre-check
-    // uses the largest allowed cap (video).
-    const maxDownloadSize = getMaxSize('video/mp4');
-    const declaredSize = Number(response.headers.get('content-length'));
-    if (declaredSize && declaredSize > maxDownloadSize) {
-      throw new HttpException({ msg: 'File is too large.' }, 400);
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
     const detected = await fromBuffer(buffer);
     if (!detected || !PUBLIC_API_ALLOWED_MIME.has(detected.mime)) {
       throw new HttpException({ msg: 'Unsupported file type.' }, 400);

@@ -12,6 +12,10 @@ import {
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { VkGroupProvider } from '@gitroom/nestjs-libraries/integrations/social/vk.group.provider';
+import {
+  authorizeMediaSource,
+  withMediaSourceStream,
+} from '@gitroom/helpers/utils/media.source';
 import { PostActivity } from './post.activity';
 
 vi.mock('axios', () => ({
@@ -19,6 +23,12 @@ vi.mock('axios', () => ({
     get: vi.fn(),
     post: vi.fn(),
   },
+}));
+
+vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => ({
+  ...(await importOriginal()),
+  authorizeMediaSource: vi.fn(),
+  withMediaSourceStream: vi.fn(),
 }));
 
 const userOAuthToken = 'vk-user-oauth-token';
@@ -86,9 +96,6 @@ function createHarness({
       throw new Error(`Unexpected VK method ${method}`);
     });
 
-  vi.mocked(axios.get).mockImplementation(async () => ({
-    data: Readable.from(['stored-image']),
-  }));
   let multipartIndex = 0;
   vi.mocked(axios.post).mockImplementation(async () => {
     events.push('multipart upload');
@@ -162,8 +169,19 @@ describe('PostActivity VK Group OAuth publishing', () => {
   beforeEach(() => {
     delete process.env.STRIPE_SECRET_KEY;
     vi.clearAllMocks();
-    vi.mocked(axios.get).mockReset();
     vi.mocked(axios.post).mockReset();
+    vi.mocked(authorizeMediaSource).mockResolvedValue(undefined);
+    vi.mocked(withMediaSourceStream).mockImplementation(
+      async (path, _options, consume) =>
+        consume({
+          stream: Readable.from(['stored-image']),
+          size: 12,
+          finalUrl: path,
+          status: 200,
+          headers: new Headers(),
+          local: false,
+        })
+    );
   });
 
   afterEach(() => {
@@ -252,15 +270,17 @@ describe('PostActivity VK Group OAuth publishing', () => {
       'photos.saveWallPhoto',
       'wall.post',
     ]);
-    expect(axios.get).toHaveBeenNthCalledWith(
+    expect(withMediaSourceStream).toHaveBeenNthCalledWith(
       1,
       storedMedia['stored-photo-0'].path,
-      { responseType: 'stream' }
+      expect.any(Object),
+      expect.any(Function)
     );
-    expect(axios.get).toHaveBeenNthCalledWith(
+    expect(withMediaSourceStream).toHaveBeenNthCalledWith(
       2,
       storedMedia['stored-photo-1'].path,
-      { responseType: 'stream' }
+      expect.any(Object),
+      expect.any(Function)
     );
     expect(repository.updateImages).toHaveBeenCalledWith(
       'post-1',
@@ -366,7 +386,7 @@ describe('PostActivity VK Group OAuth publishing', () => {
       'VK Group photo upload failed'
     );
     expect(events).toEqual(['photos.getWallUploadServer', 'multipart upload']);
-    expect(axios.get).toHaveBeenCalledOnce();
+    expect(withMediaSourceStream).toHaveBeenCalledOnce();
     expect(axios.post).toHaveBeenCalledOnce();
   });
 

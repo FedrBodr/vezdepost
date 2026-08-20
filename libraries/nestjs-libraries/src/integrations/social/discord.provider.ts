@@ -9,6 +9,8 @@ import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.ab
 import { Integration } from '@prisma/client';
 import { DiscordDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/discord.dto';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
+import { lookup } from 'mime-types';
 
 export class DiscordProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 5; // Discord has generous rate limits for webhook posting
@@ -160,11 +162,15 @@ export class DiscordProvider extends SocialAbstract implements SocialProvider {
 
     let index = 0;
     for (const media of firstPost.media || []) {
-      const loadMedia = await fetch(media.path);
+      const loadMedia = await readMediaSourceBuffer(media.path);
 
       form.append(
         `files[${index}]`,
-        await loadMedia.blob(),
+        new Blob([loadMedia], {
+          type:
+            lookup(media.path.split(/[?#]/, 1)[0]) ||
+            'application/octet-stream',
+        }),
         media.path.split('/').pop()
       );
       index++;
@@ -200,6 +206,12 @@ export class DiscordProvider extends SocialAbstract implements SocialProvider {
   ): Promise<PostResponse[]> {
     const [commentPost] = postDetails;
     const channel = commentPost.settings.channel;
+    const loadedMedia = await Promise.all(
+      (commentPost.media || []).map(async (media) => ({
+        media,
+        buffer: await readMediaSourceBuffer(media.path),
+      }))
+    );
 
     // For Discord, we create a thread from the original message for comments
     // If we don't have a thread yet, create one
@@ -230,9 +242,12 @@ export class DiscordProvider extends SocialAbstract implements SocialProvider {
     form.append(
       'payload_json',
       JSON.stringify({
-        content: commentPost.message.replace(/\[\[\[(@.*?)]]]/g, (match, p1) => {
+        content: commentPost.message.replace(
+          /\[\[\[(@.*?)]]]/g,
+          (match, p1) => {
             return `<${p1}>`;
-        }),
+          }
+        ),
         attachments: commentPost.media?.map((p, index) => ({
           id: index,
           description: `Picture ${index}`,
@@ -242,12 +257,14 @@ export class DiscordProvider extends SocialAbstract implements SocialProvider {
     );
 
     let index = 0;
-    for (const media of commentPost.media || []) {
-      const loadMedia = await fetch(media.path);
-
+    for (const { media, buffer } of loadedMedia) {
       form.append(
         `files[${index}]`,
-        await loadMedia.blob(),
+        new Blob([buffer], {
+          type:
+            lookup(media.path.split(/[?#]/, 1)[0]) ||
+            'application/octet-stream',
+        }),
         media.path.split('/').pop()
       );
       index++;

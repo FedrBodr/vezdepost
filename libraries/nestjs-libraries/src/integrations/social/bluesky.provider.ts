@@ -14,6 +14,7 @@ import {
 import {
   BskyAgent,
   RichText,
+  AppBskyFeedDefs,
   AppBskyEmbedVideo,
   AppBskyVideoDefs,
   AtpAgent,
@@ -26,7 +27,7 @@ import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/we
 import sharp from 'sharp';
 import { Plug } from '@gitroom/helpers/decorators/plug.decorator';
 import { timer } from '@gitroom/helpers/utils/timer';
-import axios from 'axios';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
@@ -34,8 +35,7 @@ import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 async function reduceImageBySize(url: string, maxSizeKB = 976) {
   try {
     // Fetch the image from the URL
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
-    let imageBuffer = Buffer.from(response.data);
+    let imageBuffer = await readMediaSourceBuffer(url);
 
     // Use sharp to get the metadata of the image
     const metadata = await sharp(imageBuffer).metadata();
@@ -68,28 +68,14 @@ async function uploadVideo(
   agent: AtpAgent,
   videoPath: string
 ): Promise<AppBskyEmbedVideo.Main> {
+  const video = await readMediaSourceBuffer(videoPath);
   const { data: serviceAuth } = await agent.com.atproto.server.getServiceAuth({
     aud: `did:web:${agent.dispatchUrl.host}`,
     lxm: 'com.atproto.repo.uploadBlob',
     exp: Date.now() / 1000 + 60 * 30, // 30 minutes
   });
 
-  async function downloadVideo(
-    url: string
-  ): Promise<{ video: Buffer; size: number }> {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch video: ${response.statusText}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    const video = Buffer.from(arrayBuffer);
-    const size = video.length;
-    return { video, size };
-  }
-
-  const video = await downloadVideo(videoPath);
-
-  console.log('Downloaded video', videoPath, video.size);
+  console.log('Downloaded video', videoPath, video.length);
 
   const uploadUrl = new URL(
     'https://video.bsky.app/xrpc/app.bsky.video.uploadVideo'
@@ -102,9 +88,9 @@ async function uploadVideo(
     headers: {
       Authorization: `Bearer ${serviceAuth.token}`,
       'Content-Type': 'video/mp4',
-      'Content-Length': video.size.toString(),
+      'Content-Length': video.length.toString(),
     },
-    body: video.video,
+    body: video,
   });
 
   const jobStatus = (await uploadResponse.json()) as AppBskyVideoDefs.JobStatus;
@@ -416,12 +402,15 @@ export class BlueskyProvider extends SocialAbstract implements SocialProvider {
       depth: 0,
     });
 
-    // @ts-ignore
-    const parentCid = parentThread.data.thread.post?.cid;
-    // @ts-ignore
-    const rootUri = parentThread.data.thread.post?.record?.reply?.root?.uri || postId;
-    // @ts-ignore
-    const rootCid = parentThread.data.thread.post?.record?.reply?.root?.cid || parentCid;
+    const parentPost = (
+      parentThread.data.thread as AppBskyFeedDefs.ThreadViewPost
+    ).post;
+    const parentCid = parentPost?.cid;
+    const parentRecord = parentPost?.record as
+      | { reply?: { root?: { uri?: string; cid?: string } } }
+      | undefined;
+    const rootUri = parentRecord?.reply?.root?.uri || postId;
+    const rootCid = parentRecord?.reply?.root?.cid || parentCid;
 
     // @ts-ignore
     const { cid, uri, commit } = await agent.post({

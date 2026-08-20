@@ -5,6 +5,26 @@ import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integ
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 
+vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => {
+  const actual = await importOriginal<any>();
+  return {
+    ...actual,
+    authorizeMediaSource: vi.fn(async (path: string) => {
+      if (
+        path.includes('169.254.169.254') ||
+        path.includes('private.example.test') ||
+        path.includes('missing-local')
+      ) {
+        throw new Error(
+          path.includes('missing-local')
+            ? 'Invalid media source'
+            : 'Blocked remote media URL'
+        );
+      }
+    }),
+  };
+});
+
 const createCapabilityManager = (
   provider: any,
   capabilities: ReturnType<typeof getPlatformCapabilities>
@@ -168,6 +188,68 @@ describe('PostActivity platform formatting', () => {
         [expect.objectContaining({ message: expected })],
         expect.objectContaining({ id: 'integration-1' })
       );
+    }
+  );
+
+  it.each(['post', 'comment'] as const)(
+    'rejects a missing local media source before provider.%s invocation',
+    async (method) => {
+      vi.stubEnv('STRIPE_SECRET_KEY', '');
+      const mediaPath = '/var/postiz/uploads/missing-local.jpg';
+      const provider = {
+        post: vi.fn().mockResolvedValue([]),
+        comment: vi.fn().mockResolvedValue([]),
+        editor: 'normal' as const,
+        mentionFormat: undefined,
+        convertToJPEG: false,
+        maxLength: vi.fn().mockReturnValue(40_000),
+      };
+      const postService = {
+        updateTags: vi.fn().mockResolvedValue([
+          {
+            id: 'post-1',
+            content: 'safe',
+            settings: '{}',
+            image: JSON.stringify([{ path: mediaPath }]),
+          },
+        ]),
+        updateMedia: vi
+          .fn()
+          .mockResolvedValue([{ path: mediaPath, type: 'image' }]),
+      };
+      const integrationManager = new IntegrationManager();
+      vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+        provider as any
+      );
+      const activity = new PostActivity(
+        postService as any,
+        {} as any,
+        integrationManager,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+      const integration = {
+        id: 'integration-1',
+        internalId: 'profile',
+        token: 'token',
+        providerIdentifier: 'slack',
+        organizationId: 'org-1',
+      } as any;
+
+      const request =
+        method === 'post'
+          ? activity.postSocial(integration, [{ id: 'post-1' } as any])
+          : activity.postComment('remote-post', undefined, integration, [
+              { id: 'post-1' } as any,
+            ]);
+
+      await expect(request).rejects.toThrow(/invalid media source/i);
+      expect(provider.post).not.toHaveBeenCalled();
+      expect(provider.comment).not.toHaveBeenCalled();
     }
   );
 
@@ -454,6 +536,212 @@ describe('PostActivity platform formatting', () => {
       await expect(request).rejects.toThrow(
         'Body exceeds the 40000-UTF-16-code-unit limit.'
       );
+      expect(provider.post).not.toHaveBeenCalled();
+      expect(provider.comment).not.toHaveBeenCalled();
+    }
+  );
+
+  it('blocks deterministic content before optional media conversion/download', async () => {
+    vi.stubEnv('STRIPE_SECRET_KEY', '');
+    const provider = {
+      post: vi.fn().mockResolvedValue([]),
+      editor: 'normal' as const,
+      mentionFormat: undefined,
+      convertToJPEG: true,
+      maxLength: vi.fn().mockReturnValue(2_200),
+    };
+    const postService = {
+      updateTags: vi.fn().mockResolvedValue([
+        {
+          id: 'post-1',
+          content: 'a'.repeat(50_000),
+          settings: '{}',
+          image: JSON.stringify([
+            { path: 'https://media.example.test/photo.png' },
+          ]),
+        },
+      ]),
+      updateMedia: vi
+        .fn()
+        .mockResolvedValueOnce([
+          { path: 'https://media.example.test/photo.png', type: 'image' },
+        ])
+        .mockRejectedValue(new Error('conversion downloaded media')),
+    };
+    const integrationManager = new IntegrationManager();
+    vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+      provider as any
+    );
+    const activity = new PostActivity(
+      postService as any,
+      {} as any,
+      integrationManager,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await expect(
+      activity.postSocial(
+        {
+          id: 'integration-1',
+          internalId: 'profile',
+          token: 'token',
+          providerIdentifier: 'tiktok',
+          organizationId: 'org-1',
+        } as any,
+        [{ id: 'post-1' } as any]
+      )
+    ).rejects.toThrow(/exceeds/i);
+    expect(postService.updateMedia).toHaveBeenCalledOnce();
+    expect(postService.updateMedia).toHaveBeenCalledWith(
+      'post-1',
+      [{ path: 'https://media.example.test/photo.png' }],
+      false
+    );
+    expect(provider.post).not.toHaveBeenCalled();
+  });
+
+  it('analyzes a JPEG-converting post once while publishing its converted media', async () => {
+    vi.stubEnv('STRIPE_SECRET_KEY', '');
+    const provider = {
+      post: vi.fn().mockResolvedValue([]),
+      editor: 'normal' as const,
+      mentionFormat: undefined,
+      convertToJPEG: true,
+      maxLength: vi.fn().mockReturnValue(2_200),
+    };
+    const postService = {
+      updateTags: vi.fn().mockResolvedValue([
+        {
+          id: 'post-1',
+          content: '<p>safe</p>',
+          settings: '{}',
+          image: JSON.stringify([
+            { path: 'https://media.example.test/photo.png' },
+          ]),
+        },
+      ]),
+      updateMedia: vi
+        .fn()
+        .mockResolvedValueOnce([
+          { path: 'https://media.example.test/photo.png', type: 'image' },
+        ])
+        .mockResolvedValueOnce([
+          { path: 'nested/converted.jpg', type: 'image' },
+        ]),
+    };
+    const integrationManager = createCapabilityManager(
+      provider,
+      getPlatformCapabilities('tiktok')
+    );
+    const activity = new PostActivity(
+      postService as any,
+      {} as any,
+      integrationManager as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await activity.postSocial(
+      {
+        id: 'integration-1',
+        internalId: 'profile',
+        token: 'token',
+        providerIdentifier: 'tiktok',
+        organizationId: 'org-1',
+      } as any,
+      [{ id: 'post-1' } as any]
+    );
+
+    expect(integrationManager.resolveCapabilitiesV2).toHaveBeenCalledOnce();
+    expect(provider.post).toHaveBeenCalledWith(
+      'profile',
+      'token',
+      [
+        expect.objectContaining({
+          media: [{ path: 'nested/converted.jpg', type: 'image' }],
+        }),
+      ],
+      expect.anything()
+    );
+  });
+
+  it.each([
+    ['post', 'direct', 'http://169.254.169.254/latest/meta-data/photo.jpg'],
+    ['comment', 'direct', 'http://169.254.169.254/latest/meta-data/photo.jpg'],
+    ['post', 'DNS-private', 'https://private.example.test/photo.jpg'],
+    ['comment', 'DNS-private', 'https://private.example.test/photo.jpg'],
+  ] as const)(
+    'rejects a %s %s media source before provider invocation',
+    async (method, _kind, mediaPath) => {
+      vi.stubEnv('STRIPE_SECRET_KEY', '');
+      const provider = {
+        post: vi.fn().mockResolvedValue([]),
+        comment: vi.fn().mockResolvedValue([]),
+        editor: 'normal' as const,
+        mentionFormat: undefined,
+        convertToJPEG: false,
+        maxLength: vi.fn().mockReturnValue(40_000),
+      };
+      const postService = {
+        updateTags: vi.fn().mockResolvedValue([
+          {
+            id: 'post-1',
+            content: 'safe',
+            settings: '{}',
+            image: JSON.stringify([
+              {
+                path: mediaPath,
+              },
+            ]),
+          },
+        ]),
+        updateMedia: vi.fn().mockResolvedValue([
+          {
+            path: mediaPath,
+            type: 'image',
+          },
+        ]),
+      };
+      const integrationManager = new IntegrationManager();
+      vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+        provider as any
+      );
+      const activity = new PostActivity(
+        postService as any,
+        {} as any,
+        integrationManager,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+      const integration = {
+        id: 'integration-1',
+        internalId: 'profile',
+        token: 'token',
+        providerIdentifier: 'slack',
+        organizationId: 'org-1',
+      } as any;
+
+      const request =
+        method === 'post'
+          ? activity.postSocial(integration, [{ id: 'post-1' } as any])
+          : activity.postComment('remote-post', undefined, integration, [
+              { id: 'post-1' } as any,
+            ]);
+
+      await expect(request).rejects.toThrow(/blocked remote media/i);
       expect(provider.post).not.toHaveBeenCalled();
       expect(provider.comment).not.toHaveBeenCalled();
     }

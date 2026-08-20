@@ -19,6 +19,7 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
+import { authorizeMediaSource } from '@gitroom/helpers/utils/media.source';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
@@ -235,36 +236,47 @@ export class PostActivity {
     return Promise.all(
       (newPosts || []).map(async (post) => {
         const settings = JSON.parse(post.settings || '{}');
-        const media = (await this._postService.updateMedia(
+        const normalizedMedia = (await this._postService.updateMedia(
           post.id,
           JSON.parse(post.image || '[]'),
-          provider.convertToJPEG || false
+          false
         )) as MediaContent[];
-        const resolvedCapabilities =
-          await this._integrationManager.resolveCapabilitiesV2({
-            providerName: integration.providerIdentifier,
+        const analyze = async (media: MediaContent[]) => {
+          const resolvedCapabilities =
+            await this._integrationManager.resolveCapabilitiesV2({
+              providerName: integration.providerIdentifier,
+              settings,
+              media: media.map(({ type }) => ({ type })),
+              integration,
+            });
+          const capabilities = this.withLegacyBridgeMaximum(
+            resolvedCapabilities,
+            integration
+          );
+          const analysis = analyzePlatformContentV2({
+            canonicalHtml: post.content,
             settings,
             media: media.map(({ type }) => ({ type })),
-            integration,
+            capability: capabilities,
+            convertMentionFunction: provider.mentionFormat,
           });
-        const capabilities = this.withLegacyBridgeMaximum(
-          resolvedCapabilities,
-          integration
-        );
-        const analysis = analyzePlatformContentV2({
-          canonicalHtml: post.content,
-          settings,
-          media: media.map(({ type }) => ({ type })),
-          capability: capabilities,
-          convertMentionFunction: provider.mentionFormat,
-        });
-        const blocking = analysis.diagnostics.find(
-          ({ severity }) => severity === 'error'
-        );
-        if (blocking) {
-          throw new Error(blocking.message);
-        }
+          const blocking = analysis.diagnostics.find(
+            ({ severity }) => severity === 'error'
+          );
+          if (blocking) throw new Error(blocking.message);
+          return analysis;
+        };
 
+        const analysis = await analyze(normalizedMedia);
+        const media = provider.convertToJPEG
+          ? ((await this._postService.updateMedia(
+              post.id,
+              normalizedMedia,
+              true
+            )) as MediaContent[])
+          : normalizedMedia;
+
+        await Promise.all(media.map(({ path }) => authorizeMediaSource(path)));
         const fields = analysis.fields;
         return {
           id: post.id,

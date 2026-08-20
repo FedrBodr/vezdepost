@@ -7,10 +7,12 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { number, string } from 'yup';
 import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
+import { lookup } from 'mime-types';
 
 export const MASTODON_CAPABILITY_RUNTIME_TIMEOUT_MS = 2_000;
 export const MASTODON_CAPABILITY_RUNTIME_CACHE_TTL_MS = 5 * 60_000;
@@ -240,12 +242,12 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
     alt?: string
   ) {
     const form = new FormData();
+    const file = await readMediaSourceBuffer(fileUrl);
     form.append(
       'file',
-      await fetch(fileUrl, {
-        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
-        dispatcher: getSsrfSafeDispatcher(),
-      }).then((r) => r.blob())
+      new Blob([file], {
+        type: lookup(fileUrl.split(/[?#]/, 1)[0]) || 'application/octet-stream',
+      })
     );
     if (alt) {
       form.append('description', alt);

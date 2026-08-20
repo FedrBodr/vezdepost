@@ -14,7 +14,10 @@ import {
 import { TikTokDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/tiktok.dto';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
-import { createReadStream, statSync } from 'fs';
+import {
+  getMediaSourceMetadata,
+  withMediaSourceRange,
+} from '@gitroom/helpers/utils/media.source';
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
@@ -658,35 +661,16 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   // Resolves the total byte size of the media without loading it into memory:
   // a HEAD request for remote URLs, statSync for local files.
   private async tiktokMediaSize(path: string): Promise<number> {
-    if (path.indexOf('http') === 0) {
-      const head = await fetch(path, { method: 'HEAD' });
-      const length = head.headers.get('content-length');
-      if (!length) {
-        throw new BadBody(
-          'tiktok-error-upload',
-          '{}',
-          Buffer.from('{}'),
-          'Could not determine the video size for TikTok upload'
-        );
-      }
-      return Number(length);
+    const { size } = await getMediaSourceMetadata(path);
+    if (!size || !Number.isSafeInteger(size)) {
+      throw new BadBody(
+        'tiktok-error-upload',
+        '{}',
+        Buffer.from('{}'),
+        'Could not determine the video size for TikTok upload'
+      );
     }
-
-    return statSync(path).size;
-  }
-
-  // Returns a streaming body for the [start, end] byte range of the media so we
-  // never hold the whole file in memory: a ranged GET for remote URLs, a ranged
-  // read stream for local files.
-  private async tiktokChunkStream(path: string, start: number, end: number) {
-    if (path.indexOf('http') === 0) {
-      const response = await fetch(path, {
-        headers: { Range: `bytes=${start}-${end}` },
-      });
-      return response.body;
-    }
-
-    return createReadStream(path, { start, end });
+    return size;
   }
 
   // Streams the video bytes to the upload_url returned by the init call.
@@ -706,34 +690,34 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
         i === totalChunkCount - 1 ? videoSize - 1 : start + chunkSize - 1;
       const contentLength = end - start + 1;
 
-      const body = await this.tiktokChunkStream(path, start, end);
+      await withMediaSourceRange(
+        path,
+        { start, end, totalSize: videoSize, maxBytes: contentLength },
+        async ({ stream }) => {
+          const upload = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': contentType,
+              'Content-Length': String(contentLength),
+              'Content-Range': `bytes ${start}-${end}/${videoSize}`,
+            },
+            body: stream,
+            // Required by undici when streaming a request body.
+            duplex: 'half',
+          } as any);
 
-      const upload = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': contentType,
-          'Content-Length': String(contentLength),
-          'Content-Range': `bytes ${start}-${end}/${videoSize}`,
-        },
-        body,
-        // Required by undici when streaming a request body.
-        duplex: 'half',
-      } as any);
-
-      if (
-        upload.status !== 200 &&
-        upload.status !== 201 &&
-        upload.status !== 206
-      ) {
-        const text = await upload.text().catch(() => '{}');
-        const handleError = this.handleErrors(text);
-        throw new BadBody(
-          'tiktok-error-upload',
-          text,
-          Buffer.from(text),
-          handleError?.value || 'Failed to upload the video to TikTok'
-        );
-      }
+          if (![200, 201, 206].includes(upload.status)) {
+            const text = await upload.text().catch(() => '{}');
+            const handleError = this.handleErrors(text);
+            throw new BadBody(
+              'tiktok-error-upload',
+              text,
+              Buffer.from(text),
+              handleError?.value || 'Failed to upload the video to TikTok'
+            );
+          }
+        }
+      );
     }
   }
 

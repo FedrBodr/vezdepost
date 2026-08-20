@@ -8,6 +8,7 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { PinterestSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/pinterest.dto';
 import axios from 'axios';
+import { withMediaSourceStream } from '@gitroom/helpers/utils/media.source';
 import FormData from 'form-data';
 import { timer } from '@gitroom/helpers/utils/timer';
 import {
@@ -259,35 +260,37 @@ export class PinterestProvider
     );
 
     if (findMp4) {
-      const { upload_url, media_id, upload_parameters } = await (
-        await this.fetch('https://api.pinterest.com/v5/media', {
-          method: 'POST',
-          body: JSON.stringify({
-            media_type: 'video',
-          }),
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-          },
-        })
-      ).json();
-
-      const { data, status } = await axios.get(
+      await withMediaSourceStream(
         postDetails?.[0]?.media?.[0]?.path!,
-        {
-          responseType: 'stream',
+        {},
+        async ({ stream, size }) => {
+          const { upload_url, media_id, upload_parameters } = await (
+            await this.fetch('https://api.pinterest.com/v5/media', {
+              method: 'POST',
+              body: JSON.stringify({
+                media_type: 'video',
+              }),
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessToken}`,
+              },
+            })
+          ).json();
+          mediaId = media_id;
+          const formData = Object.keys(upload_parameters)
+            .filter((f) => f)
+            .reduce((acc, key) => {
+              acc.append(key, upload_parameters[key]);
+              return acc;
+            }, new FormData());
+          formData.append('file', stream, { knownLength: size });
+          const headers = formData.getHeaders();
+          if (size !== undefined) {
+            headers['Content-Length'] = String(formData.getLengthSync());
+          }
+          await axios.post(upload_url, formData, { headers });
         }
       );
-
-      const formData = Object.keys(upload_parameters)
-        .filter((f) => f)
-        .reduce((acc, key) => {
-          acc.append(key, upload_parameters[key]);
-          return acc;
-        }, new FormData());
-
-      formData.append('file', data);
-      await axios.post(upload_url, formData);
 
       let statusCode = '';
       let attempts = 0;
@@ -304,7 +307,7 @@ export class PinterestProvider
 
         const mediafile = await (
           await this.fetch(
-            'https://api.pinterest.com/v5/media/' + media_id,
+            'https://api.pinterest.com/v5/media/' + mediaId,
             {
               method: 'GET',
               headers: {
@@ -329,8 +332,6 @@ export class PinterestProvider
         await timer(30000);
         statusCode = mediafile.status;
       }
-
-      mediaId = media_id;
     }
 
     const mapImages = postDetails?.[0]?.media?.map((m) => ({

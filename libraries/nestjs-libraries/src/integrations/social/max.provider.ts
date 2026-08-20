@@ -13,6 +13,7 @@ import {
 import { Integration } from '@prisma/client';
 import striptags from 'striptags';
 import { Bot } from '@maxhub/max-bot-api';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 
 // Bot token is permanent (like Telegram's). Constructing with an unset token
 // must not throw at import time so other providers keep loading.
@@ -75,7 +76,9 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
       query.id ? { marker: query.id } : {}
     );
 
-    const list: any[] = Array.isArray(updates) ? updates : updates?.updates || [];
+    const list: any[] = Array.isArray(updates)
+      ? updates
+      : updates?.updates || [];
 
     const match = list.find(
       (u) => u?.message?.body?.text === `/connect ${query.word}`
@@ -123,14 +126,15 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     const attachments: any[] = [];
     for (const m of files) {
       // Local-storage paths are relative; make them absolute for the SDK upload.
-      const url = m.path.startsWith('http') ? m.path : `${frontendURL}${m.path}`;
+      const url = m.path.startsWith('http')
+        ? m.path
+        : `${frontendURL}${m.path}`;
       // Upload media as bytes rather than by URL: uploadImage({ url }) is a
       // passthrough — MAX only fetches the URL at send time and rejects
       // plain-http / non-standard-port sources with "Failed to upload
       // image.", while uploadVideo has no { url } variant at all. Fetching
       // into a Buffer ourselves works with any storage the server can read.
-      const res = await fetch(url);
-      const buffer = Buffer.from(await res.arrayBuffer());
+      const buffer = await readMediaSourceBuffer(url);
       const attachment =
         m.type === 'video'
           ? await bot.api.uploadVideo({ source: buffer })

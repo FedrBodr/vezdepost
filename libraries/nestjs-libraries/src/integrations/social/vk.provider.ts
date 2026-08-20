@@ -13,6 +13,7 @@ import FormDataNew from 'form-data';
 import mime from 'mime-types';
 import { Integration } from '@prisma/client';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import { withMediaSourceStream } from '@gitroom/helpers/utils/media.source';
 import { parseVkPositiveIntegerId, unwrapVkResponse } from './vk.response';
 import {
   authenticateVkUser,
@@ -156,38 +157,70 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       (post?.media || []).map(async (media) => {
         const isVideo = hasExtension(media.path, 'mp4');
         const method = isVideo ? 'video.save' : 'photos.getWallUploadServer';
-        const upload = unwrapVkResponse<unknown>(
-          await (
-            await this.fetch(
-              isVideo
-                ? `https://api.vk.com/method/video.save?access_token=${accessToken}&v=5.251`
-                : `https://api.vk.com/method/photos.getWallUploadServer?owner_id=${userId}&access_token=${accessToken}&v=5.251`
-            )
-          ).json(),
-          method
-        );
-        if (!upload || typeof upload !== 'object') {
-          this.badResponse(method, 'invalid upload response');
-        }
-        const uploadResponse = upload as Record<string, unknown>;
-        const uploadUrl = this.parseUploadUrl(
-          uploadResponse.upload_url,
-          method
-        );
-        const videoId = isVideo
-          ? parseVkPositiveIntegerId(
-              uploadResponse.video_id,
-              'video.save',
-              'video ID'
-            )
-          : undefined;
-
-        let data: unknown;
+        const slash = media.path.split('/').at(-1);
+        let sourceOpened = false;
+        let uploaded: { value: unknown; videoId?: string };
         try {
-          ({ data } = await axios.get(media.path!, {
-            responseType: 'stream',
-          }));
-        } catch {
+          uploaded = await withMediaSourceStream(
+            media.path,
+            {},
+            async ({ stream, size }) => {
+              sourceOpened = true;
+              const upload = unwrapVkResponse<unknown>(
+                await (
+                  await this.fetch(
+                    isVideo
+                      ? `https://api.vk.com/method/video.save?access_token=${accessToken}&v=5.251`
+                      : `https://api.vk.com/method/photos.getWallUploadServer?owner_id=${userId}&access_token=${accessToken}&v=5.251`
+                  )
+                ).json(),
+                method
+              );
+              if (!upload || typeof upload !== 'object') {
+                this.badResponse(method, 'invalid upload response');
+              }
+              const uploadResponse = upload as Record<string, unknown>;
+              const uploadUrl = this.parseUploadUrl(
+                uploadResponse.upload_url,
+                method
+              );
+              const videoId = isVideo
+                ? parseVkPositiveIntegerId(
+                    uploadResponse.video_id,
+                    'video.save',
+                    'video ID'
+                  )
+                : undefined;
+              const formData = new FormDataNew();
+              formData.append('photo', stream, {
+                filename: slash,
+                contentType: mime.lookup(slash!) || '',
+                knownLength: size,
+              });
+              try {
+                const headers = formData.getHeaders();
+                if (size !== undefined) {
+                  headers['Content-Length'] = String(formData.getLengthSync());
+                }
+                const value = (
+                  await axios.post(uploadUrl, formData, {
+                    headers,
+                  })
+                ).data;
+                return { value, videoId };
+              } catch {
+                throw new BadBody(
+                  'vk',
+                  '{}',
+                  {} as BodyInit,
+                  `VK ${method} media upload failed`
+                );
+              }
+            }
+          );
+        } catch (error) {
+          if (error instanceof BadBody) throw error;
+          if (sourceOpened) throw error;
           throw new BadBody(
             'vk',
             '{}',
@@ -196,31 +229,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
           );
         }
 
-        const slash = media.path.split('/').at(-1);
-
-        const formData = new FormDataNew();
-        formData.append('photo', data, {
-          filename: slash,
-          contentType: mime.lookup(slash!) || '',
-        });
-        let value: unknown;
-        try {
-          value = (
-            await axios.post(uploadUrl, formData, {
-              headers: {
-                ...formData.getHeaders(),
-              },
-            })
-          ).data;
-        } catch {
-          throw new BadBody(
-            'vk',
-            '{}',
-            {} as BodyInit,
-            `VK ${method} media upload failed`
-          );
-        }
-
+        const { value, videoId } = uploaded;
         if (videoId) {
           return {
             id: videoId,

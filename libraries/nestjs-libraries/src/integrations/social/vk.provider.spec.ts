@@ -10,6 +10,27 @@ vi.mock('axios', () => ({
   },
 }));
 
+vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => ({
+  ...(await importOriginal()),
+  withMediaSourceStream: vi.fn(
+    async (
+      path: string,
+      _options: unknown,
+      consume: (source: unknown) => Promise<unknown>
+    ) => {
+      const response = await axios.get(path, { responseType: 'stream' });
+      return consume({
+        stream: response.data,
+        size: undefined,
+        finalUrl: path,
+        status: 200,
+        headers: new Headers(),
+        local: false,
+      });
+    }
+  ),
+}));
+
 class TestVkProvider extends VkProvider {
   upload(userId: string, accessToken: string, post: any) {
     return this.uploadMedia(userId, accessToken, post);
@@ -62,6 +83,8 @@ describe('VkProvider verified publishing', () => {
   beforeEach(() => {
     provider = new TestVkProvider();
     vi.clearAllMocks();
+    vi.mocked(axios.get).mockReset().mockResolvedValue({ data: 'media-data' });
+    vi.mocked(axios.post).mockReset();
   });
 
   it('opts into proactive token refresh', () => {
@@ -119,7 +142,7 @@ describe('VkProvider verified publishing', () => {
     const request = provider.upload('1', accessToken, imagePost);
     await expect(request).rejects.toBeInstanceOf(BadBody);
     await expectSanitizedFailure(request, [accessToken, mediaUrl]);
-    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.get).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -140,7 +163,7 @@ describe('VkProvider verified publishing', () => {
     const request = provider.upload('1', accessToken, videoPost);
     await expect(request).rejects.toBeInstanceOf(BadBody);
     await expectSanitizedFailure(request, [accessToken, videoUrl, uploadUrl]);
-    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.get).toHaveBeenCalledOnce();
   });
 
   it('preserves a digit-only video ID without numeric conversion', async () => {
