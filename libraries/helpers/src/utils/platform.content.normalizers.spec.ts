@@ -1,0 +1,327 @@
+import { describe, expect, it, vi } from 'vitest';
+import { resolvePlatformCapabilityV2 } from './platform.capability.resolver';
+import { normalizePlatformFields } from './platform.content.normalizers';
+
+const capability = (
+  identifier: string,
+  media: ReadonlyArray<{ type?: 'image' | 'video' }> = [],
+  adapter = {
+    editor: 'normal' as const,
+    maximum: 5_000,
+    stripRawUrls: false,
+  }
+) =>
+  resolvePlatformCapabilityV2({
+    identifier,
+    settings: {},
+    media,
+    adapter,
+  });
+
+describe('normalizePlatformFields', () => {
+  it('normalizes Telegram fields to its verified HTML subset', () => {
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>Hello <strong>world</strong></p>',
+        settings: {},
+        capability: capability('telegram'),
+      })
+    ).toEqual({
+      body: { value: 'Hello <b>world</b>', facets: undefined },
+    });
+  });
+
+  it('normalizes Slack fields to Slack mrkdwn', () => {
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>Hello <strong>world</strong></p>',
+        settings: {},
+        capability: capability('slack'),
+      })
+    ).toEqual({
+      body: { value: 'Hello *world*', facets: undefined },
+    });
+  });
+
+  it('maps canonical and provider-setting sources independently', () => {
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>Caption</p>',
+        settings: { title: 'Photo title' },
+        capability: capability('tiktok', [{ type: 'image' }]),
+      })
+    ).toEqual({
+      title: { value: 'Photo title', facets: undefined },
+      description: { value: 'Caption', facets: undefined },
+    });
+  });
+
+  it('normalizes both Telegram media fields from immutable canonical HTML', () => {
+    const canonicalHtml = '<p>Hello <strong>world</strong></p>';
+    const settings = Object.freeze<Record<string, unknown>>({});
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings,
+        capability: capability('telegram', [{ type: 'image' }]),
+      })
+    ).toEqual({
+      body: { value: 'Hello <b>world</b>', facets: undefined },
+      caption: { value: 'Hello <b>world</b>', facets: undefined },
+    });
+    expect(canonicalHtml).toBe('<p>Hello <strong>world</strong></p>');
+    expect(settings).toEqual({});
+  });
+
+  it.each([
+    [
+      'telegram',
+      '<b>real</b> label plain &lt;strong&gt;literal&lt;/strong&gt; ' +
+        '&lt;custom&gt;custom&lt;/custom&gt; &amp; ©',
+    ],
+    [
+      'max',
+      '<strong>real</strong> <a href="https://example.com">label</a> plain ' +
+        '&lt;strong&gt;literal&lt;/strong&gt; ' +
+        '&lt;custom&gt;custom&lt;/custom&gt; &amp; ©',
+    ],
+  ])('%s keeps escaped tags inert', (identifier, expected) => {
+    const canonicalHtml =
+      '<p><strong>real</strong> ' +
+      '<a href="https://example.com">label</a> <em>plain</em> ' +
+      '&lt;strong&gt;literal&lt;/strong&gt; ' +
+      '&lt;custom&gt;custom&lt;/custom&gt; &amp; &copy;</p>';
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: capability(identifier),
+      }).body.value
+    ).toBe(expected);
+  });
+
+  it('preserves paragraphs, headings, links, and ordered and unordered lists in Markdown', () => {
+    const markdown = capability('legacy-markdown', [], {
+      editor: 'markdown',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml:
+          '<h2>Heading</h2><p>Hello <strong>world</strong> <em>soft</em> ' +
+          '<a href="https://x.test">site</a></p>' +
+          '<ol><li>One</li><li>Two</li></ol><ul><li>Three</li></ul>',
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe(
+      '## Heading\nHello **world** *soft* [site](https://x.test)\n' +
+        '1. One\n2. Two\n- Three'
+    );
+  });
+
+  it('ignores formatting-only whitespace between Markdown list items', () => {
+    const markdown = capability('legacy-markdown', [], {
+      editor: 'markdown',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml:
+          '<ol>\n  <li>One</li>\n  <li>Two</li>\n</ol>' +
+          '<ul>\n  <li>Three</li>\n</ul>',
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe('1. One\n2. Two\n- Three');
+  });
+
+  it('uses Slack link and emphasis syntax without treating it as CommonMark', () => {
+    expect(
+      normalizePlatformFields({
+        canonicalHtml:
+          '<h1>Heading</h1><p><strong>Bold</strong> <em>soft</em> ' +
+          '<a href="https://x.test">site</a></p>',
+        settings: {},
+        capability: capability('slack'),
+      }).body.value
+    ).toBe('Heading\n*Bold* _soft_ <https://x.test|site>');
+  });
+
+  it('keeps decoded Slack control sequences inert', () => {
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>&lt;!channel&gt; &amp; team</p>',
+        settings: {},
+        capability: capability('slack'),
+      }).body.value
+    ).toBe('&lt;!channel&gt; &amp; team');
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<!channel> & team',
+        settings: {},
+        capability: capability('slack'),
+      }).body.value
+    ).toBe('&lt;!channel&gt; &amp; team');
+  });
+
+  it('escapes literal Markdown punctuation outside generated formatting', () => {
+    const markdown = capability('legacy-markdown', [], {
+      editor: 'markdown',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml:
+          '<p>Literal *stars* [brackets] and <strong>bold</strong></p>',
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe('Literal \\*stars\\* \\[brackets\\] and **bold**');
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '*literal* [label]',
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe('\\*literal\\* \\[label\\]');
+  });
+
+  it('escapes generated link destination delimiters per dialect', () => {
+    const markdown = capability('legacy-markdown', [], {
+      editor: 'markdown',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+    const canonicalHtml = '<p><a href="https://example.com/a_(b)">site</a></p>';
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe('[site](https://example.com/a_\\(b\\))');
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p><a href="https://example.com/a|b">site</a></p>',
+        settings: {},
+        capability: capability('slack'),
+      }).body.value
+    ).toBe('<https://example.com/a%7Cb|site>');
+  });
+
+  it('retains first-wave plain-text structure, Unicode emphasis, and link targets', () => {
+    expect(
+      normalizePlatformFields({
+        canonicalHtml:
+          '<h2>Heading</h2><p>Intro<br>continued</p><ul><li>One</li>' +
+          '<li><strong>Two</strong></li></ul><p>' +
+          '<a href="https://x.test">Site</a></p>',
+        settings: {},
+        capability: capability('linkedin'),
+      }).body.value
+    ).toBe('Heading\nIntro\ncontinued\n- One\n- 𝗧𝘄𝗼\nhttps://x.test');
+  });
+
+  it('retains tagless special characters exactly', () => {
+    const canonicalHtml = 'AT&T < launch > landing &copy;';
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: capability('linkedin'),
+      }).body.value
+    ).toBe(canonicalHtml);
+  });
+
+  it('retains the legacy HTML adapter structural subset', () => {
+    const html = capability('legacy-html', [], {
+      editor: 'html',
+      maximum: 5_000,
+      stripRawUrls: false,
+    });
+    const canonicalHtml =
+      '<h1>Title</h1><h2>Subtitle</h2><ul><li>One</li>' +
+      '<li><strong>Two</strong></li></ul><p>Body</p>';
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: html,
+      }).body.value
+    ).toBe(canonicalHtml);
+  });
+
+  it('strips visible raw URLs across harmless inline markup when delivery requires it', () => {
+    const stripping = capability('legacy-normal', [], {
+      editor: 'normal',
+      maximum: 280,
+      stripRawUrls: true,
+    });
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>https://exa<span>mple</span>.com/path</p>',
+        settings: {},
+        capability: stripping,
+      }).body.value
+    ).toBe('');
+  });
+
+  it('strips Markdown visible URLs before escaping while retaining link metadata', () => {
+    const markdown = capability('legacy-markdown', [], {
+      editor: 'markdown',
+      maximum: 5_000,
+      stripRawUrls: true,
+    });
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>Read https://example.com/a-b now</p>',
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe('Read now');
+    expect(
+      normalizePlatformFields({
+        canonicalHtml:
+          '<p><a href="https://example.com/path">Read more</a></p>',
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe('[Read more](https://example.com/path)');
+  });
+
+  it('converts mentions without rewriting the canonical source', () => {
+    const canonicalHtml =
+      '<p>Hello <span data-mention-id="42">Alice</span></p>';
+    const convertMentionFunction = vi.fn(
+      (id: string, name: string) => `@${name.toLowerCase()}-${id}`
+    );
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml,
+        settings: {},
+        capability: capability('linkedin'),
+        convertMentionFunction,
+      }).body.value
+    ).toBe('Hello @alice-42');
+    expect(convertMentionFunction).toHaveBeenCalledWith('42', 'Alice');
+    expect(canonicalHtml).toBe(
+      '<p>Hello <span data-mention-id="42">Alice</span></p>'
+    );
+  });
+});

@@ -253,6 +253,9 @@ export const resolvePlatformCapabilityV2 = (
     evidenceDate: profile.evidenceDate,
     variant: runtime.variant.key,
     fields: runtime.variant.fields,
+    structuredFields: runtime.variant.structuredFields.map((field) => ({
+      ...field,
+    })),
     media: runtime.variant.media,
     delivery: runtime.variant.delivery,
     ...(runtime.runtimeOverlay

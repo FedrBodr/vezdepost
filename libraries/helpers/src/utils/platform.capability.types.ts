@@ -110,6 +110,7 @@ export interface ResolvedPlatformCapabilityV2 {
   evidenceDate: string;
   variant: string;
   fields: readonly TextFieldCapability[];
+  structuredFields: readonly StructuredFieldCapability[];
   media: MediaRule;
   delivery: PostVariantCapability['delivery'];
   runtimeOverlay?: CapabilityRuntimeOverlay;

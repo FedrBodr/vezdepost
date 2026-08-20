@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BATCH_0_IDENTIFIERS } from './platform.capability.profiles';
+import {
+  BATCH_0_IDENTIFIERS,
+  BATCH_0_PROFILES,
+} from './platform.capability.profiles';
 import {
   createUnverifiedAdapterProfile,
   resolvePlatformCapabilityV2,
@@ -96,6 +99,21 @@ describe('Batch 0 platform capability resolution', () => {
       ],
       delivery: { longMediaText: 'split-after-media' },
     });
+  });
+
+  it('carries required structured fields into the resolved capability', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('pinterest', [{ type: 'image' }])
+    );
+
+    expect(resolved.structuredFields).toEqual([
+      { key: 'title', label: 'Title', required: false },
+      { key: 'link', label: 'Link', required: false },
+      { key: 'board', label: 'Board', required: true },
+    ]);
+    expect(resolved.structuredFields).not.toBe(
+      BATCH_0_PROFILES.pinterest.variants.pin.structuredFields
+    );
   });
 
   it('falls back to the TikTok video variant for empty or mixed media', () => {
