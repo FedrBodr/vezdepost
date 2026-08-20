@@ -110,6 +110,9 @@ export type PostResponse = {
 export type PostDetails<T = any> = {
   id: string;
   message: string;
+  fields?: Readonly<
+    Record<string, { value: string; facets?: readonly unknown[] }>
+  >;
   settings: T;
   media?: MediaContent[];
   poll?: PollDetails;

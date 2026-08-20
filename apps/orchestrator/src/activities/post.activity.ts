@@ -10,9 +10,15 @@ import {
   NotificationType,
 } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { Integration, Post, State } from '@prisma/client';
-import { resolveEffectivePlatformContent } from '@gitroom/helpers/utils/platform.content';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
-import { AuthTokenDetails } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+import {
+  AuthTokenDetails,
+  MediaContent,
+  PostDetails,
+  SocialProvider,
+} from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
@@ -179,36 +185,13 @@ export class PostActivity {
     const getIntegration = this._integrationManager.getSocialIntegration(
       integration.providerIdentifier
     );
-    const capabilities = this._integrationManager.getCapabilities(
-      integration.providerIdentifier
-    );
-
-    const newPosts = await this._postService.updateTags(
-      integration.organizationId,
-      posts
-    );
 
     return getIntegration.comment(
       integration.internalId,
       postId,
       lastPostId,
       integration.token,
-      await Promise.all(
-        (newPosts || []).map(async (p) => ({
-          id: p.id,
-          message: resolveEffectivePlatformContent({
-            content: p.content,
-            capabilities,
-            convertMentionFunction: getIntegration.mentionFormat,
-          }).normalized,
-          settings: JSON.parse(p.settings || '{}'),
-          media: await this._postService.updateMedia(
-            p.id,
-            JSON.parse(p.image || '[]'),
-            getIntegration?.convertToJPEG || false
-          ),
-        }))
-      ),
+      await this.preparePostDetails(integration, posts, getIntegration),
       integration
     );
   }
@@ -228,38 +211,102 @@ export class PostActivity {
     const getIntegration = this._integrationManager.getSocialIntegration(
       integration.providerIdentifier
     );
-    const capabilities = this._integrationManager.getCapabilities(
-      integration.providerIdentifier
+
+    const postNow = await getIntegration.post(
+      integration.internalId,
+      integration.token,
+      await this.preparePostDetails(integration, posts, getIntegration),
+      integration
     );
 
+    return postNow;
+  }
+
+  private async preparePostDetails(
+    integration: Integration,
+    posts: Post[],
+    provider: SocialProvider
+  ): Promise<PostDetails[]> {
     const newPosts = await this._postService.updateTags(
       integration.organizationId,
       posts
     );
 
-    const postNow = await getIntegration.post(
-      integration.internalId,
-      integration.token,
-      await Promise.all(
-        (newPosts || []).map(async (p) => ({
-          id: p.id,
-          message: resolveEffectivePlatformContent({
-            content: p.content,
-            capabilities,
-            convertMentionFunction: getIntegration.mentionFormat,
-          }).normalized,
-          settings: JSON.parse(p.settings || '{}'),
-          media: await this._postService.updateMedia(
-            p.id,
-            JSON.parse(p.image || '[]'),
-            getIntegration?.convertToJPEG || false
-          ),
-        }))
-      ),
-      integration
-    );
+    return Promise.all(
+      (newPosts || []).map(async (post) => {
+        const settings = JSON.parse(post.settings || '{}');
+        const media = (await this._postService.updateMedia(
+          post.id,
+          JSON.parse(post.image || '[]'),
+          provider.convertToJPEG || false
+        )) as MediaContent[];
+        const resolvedCapabilities =
+          await this._integrationManager.resolveCapabilitiesV2({
+            providerName: integration.providerIdentifier,
+            settings,
+            media: media.map(({ type }) => ({ type })),
+            integration,
+          });
+        const capabilities = this.withLegacyBridgeMaximum(
+          resolvedCapabilities,
+          integration
+        );
+        const analysis = analyzePlatformContentV2({
+          canonicalHtml: post.content,
+          settings,
+          media: media.map(({ type }) => ({ type })),
+          capability: capabilities,
+          convertMentionFunction: provider.mentionFormat,
+        });
+        const blocking = analysis.diagnostics.find(
+          ({ severity }) => severity === 'error'
+        );
+        if (blocking) {
+          throw new Error(blocking.message);
+        }
 
-    return postNow;
+        const fields = analysis.fields;
+        return {
+          id: post.id,
+          fields,
+          message:
+            fields.body?.value ??
+            fields.caption?.value ??
+            fields.description?.value ??
+            '',
+          settings,
+          media,
+        };
+      })
+    );
+  }
+
+  private withLegacyBridgeMaximum(
+    capabilities: ResolvedPlatformCapabilityV2,
+    integration: Integration
+  ): ResolvedPlatformCapabilityV2 {
+    if (capabilities.verification !== 'unverified-adapter') {
+      return capabilities;
+    }
+
+    let additionalSettings: unknown = [];
+    try {
+      additionalSettings = JSON.parse(integration.additionalSettings || '[]');
+    } catch {
+      additionalSettings = [];
+    }
+    const maximum = this._integrationManager.getCapabilities(
+      integration.providerIdentifier,
+      additionalSettings
+    ).text.max;
+    return {
+      ...capabilities,
+      fields: capabilities.fields.map((field) =>
+        field.source === 'canonical-editor' && field.limit
+          ? { ...field, limit: { ...field.limit, max: maximum } }
+          : field
+      ),
+    };
   }
 
   @ActivityMethod()

@@ -10,8 +10,8 @@ import {
   vi,
 } from 'vitest';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
+import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { VkGroupProvider } from '@gitroom/nestjs-libraries/integrations/social/vk.group.provider';
-import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
 import { PostActivity } from './post.activity';
 
 vi.mock('axios', () => ({
@@ -108,15 +108,13 @@ function createHarness({
   const mediaService = {
     getMediaById: vi.fn(async (id: string) => storedMedia[id]),
   };
-  const integrationManager = {
-    getSocialIntegration: vi.fn().mockReturnValue(provider),
-    getCapabilities: vi
-      .fn()
-      .mockReturnValue(getPlatformCapabilities(provider.identifier)),
-  };
+  const integrationManager = new IntegrationManager();
+  vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+    provider
+  );
   const postsService = new PostsService(
     repository as any,
-    integrationManager as any,
+    integrationManager,
     {} as any,
     mediaService as any,
     {} as any,
@@ -298,7 +296,7 @@ describe('PostActivity VK Group OAuth publishing', () => {
     await expectNoWallPost(
       activity.postSocial(integration, [storedPost('post-1', [media.id])]),
       fetchMock,
-      'VK Group supports photographs only'
+      'Attached media does not match the post variant requirements.'
     );
   });
 
@@ -340,7 +338,7 @@ describe('PostActivity VK Group OAuth publishing', () => {
         storedPost('post-1', Object.keys(storedMedia)),
       ]),
       fetchMock,
-      'VK Group supports up to 10 photographs per post'
+      'Attached media does not match the post variant requirements.'
     );
   });
 

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getPlatformCapabilities } from '@gitroom/helpers/utils/platform.capabilities';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { selectPostValidationFailure } from './post.validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -33,19 +34,299 @@ const createService = ({
     {} as any
   );
 
+const createCapabilityManager = (
+  provider: any,
+  capabilities: ReturnType<typeof getPlatformCapabilities>
+) => ({
+  getSocialIntegration: vi.fn().mockReturnValue(provider),
+  getCapabilities: vi.fn().mockReturnValue(capabilities),
+  resolveCapabilitiesV2: vi.fn(async ({ providerName, settings, media }: any) =>
+    resolvePlatformCapabilityV2({
+      identifier: providerName,
+      settings,
+      media,
+      adapter: {
+        editor: provider.editor,
+        maximum: capabilities.text.max,
+        stripRawUrls: capabilities.delivery.stripRawUrls,
+      },
+    })
+  ),
+});
+
 describe('PostsService.validatePosts', () => {
+  it('ignores forged Slack capability metadata and enforces the trusted V2 limit', async () => {
+    const integration = {
+      id: 'slack-1',
+      providerIdentifier: 'slack',
+      name: 'Slack',
+      additionalSettings: '[]',
+    } as any;
+    const provider = {
+      checkValidity: vi.fn().mockResolvedValue(true),
+      maxLength: vi.fn().mockReturnValue(40_000),
+      editor: 'normal' as const,
+    };
+    const integrationManager = new IntegrationManager();
+    vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+      provider as any
+    );
+    const resolveCapabilitiesV2 = vi.spyOn(
+      integrationManager,
+      'resolveCapabilitiesV2'
+    );
+    const service = createService({
+      integrationManager,
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue(integration),
+      },
+    });
+    const forgedCapabilities = {
+      verification: 'verified',
+      evidenceDate: '2099-01-01',
+      runtimeOverlay: {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          body: {
+            max: 1_000_000,
+            unit: 'utf16-code-units',
+            source: 'runtime',
+          },
+        },
+      },
+    };
+
+    const [result] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'slack-1' },
+        settings: { capabilitiesV2: forgedCapabilities },
+        value: [{ content: 'a'.repeat(40_001), image: [] }],
+      },
+    ]);
+
+    expect(resolveCapabilitiesV2).toHaveBeenCalledWith({
+      providerName: 'slack',
+      settings: { capabilitiesV2: forgedCapabilities },
+      media: [],
+      integration,
+    });
+    expect(result.maximumCharacters).toBe(40_000);
+    expect(result.tooLong).toBe(false);
+    expect(result.contentError).toBe(
+      'Body exceeds the 40000-UTF-16-code-unit limit.'
+    );
+  });
+
+  it('selects TikTok variants from persisted paths and ID-only stored media', async () => {
+    const integration = {
+      id: 'tiktok-1',
+      providerIdentifier: 'tiktok',
+      name: 'TikTok',
+      additionalSettings: '[]',
+    } as any;
+    const provider = {
+      checkValidity: vi.fn().mockResolvedValue(true),
+      maxLength: vi.fn().mockReturnValue(2_200),
+      editor: 'normal' as const,
+    };
+    const integrationManager = new IntegrationManager();
+    vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+      provider as any
+    );
+    const mediaService = {
+      getMediaById: vi.fn(async (id: string) =>
+        id === 'stored-photo'
+          ? {
+              id,
+              path: 'https://media.test/actual-photo.jpg',
+              type: 'video',
+            }
+          : {
+              id,
+              path: 'https://media.test/actual-video.mp4',
+              type: 'image',
+            }
+      ),
+    };
+    const service = createService({
+      integrationManager,
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue(integration),
+      },
+      mediaService,
+    });
+
+    const [persistedVideo, persistedPhoto, storedVideo] =
+      await service.validatePosts('org-1', [
+        {
+          integration: { id: 'tiktok-1' },
+          settings: {},
+          value: [
+            {
+              content: 'a'.repeat(3_000),
+              image: [
+                {
+                  id: 'stored-photo',
+                  path: 'https://client.test/forged-video.mp4',
+                  type: 'video',
+                },
+              ],
+            },
+          ],
+        },
+        {
+          integration: { id: 'tiktok-1' },
+          settings: {},
+          value: [
+            {
+              content: 'a'.repeat(3_000),
+              image: [
+                {
+                  id: 'stored-video',
+                  path: 'https://client.test/forged-photo.jpg',
+                  type: 'image',
+                },
+              ],
+            },
+          ],
+        },
+        {
+          integration: { id: 'tiktok-1' },
+          settings: {},
+          value: [
+            {
+              content: 'a'.repeat(3_000),
+              image: [{ id: 'stored-video', type: 'image' } as any],
+            },
+          ],
+        },
+      ]);
+
+    expect(mediaService.getMediaById).toHaveBeenCalledExactlyOnceWith(
+      'stored-video'
+    );
+    expect(persistedVideo.maximumCharacters).toBe(2_200);
+    expect(persistedVideo.contentError).toBe(
+      'Caption exceeds the 2200-UTF-16-code-unit limit.'
+    );
+    expect(persistedPhoto.maximumCharacters).toBe(4_000);
+    expect(persistedPhoto.contentError).toBe('');
+    expect(storedVideo.maximumCharacters).toBe(2_200);
+    expect(storedVideo.contentError).toBe(
+      'Caption exceeds the 2200-UTF-16-code-unit limit.'
+    );
+  });
+
+  it('returns the V2 Pinterest media diagnostic before persistence', async () => {
+    const integration = {
+      id: 'pin-1',
+      providerIdentifier: 'pinterest',
+      name: 'Pinterest',
+      additionalSettings: '[]',
+    } as any;
+    const provider = {
+      checkValidity: vi.fn().mockResolvedValue(true),
+      maxLength: vi.fn().mockReturnValue(500),
+      editor: 'normal' as const,
+    };
+    const integrationManager = new IntegrationManager();
+    vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+      provider as any
+    );
+    const service = createService({
+      integrationManager,
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue(integration),
+      },
+    });
+
+    const [result] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'pin-1' },
+        settings: { board: 'board-1' },
+        value: [{ content: '<p>Pin</p>', image: [] }],
+      },
+    ]);
+
+    expect(result.tooLong).toBe(false);
+    expect(result.contentError).toBe(
+      'Attached media does not match the pin variant requirements.'
+    );
+    expect(selectPostValidationFailure([result], false)?.category).toBe(
+      'content-error'
+    );
+  });
+
+  it('uses trusted Mastodon runtime data to lower the limit and ignores a forged raise', async () => {
+    const integration = {
+      id: 'mastodon-1',
+      providerIdentifier: 'mastodon',
+      name: 'Mastodon',
+      additionalSettings: '[]',
+    } as any;
+    const trustedRuntime = {
+      observedAt: new Date().toISOString(),
+      textLimits: {
+        body: {
+          max: 100,
+          unit: 'graphemes' as const,
+          source: 'runtime' as const,
+        },
+      },
+    };
+    const provider = {
+      checkValidity: vi.fn().mockResolvedValue(true),
+      maxLength: vi.fn().mockReturnValue(500),
+      editor: 'normal' as const,
+      fetchCapabilityRuntime: vi.fn().mockResolvedValue(trustedRuntime),
+    };
+    const integrationManager = new IntegrationManager();
+    vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+      provider as any
+    );
+    const service = createService({
+      integrationManager,
+      integrationService: {
+        getIntegrationById: vi.fn().mockResolvedValue(integration),
+      },
+    });
+    const forgedRuntime = {
+      observedAt: new Date().toISOString(),
+      textLimits: {
+        body: {
+          max: 50_000,
+          unit: 'graphemes',
+          source: 'runtime',
+        },
+      },
+    };
+
+    const [result] = await service.validatePosts('org-1', [
+      {
+        integration: { id: 'mastodon-1' },
+        settings: { runtimeOverlay: forgedRuntime },
+        value: [{ content: 'a'.repeat(101), image: [] }],
+      },
+    ]);
+
+    expect(provider.fetchCapabilityRuntime).toHaveBeenCalledExactlyOnceWith(
+      integration
+    );
+    expect(result.maximumCharacters).toBe(100);
+    expect(result.tooLong).toBe(false);
+    expect(result.contentError).toBe('Body exceeds the 100-grapheme limit.');
+  });
+
   it('passes the compose media type to provider validation', async () => {
     const provider = {
       checkValidity: vi.fn().mockResolvedValue(true),
       maxLength: vi.fn().mockReturnValue(1_000),
     };
     const service = createService({
-      integrationManager: {
-        getSocialIntegration: vi.fn().mockReturnValue(provider),
-        getCapabilities: vi
-          .fn()
-          .mockReturnValue(getPlatformCapabilities('vk-group')),
-      },
+      integrationManager: createCapabilityManager(
+        provider,
+        getPlatformCapabilities('vk-group')
+      ),
       integrationService: {
         getIntegrationById: vi.fn().mockResolvedValue({
           id: 'integration-1',
@@ -84,10 +365,10 @@ describe('PostsService.validatePosts', () => {
       editor: 'normal',
     };
     const service = createService({
-      integrationManager: {
-        getSocialIntegration: vi.fn().mockReturnValue(provider),
-        getCapabilities: vi.fn().mockReturnValue(getPlatformCapabilities('vk')),
-      },
+      integrationManager: createCapabilityManager(
+        provider,
+        getPlatformCapabilities('vk')
+      ),
       integrationService: {
         getIntegrationById: vi.fn().mockResolvedValue({
           id: 'vk-1',
@@ -114,12 +395,10 @@ describe('PostsService.validatePosts', () => {
       editor: 'normal',
     };
     const service = createService({
-      integrationManager: {
-        getSocialIntegration: vi.fn().mockReturnValue(provider),
-        getCapabilities: vi
-          .fn()
-          .mockReturnValue(getPlatformCapabilities('pinterest')),
-      },
+      integrationManager: createCapabilityManager(
+        provider,
+        getPlatformCapabilities('pinterest')
+      ),
       integrationService: {
         getIntegrationById: vi.fn().mockResolvedValue({
           id: 'pin-1',
@@ -132,10 +411,13 @@ describe('PostsService.validatePosts', () => {
     const [result] = await service.validatePosts('org-1', [
       {
         integration: { id: 'pin-1' },
+        settings: { board: 'board-1' },
         value: [{ content: '<p>Pin</p>', image: [] }],
       },
     ]);
-    expect(result.contentError).toBe('This platform requires media.');
+    expect(result.contentError).toBe(
+      'Attached media does not match the pin variant requirements.'
+    );
   });
 
   it('uses the premium X limit from integration settings', async () => {
@@ -306,25 +588,46 @@ describe('PostsService.updateMedia', () => {
     const service = createService();
 
     const normalized = await service.updateMedia('post-1', [
-      { path: 'https://media.test/legacy.mp4' },
-      { path: 'https://media.test/legacy.jpg' },
+      { path: 'https://media.test/legacy.MP4?download=1' },
+      { path: 'https://media.test/legacy.JPG?download=1' },
     ]);
 
     expect(normalized.map(({ type }) => type)).toEqual(['video', 'image']);
   });
 
-  it('does not fetch or convert media declared as video', async () => {
-    const axiosMock = vi.spyOn(axios, 'get');
-    const service = createService();
+  it('derives a forged video declaration from its PNG path and converts it', async () => {
+    const repository = { updateImages: vi.fn() };
+    const service = createService({ repository });
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64'
+    );
+    const axiosMock = vi
+      .spyOn(axios, 'get')
+      .mockResolvedValue({ data: png } as any);
+    const uploadFile = vi
+      .spyOn((service as any).storage, 'uploadFile')
+      .mockResolvedValue({
+        path: 'https://media.test/converted.jpg',
+        originalname: 'converted.jpg',
+      });
 
     const normalized = await service.updateMedia(
       'post-1',
-      [{ path: 'https://media.test/video-with-png-name.png', type: 'video' }],
+      [{ path: 'https://media.test/forged-video.PNG', type: 'video' }],
       true
     );
 
-    expect(normalized[0].type).toBe('video');
-    expect(axiosMock).not.toHaveBeenCalled();
+    expect(normalized[0]).toMatchObject({
+      type: 'image',
+      path: 'https://media.test/converted.jpg',
+    });
+    expect(axiosMock).toHaveBeenCalledWith(
+      'https://media.test/forged-video.PNG',
+      { responseType: 'arraybuffer' }
+    );
+    expect(uploadFile).toHaveBeenCalledOnce();
+    expect(repository.updateImages).toHaveBeenCalledOnce();
   });
 });
 

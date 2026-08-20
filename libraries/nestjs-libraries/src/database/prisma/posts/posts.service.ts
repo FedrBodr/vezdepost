@@ -51,6 +51,9 @@ import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { analyzePlatformContent } from '@gitroom/helpers/utils/platform.content';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
+import { normalizedFieldMeasurementValue } from '@gitroom/helpers/utils/platform.content.normalizers';
+import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 import {
   PostValidationFailure,
   selectPostValidationFailure,
@@ -377,7 +380,7 @@ export class PostsService {
                     process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
                     m.path
                   : m.path,
-              type: m.type || (hasExtension(m.path, 'mp4') ? 'video' : 'image'),
+              type: hasExtension(m.path, 'mp4') ? 'video' : 'image',
               path:
                 m.path.indexOf('http') === -1
                   ? process.env.UPLOAD_DIRECTORY + m.path
@@ -776,6 +779,7 @@ export class PostsService {
       value: Array<{
         content?: string;
         image?: Array<{
+          id?: string;
           path: string;
           thumbnail?: string;
           type?: 'image' | 'video' | string;
@@ -839,33 +843,83 @@ export class PostsService {
           errors = err?.message || 'Invalid media';
         }
 
-        const capabilities = this._integrationManager.getCapabilities(
-          integration.providerIdentifier,
-          additionalSettings
-        );
-        const contentAnalyses = (post.value || []).map((item) =>
-          analyzePlatformContent({
-            content: item.content || '',
-            media: (item.image || []).map(({ type }) => ({
-              type: type === 'video' ? ('video' as const) : ('image' as const),
-            })),
-            capabilities,
+        const contentAnalyses = await Promise.all(
+          (post.value || []).map(async (item) => {
+            const resolvedMedia = await this.validationMedia(item.image || []);
+            const resolvedCapabilities =
+              await this._integrationManager.resolveCapabilitiesV2({
+                providerName: integration.providerIdentifier,
+                settings,
+                media: resolvedMedia,
+                integration,
+              });
+            const capabilities = this.withLegacyBridgeMaximum(
+              resolvedCapabilities,
+              integration.providerIdentifier,
+              additionalSettings
+            );
+            const analysis = analyzePlatformContentV2({
+              canonicalHtml: item.content || '',
+              settings,
+              media: resolvedMedia,
+              capability: capabilities,
+              convertMentionFunction: provider.mentionFormat,
+            });
+            const legacyAnalysis =
+              capabilities.verification === 'unverified-adapter'
+                ? analyzePlatformContent({
+                    content: item.content || '',
+                    media: resolvedMedia,
+                    capabilities: this._integrationManager.getCapabilities(
+                      integration.providerIdentifier,
+                      additionalSettings
+                    ),
+                  })
+                : undefined;
+
+            return {
+              analysis,
+              capabilities,
+              legacyMessages: legacyAnalysis?.messages || [],
+              media: resolvedMedia,
+            };
           })
         );
         const contentMessages = contentAnalyses.flatMap(
-          (item) => item.messages
+          ({ analysis, legacyMessages }) => [
+            ...analysis.diagnostics,
+            ...legacyMessages,
+          ]
         );
         const contentError =
-          contentMessages.find((item) => item.severity === 'error')?.text || '';
+          contentAnalyses
+            .flatMap(({ analysis }) => analysis.diagnostics)
+            .find((item) => item.severity === 'error')?.message ||
+          contentAnalyses
+            .flatMap(({ legacyMessages }) => legacyMessages)
+            .find((item) => item.severity === 'error')?.text ||
+          '';
         const emptyContent = contentAnalyses.some(
-          (analysis, index) =>
-            analysis.visibleLength === 0 &&
-            (post.value[index]?.image || []).length === 0
+          ({ analysis, capabilities, media: resolvedMedia }) =>
+            resolvedMedia.length === 0 &&
+            capabilities.fields.every((field) => {
+              const normalized = analysis.fields[field.key];
+              return (
+                !normalized ||
+                normalizedFieldMeasurementValue(normalized.value, field).trim()
+                  .length === 0
+              );
+            })
         );
-        const tooLong = contentMessages.some(
-          (item) => item.code === 'text-too-long'
+        const tooLong = contentAnalyses.some(
+          ({ analysis, capabilities }) =>
+            capabilities.verification === 'unverified-adapter' &&
+            analysis.diagnostics.some((item) => item.code === 'text-too-long')
         );
-        const maximumCharacters = capabilities.text.max;
+        const maximumCharacters =
+          contentAnalyses[0]?.capabilities.fields.find(
+            ({ source, limit }) => source === 'canonical-editor' && !!limit
+          )?.limit?.max || provider.maxLength(additionalSettings);
 
         return {
           id: integration.id,
@@ -898,6 +952,48 @@ export class PostsService {
       }
     }
     return '';
+  }
+
+  private async validationMedia(
+    media: Array<{ id?: string; path?: string; type?: string }>
+  ): Promise<Array<{ type: 'image' | 'video' }>> {
+    return Promise.all(
+      media.map(async (item) => {
+        const stored =
+          !item.path &&
+          item.id &&
+          typeof (this._mediaService as any)?.getMediaById === 'function'
+            ? await this._mediaService.getMediaById(item.id)
+            : undefined;
+        const trusted = stored || item;
+        return {
+          type: hasExtension(trusted?.path, 'mp4') ? 'video' : 'image',
+        };
+      })
+    );
+  }
+
+  private withLegacyBridgeMaximum(
+    capabilities: ResolvedPlatformCapabilityV2,
+    providerIdentifier: string,
+    additionalSettings: unknown
+  ): ResolvedPlatformCapabilityV2 {
+    if (capabilities.verification !== 'unverified-adapter') {
+      return capabilities;
+    }
+
+    const maximum = this._integrationManager.getCapabilities(
+      providerIdentifier,
+      additionalSettings
+    ).text.max;
+    return {
+      ...capabilities,
+      fields: capabilities.fields.map((field) =>
+        field.source === 'canonical-editor' && field.limit
+          ? { ...field, limit: { ...field.limit, max: maximum } }
+          : field
+      ),
+    };
   }
 
   async createPost(
