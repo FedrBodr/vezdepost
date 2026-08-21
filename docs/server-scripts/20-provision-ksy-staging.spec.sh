@@ -801,7 +801,8 @@ test_rejects_unsafe_or_incomplete_existing_installations_without_mutation() {
 }
 
 test_rejects_invalid_existing_env_without_mutation() {
-  local case_dir root
+  local case_dir root env_contents
+  local alternate_image='ghcr.io/fedrbodr/ksy-deals@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
   case_dir="$TMP_DIR/reuse-missing-proxy"
   write_existing_installation "$case_dir"
@@ -828,6 +829,40 @@ test_rejects_invalid_existing_env_without_mutation() {
   chmod 600 "$root/.env"
   assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
   [[ ! -s "$case_dir/docker.calls" ]] || fail 'empty runtime value invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-export-image-alias"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  printf 'export KSY_DEALS_IMAGE=%s\n' "$alternate_image" >> "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'export image alias invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-spaced-image-alias"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  printf 'KSY_DEALS_IMAGE = %s\n' "$alternate_image" >> "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'spaced image alias invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-whitespace-only-value"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '{ if (/^ORDER_TELEGRAM_URL=/) print "ORDER_TELEGRAM_URL=   "; else print }' \
+    "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'whitespace-only runtime value invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-missing-final-newline"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  env_contents=$(<"$root/.env")
+  printf '%s' "$env_contents" > "$root/.env"
+  assert_eq 0 "$(tail -c 1 "$root/.env" | wc -l | awk '{print $1}')" \
+    'test fixture unexpectedly retained its final newline'
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'unsupported env framing invoked Docker'
 }
 
 test_rejects_failed_existing_docker_auth_without_mutation() {

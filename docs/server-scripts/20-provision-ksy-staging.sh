@@ -239,15 +239,26 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
   [[ ! -L "$ENV_FILE" && -f "$ENV_FILE" ]] || fail PREVIOUS_ENV_UNSAFE
   [[ "$(file_uid "$ENV_FILE")" == "$expected_env_uid" ]] || fail PREVIOUS_ENV_UNSAFE
   [[ "$(file_mode "$ENV_FILE")" == 600 ]] || fail PREVIOUS_ENV_UNSAFE
+  final_newline_count=$(tail -c 1 "$ENV_FILE" | wc -l | awk '{print $1}')
+  [[ "$final_newline_count" == 1 ]] || fail EXISTING_ENV_INVALID
   for runtime_key in "${runtime_keys[@]}"; do
     runtime_key_state=$(awk -v key="$runtime_key" '
-      index($0, key "=") == 1 {
+      $0 ~ "^[[:space:]]*(export[[:space:]]+)?" key "[[:space:]]*=" {
+        if (index($0, key "=") != 1) {
+          noncanonical++
+          next
+        }
         count++
-        if (length($0) > length(key) + 1) nonempty++
+        value = substr($0, length(key) + 2)
+        trimmed = value
+        sub(/^[ \t]+/, "", trimmed)
+        sub(/[ \t]+$/, "", trimmed)
+        if (trimmed != value) noncanonical++
+        if (length(trimmed) > 0) nonempty++
       }
-      END { print count ":" nonempty }
+      END { print (count + 0) ":" (nonempty + 0) ":" (noncanonical + 0) }
     ' "$ENV_FILE")
-    [[ "$runtime_key_state" == 1:1 ]] || fail EXISTING_ENV_INVALID
+    [[ "$runtime_key_state" == 1:1:0 ]] || fail EXISTING_ENV_INVALID
   done
   awk -v image="$KSY_DEALS_IMAGE" '
     /^KSY_DEALS_IMAGE=/ { print "KSY_DEALS_IMAGE=" image; next }
