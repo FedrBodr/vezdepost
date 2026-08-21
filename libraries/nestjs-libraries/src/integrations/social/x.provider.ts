@@ -18,25 +18,19 @@ import { PostPlug } from '@gitroom/helpers/decorators/post.plug';
 import dayjs from 'dayjs';
 import { uniqBy } from 'lodash';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { stripLinks as removeLinks } from '@gitroom/helpers/utils/strip.links';
 import { XDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/x.dto';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
 
 @Rules(
-  `X can have maximum 4 pictures, or maximum one video, it can also be without attachments ${
-    process.env.STRIP_LINKS_FROM_X_POSTS
-      ? 'do not add links, they will be stripped from the post'
-      : ''
-  }`
+  'X can have maximum 4 pictures, or maximum one video, it can also be without attachments'
 )
 export class XProvider extends SocialAbstract implements SocialProvider {
   identifier = 'x';
   name = 'X';
   isBetweenSteps = false;
   scopes = [] as string[];
-  stripLinks = () => !!process.env.STRIP_LINKS_FROM_X_POSTS;
   override maxConcurrentJob = 1; // X has strict rate limits (300 posts per 3 hours)
   toolTip =
     'You will be logged in into your current account, if you would like a different account, change it first on X';
@@ -308,7 +302,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
 
       const plugText = stripHtmlValidation('normal', fields.post, true);
       await client.v2.tweet({
-        text: this.stripLinks() ? removeLinks(plugText) : plugText,
+        text: plugText,
         reply: { in_reply_to_tweet_id: id },
       });
       return true;
@@ -543,9 +537,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
               firstPost?.settings?.community?.split('/').pop() || '',
           }
         : {}),
-      text: this.stripLinks()
-        ? removeLinks(firstPost.message)
-        : firstPost.message,
+      text: firstPost.message,
       ...(media_ids.length ? { media: { media_ids } } : {}),
       made_with_ai: this.assetBoolean(firstPost?.settings?.made_with_ai),
       paid_partnership: this.assetBoolean(
@@ -606,9 +598,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
 
     const tweetUrl = 'https://api.x.com/2/tweets';
     const tweetBody = {
-      text: this.stripLinks()
-        ? removeLinks(commentPost.message)
-        : commentPost.message,
+      text: commentPost.message,
       ...(media_ids.length ? { media: { media_ids } } : {}),
       reply: { in_reply_to_tweet_id: replyToId },
       made_with_ai: this.assetBoolean(commentPost?.settings?.made_with_ai),

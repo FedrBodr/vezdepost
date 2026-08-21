@@ -454,8 +454,7 @@ describe('PostsService.validatePosts', () => {
     expect(result.contentError).toBe('');
   });
 
-  it('returns a nonblocking warning when X strips raw URLs', async () => {
-    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
+  it('keeps a URL-containing X post valid without a raw-url-removed warning', async () => {
     const service = createService({
       integrationManager: new IntegrationManager(),
       integrationService: {
@@ -477,17 +476,14 @@ describe('PostsService.validatePosts', () => {
       },
     ]);
 
-    expect(result.contentMessages).toContainEqual(
-      expect.objectContaining({
-        severity: 'warning',
-        code: 'raw-url-removed',
-      })
+    expect(result.contentMessages).not.toContainEqual(
+      expect.objectContaining({ code: 'raw-url-removed' })
     );
+    expect(result.emptyContent).toBe(false);
     expect(result.contentError).toBe('');
   });
 
-  it('authoritatively rejects an effective URL-only X post without media', async () => {
-    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
+  it('treats an effective URL-only X post without media as valid content', async () => {
     const service = createService({
       integrationManager: new IntegrationManager(),
       integrationService: {
@@ -503,18 +499,22 @@ describe('PostsService.validatePosts', () => {
     const [result] = await service.validatePosts('org-1', [
       {
         integration: { id: 'x-1' },
+        settings: { who_can_reply_post: 'everyone' },
         value: [{ content: '<p>https://example.com/path</p>', image: [] }],
       },
     ]);
 
-    expect(result.emptyContent).toBe(true);
-    expect(selectPostValidationFailure([result], false)?.category).toBe(
-      'empty-content'
+    expect(result.emptyContent).toBe(false);
+    expect(selectPostValidationFailure([result], false)).toBeUndefined();
+    expect(result.contentMessages).not.toContainEqual(
+      expect.objectContaining({
+        severity: 'warning',
+        code: 'raw-url-removed',
+      })
     );
   });
 
   it('allows effective empty text when media remains and keeps surrounding text non-empty', async () => {
-    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
     const service = createService({
       integrationManager: new IntegrationManager(),
       integrationService: {
