@@ -15,6 +15,8 @@ EVIDENCE_FILE="$KSY_ROOT/deployment-evidence.json"
 TEST_MODE=${KSY_PROVISION_TEST_MODE:-0}
 WORK_DIR=''
 BATCH_ECHO_DISABLED=0
+MUTATION_STARTED=0
+TRANSACTION_COMMITTED=0
 
 required_keys=(
   VITE_TELEGRAM_BOT_USERNAME GHCR_USERNAME GHCR_READ_TOKEN
@@ -31,8 +33,8 @@ runtime_keys=(
   BACKUP_ENCRYPTION_PASSPHRASE BACKUP_RETENTION_DAYS
 )
 
-for required_key in "${required_keys[@]}"; do
-  unset "$required_key"
+for sensitive_key in "${required_keys[@]}" "${runtime_keys[@]}"; do
+  unset "$sensitive_key"
 done
 
 trim_horizontal() {
@@ -50,9 +52,14 @@ restore_batch_echo() {
 }
 
 cleanup_batch() {
+  local status=$?
+  if [[ "$MUTATION_STARTED" == 1 && "$TRANSACTION_COMMITTED" != 1 ]]; then
+    rollback || true
+  fi
   restore_batch_echo
   exec 3>&- 2>/dev/null || true
   [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
+  return "$status"
 }
 
 trap cleanup_batch EXIT
@@ -341,6 +348,18 @@ if [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]]; then
   fi
 fi
 
+rollback() {
+  if [[ "$had_previous" == 1 ]]; then
+    install_private "$WORK_DIR/previous.env" "$ENV_FILE"
+    install_public "$WORK_DIR/previous-compose.yml" "$COMPOSE_FILE"
+    local previous=(docker compose --project-name ksy-deals --progress plain --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+    "${previous[@]}" config --quiet >/dev/null 2>&1 &&
+      "${previous[@]}" up -d server >/dev/null 2>&1 || true
+  else
+    rm -f "$ENV_FILE" "$COMPOSE_FILE"
+  fi
+}
+
 progress 3 install 'Installing reviewed configuration'
 if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
   docker pull "$KSY_DEALS_IMAGE" >/dev/null 2>&1 ||
@@ -352,6 +371,7 @@ else
   unset GHCR_READ_TOKEN
 fi
 
+MUTATION_STARTED=1
 mkdir -p "$KSY_ROOT" "$KSY_BACKUP_DIR" "$CADDY_SITES_DIR"
 chmod 700 "$KSY_ROOT" "$KSY_BACKUP_DIR"
 empty_site="$WORK_DIR/00-empty.caddy"
@@ -397,20 +417,7 @@ deploy_stack() {
   wait_for_health ready http://127.0.0.1:4300/health/ready
 }
 
-rollback() {
-  if [[ "$had_previous" == 1 ]]; then
-    install_private "$WORK_DIR/previous.env" "$ENV_FILE"
-    install_public "$WORK_DIR/previous-compose.yml" "$COMPOSE_FILE"
-    local previous=(docker compose --project-name ksy-deals --progress plain --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
-    "${previous[@]}" config --quiet >/dev/null 2>&1 &&
-      "${previous[@]}" up -d server >/dev/null 2>&1 || true
-  else
-    rm -f "$ENV_FILE" "$COMPOSE_FILE"
-  fi
-}
-
 if ! deploy_stack; then
-  rollback
   fail READINESS_FAILED
 fi
 
@@ -427,3 +434,4 @@ install_private "$candidate_evidence" "$EVIDENCE_FILE"
 
 printf 'KSY_PROVISIONED image=%s rollback=%s live=PASS ready=PASS\n' \
   "$KSY_DEALS_IMAGE" "${rollback_image:-none}"
+TRANSACTION_COMMITTED=1

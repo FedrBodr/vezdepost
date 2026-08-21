@@ -29,7 +29,7 @@ make_stubs() {
   cat > "$bin_dir/docker" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 if [[ "$1" == pull && "${DOCKER_PULL_FAIL:-0}" == 1 ]]; then
@@ -44,7 +44,7 @@ STUB
   cat > "$bin_dir/curl" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$CURL_CALLS"
 [[ "${CURL_FAIL:-0}" != 1 ]]
@@ -52,7 +52,7 @@ STUB
   cat > "$bin_dir/mktemp" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 exec /usr/bin/mktemp "$@"
 STUB
@@ -61,7 +61,28 @@ STUB
 echo 'host Node must not be required by the provisioner' >&2
 exit 97
 STUB
-  chmod +x "$bin_dir/docker" "$bin_dir/curl" "$bin_dir/mktemp" "$bin_dir/node"
+  cat > "$bin_dir/cp" <<'STUB'
+#!/usr/bin/env bash
+if [[ "${CP_FAIL_INSTALL:-none}" == env && $# == 2 && "$1" == */ksy.env && "$2" == */.env ]]; then
+  exit 98
+fi
+if [[ "${CP_FAIL_INSTALL:-none}" == evidence && $# == 2 && "$1" == */deployment-evidence.json && "$2" == */deployment-evidence.json ]]; then
+  exit 99
+fi
+exec /bin/cp "$@"
+STUB
+  cat > "$bin_dir/stat" <<'STUB'
+#!/usr/bin/env bash
+target=${!#}
+if [[ "${STAT_FORCE_UID_MISMATCH:-0}" == 1 && "$*" == *%u* && "$target" == */.env ]]; then
+  current_uid=$(/usr/bin/id -u)
+  printf '%s\n' "$((current_uid + 1))"
+  exit 0
+fi
+exec /usr/bin/stat "$@"
+STUB
+  chmod +x "$bin_dir/docker" "$bin_dir/curl" "$bin_dir/mktemp" "$bin_dir/node" \
+    "$bin_dir/cp" "$bin_dir/stat"
 }
 
 write_staged_compose() {
@@ -108,6 +129,13 @@ inherited_application_environment() {
   export PLATPRICES_API_KEY='platprices_test-key'
   export PLATPRICES_PROXY_URL='http://inherited1:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128'
   export BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
+}
+
+inherited_runtime_environment() {
+  export KSY_DEALS_IMAGE='ghcr.io/fedrbodr/ksy-deals@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+  export KSY_DEALS_BACKUP_DIR='/tmp/attacker-controlled-backups'
+  export DATABASE_URL='postgresql://attacker:attacker@attacker.invalid:5432/attacker'
+  export BACKUP_RETENTION_DAYS='999'
 }
 
 valid_batch() {
@@ -247,6 +275,8 @@ run_reuse_case() {
   local curl_fail=${3:-0}
   local docker_pull_fail=${4:-0}
   local image=${5:-$REUSE_IMAGE}
+  local cp_fail_install=${6:-none}
+  local stat_force_uid_mismatch=${7:-0}
   local bin_dir="$case_dir/bin"
   mkdir -p "$case_dir"
   make_stubs "$bin_dir"
@@ -258,6 +288,8 @@ run_reuse_case() {
     DOCKER_PULL_FAIL="$docker_pull_fail" \
     CURL_CALLS="$case_dir/curl.calls" \
     CURL_FAIL="$curl_fail" \
+    CP_FAIL_INSTALL="$cp_fail_install" \
+    STAT_FORCE_UID_MISMATCH="$stat_force_uid_mismatch" \
     NETWORK_MARKER="$case_dir/network.created" \
     KSY_PROVISION_TEST_MODE=1 \
     KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
@@ -272,13 +304,16 @@ assert_reuse_rejection_unchanged() {
   local case_dir=$1
   local expected=$2
   local docker_pull_fail=${3:-0}
+  local cp_fail_install=${4:-none}
+  local stat_force_uid_mismatch=${5:-0}
   local output="$case_dir/reuse.output"
   local root="$case_dir/opt/ksy-deals"
   local env_before compose_before
   env_before=$(file_sha256 "$root/.env")
   compose_before=$(file_sha256 "$root/docker-compose.yml")
 
-  if run_reuse_case "$case_dir" "$output" 0 "$docker_pull_fail"; then
+  if run_reuse_case "$case_dir" "$output" 0 "$docker_pull_fail" "$REUSE_IMAGE" \
+    "$cp_fail_install" "$stat_force_uid_mismatch"; then
     fail "$(basename "$case_dir") reuse rejection was accepted"
   fi
   grep -q "^KSY_PROVISION_FAILED $expected$" "$output" ||
@@ -767,6 +802,34 @@ test_reuses_existing_secrets_without_prompting() {
   assert_synthetic_secrets_absent "$output"
 }
 
+test_clears_inherited_runtime_values_before_compose() {
+  local case_dir="$TMP_DIR/reuse-inherited-runtime-sanitized"
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  local expected_database_url expected_backup_dir expected_retention
+  write_existing_installation "$case_dir"
+  expected_database_url=$(grep '^DATABASE_URL=' "$root/.env")
+  expected_backup_dir=$(grep '^KSY_DEALS_BACKUP_DIR=' "$root/.env")
+  expected_retention=$(grep '^BACKUP_RETENTION_DAYS=' "$root/.env")
+  : > "$case_dir/child.env"
+  inherited_runtime_environment
+
+  CHILD_ENV_CAPTURE="$case_dir/child.env" \
+    run_reuse_case "$case_dir" "$output"
+
+  [[ ! -s "$case_dir/child.env" ]] ||
+    fail 'a Compose child inherited a runtime value that can override the verified env file'
+  grep -Fxq "KSY_DEALS_IMAGE=$REUSE_IMAGE" "$root/.env" ||
+    fail 'inherited image replaced the requested image in the installed env'
+  grep -Fxq "$expected_database_url" "$root/.env" ||
+    fail 'inherited DATABASE_URL replaced the verified live value'
+  grep -Fxq "$expected_backup_dir" "$root/.env" ||
+    fail 'inherited backup directory replaced the verified live value'
+  grep -Fxq "$expected_retention" "$root/.env" ||
+    fail 'inherited backup retention replaced the verified live value'
+  unset KSY_DEALS_IMAGE KSY_DEALS_BACKUP_DIR DATABASE_URL BACKUP_RETENTION_DAYS
+}
+
 test_rejects_unsafe_or_incomplete_existing_installations_without_mutation() {
   local case_dir root
 
@@ -798,6 +861,11 @@ test_rejects_unsafe_or_incomplete_existing_installations_without_mutation() {
   chmod 640 "$root/.env"
   assert_reuse_rejection_unchanged "$case_dir" PREVIOUS_ENV_UNSAFE
   [[ ! -s "$case_dir/docker.calls" ]] || fail 'wrong env mode rejection invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-wrong-env-owner"
+  write_existing_installation "$case_dir"
+  assert_reuse_rejection_unchanged "$case_dir" PREVIOUS_ENV_UNSAFE 0 none 1
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'wrong env owner rejection invoked Docker'
 }
 
 test_rejects_invalid_existing_env_without_mutation() {
@@ -987,9 +1055,48 @@ test_reuse_restores_previous_installation_after_failed_readiness() {
     fail 'routine reuse did not restore the previous Compose file'
   grep -Fxq "KSY_DEALS_IMAGE=$previous_image" "$root/.env" ||
     fail 'routine reuse did not restore the previous image digest'
+  [[ "$(grep -c 'compose --project-name ksy-deals .* up -d server' "$case_dir/docker.calls")" -ge 2 ]] ||
+    fail 'routine reuse did not restart the previous server after rollback'
   grep -q '^KSY_PROVISION_FAILED READINESS_FAILED$' "$output" ||
     fail 'routine reuse health failure lost its compatible failure record'
   assert_synthetic_secrets_absent "$output"
+}
+
+assert_routine_transaction_failure_restores_previous_installation() {
+  local case_name=$1
+  local failure_point=$2
+  local minimum_server_starts=$3
+  local case_dir="$TMP_DIR/$case_name"
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  local previous_image
+  write_existing_installation "$case_dir"
+  cp "$root/.env" "$case_dir/env.before"
+  cp "$root/docker-compose.yml" "$case_dir/compose.before"
+  previous_image=$(sed -n 's/^KSY_DEALS_IMAGE=//p' "$root/.env")
+
+  if run_reuse_case "$case_dir" "$output" 0 0 "$REUSE_IMAGE" "$failure_point"; then
+    fail "$case_name accepted an injected installation failure"
+  fi
+  cmp -s "$case_dir/env.before" "$root/.env" ||
+    fail "$case_name did not exactly restore the previous env"
+  cmp -s "$case_dir/compose.before" "$root/docker-compose.yml" ||
+    fail "$case_name did not exactly restore the previous Compose file"
+  grep -Fxq "KSY_DEALS_IMAGE=$previous_image" "$root/.env" ||
+    fail "$case_name did not restore the previous image digest"
+  [[ "$(grep -c 'compose --project-name ksy-deals .* up -d server' "$case_dir/docker.calls")" -ge "$minimum_server_starts" ]] ||
+    fail "$case_name did not restart the previous server"
+  assert_synthetic_secrets_absent "$output"
+}
+
+test_reuse_rolls_back_failure_between_compose_and_env_install() {
+  assert_routine_transaction_failure_restores_previous_installation \
+    reuse-env-install-failure env 1
+}
+
+test_reuse_rolls_back_evidence_install_failure() {
+  assert_routine_transaction_failure_restores_previous_installation \
+    reuse-evidence-install-failure evidence 2
 }
 
 test_bootstrap_contract_still_names_twelve_hidden_fields() {
@@ -1005,10 +1112,13 @@ test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
 test_reuses_existing_secrets_without_prompting
+test_clears_inherited_runtime_values_before_compose
 test_rejects_unsafe_or_incomplete_existing_installations_without_mutation
 test_rejects_invalid_existing_env_without_mutation
 test_rejects_failed_existing_docker_auth_without_mutation
 test_reuse_restores_previous_installation_after_failed_readiness
+test_reuse_rolls_back_failure_between_compose_and_env_install
+test_reuse_rolls_back_evidence_install_failure
 test_bootstrap_contract_still_names_twelve_hidden_fields
 test_rejects_batch_safety_failures_before_mutation
 test_rejects_missing_batch_key_despite_inherited_environment
