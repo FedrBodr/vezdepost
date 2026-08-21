@@ -35,6 +35,11 @@ import {
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
 import { PersonalStreakReminderStarter } from '@gitroom/nestjs-libraries/temporal/personal-streak-reminder.starter';
+import { ApplicationFailure } from '@temporalio/activity';
+import {
+  isDeterministicPublicationMediaError,
+  PUBLICATION_MEDIA_PREFLIGHT_FAILURE_TYPE,
+} from './publication.media.preflight';
 
 // Drops fields the workflow and downstream activities never read — biggest wins are `error` (grows per retry) and `childrenPost` (Prisma side-loads it on every recursive row).
 function slimPost(post: any) {
@@ -168,15 +173,23 @@ export class PostActivity {
       return [];
     }
 
-    const posts = getPosts.map(slimPost);
-    const providerIdentifier = posts[0]?.integration?.providerIdentifier;
-    if (typeof providerIdentifier !== 'string' || !providerIdentifier) {
-      throw new Error('Invalid publication integration');
+    try {
+      const posts = getPosts.map(slimPost);
+      const providerIdentifier = posts[0]?.integration?.providerIdentifier;
+      if (typeof providerIdentifier !== 'string' || !providerIdentifier) {
+        throw new Error('Invalid publication integration');
+      }
+      return await this.resolveAndAuthorizePublicationThreadMedia(
+        providerIdentifier,
+        posts
+      );
+    } catch (error) {
+      if (!isDeterministicPublicationMediaError(error)) throw error;
+      throw ApplicationFailure.fromError(error, {
+        type: PUBLICATION_MEDIA_PREFLIGHT_FAILURE_TYPE,
+        nonRetryable: true,
+      });
     }
-    return this.resolveAndAuthorizePublicationThreadMedia(
-      providerIdentifier,
-      posts
-    );
   }
 
   @ActivityMethod()

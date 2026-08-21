@@ -36,6 +36,20 @@ state mutation was performed.
    sequential, bounding concurrent buffers.
 8. Corrected the TikTok photo-title input boundary from 89 to 90 and added an
    exact-boundary component regression.
+9. Closed the final workflow-lifecycle follow-up: deterministic unsafe,
+   missing, or malformed complete-thread media now leaves `getPostsList` as a
+   structured, non-retryable `publication_media_preflight` activity failure.
+   Every bundled post-workflow version catches only that failure type, marks
+   the root post `ERROR`, sends a failure notification, and returns before
+   commentability checks, provider activities, post updates, reminders, or
+   webhooks. Only the whitelisted safe preflight cause is persisted; Temporal
+   worker/activity metadata remains confined to workflow history. Transient
+   database, DNS, local-filesystem, and activity failures retain their existing
+   retry and workflow-failure behavior. Local source validation uses an
+   explicit error code for deterministic invalid/missing paths, while
+   operational `realpath` failures are rethrown. The helper adds no command on
+   the success path, and the new failure type did not exist in historical
+   activity results, preserving replay command order for v1.0.1–v1.0.5.
 
 ## RED/GREEN evidence
 
@@ -60,13 +74,27 @@ state mutation was performed.
   concurrency regressions failed before implementation and pass after it.
 - TikTok title: the rendered input initially exposed `maxLength="89"`; it now
   exposes `maxLength="90"`.
+- Workflow lifecycle: all 15 workflow-version × deterministic-preflight cases
+  initially rejected outside lifecycle handling. Activity-level unsafe,
+  missing, and malformed cases also initially threw ordinary retryable errors.
+  They now produce the single non-retryable preflight type, and all five
+  workflows terminate after exactly one root `ERROR` transition and failure
+  notification with no publication effects. Five transient controls continue
+  to reject rather than being misclassified.
+- Review hardening: persisting the full Temporal failure first exposed worker
+  identity/activity metadata through `post.error`; 15 regressions went RED
+  until only the safe cause string was stored. A simulated `realpath` `EIO`
+  also showed that the old generic local-source error swallowed operational
+  failures; it is now rethrown for Temporal retry while missing-file
+  `ENOENT`/`ENOTDIR` remains deterministic.
 
 ## Verification
 
 All pnpm commands used Node 22.20.0.
 
 - Expanded remediation suite: 18 files, 226/226 tests passed.
-- Full repository suite with coverage: 97 files, 995/995 tests passed.
+- Lifecycle workflow/activity/security suite: 7 files, 139/139 tests passed.
+- Full repository suite with coverage: 97 files, 1,020/1,020 tests passed.
 - Explicit frontend TypeScript check: passed.
 - Static V1 API/import proof: no matches.
 - Affected-preview raw `dangerouslySetInnerHTML` proof: no matches.
@@ -75,6 +103,10 @@ All pnpm commands used Node 22.20.0.
 - Frontend production build (including TypeScript/static generation): passed.
 - Backend production build: passed.
 - Orchestrator production build: passed.
+- A diagnostic raw orchestrator `tsc` run reported only the branch's existing
+  test-fixture and unrelated library strictness findings; the lifecycle test's
+  new tuple-inference findings were corrected, and both authoritative
+  production TypeScript builds passed.
 
 ## Independent review
 
@@ -88,6 +120,19 @@ fresh regression evidence and re-reviewed. Final verdict:
 - Scope regressions or architecture mismatches: none.
 - Independent focused verification: 18 files, 221/221 tests passed; frontend
   TypeScript, backend/orchestrator builds, Prettier, and diff checks passed.
+
+The same reviewer then inspected the lifecycle follow-up and identified two
+Important hardening gaps before commit: unsafe persistence of the full Temporal
+failure and transient local-filesystem errors collapsed into a deterministic
+message. Both received fresh RED/GREEN regressions and fixes. The final
+incremental re-review found:
+
+- Critical findings: none.
+- Important findings: none.
+- Minor findings: none.
+- Scope regressions or architecture mismatches: none.
+- Independent focused verification: 7 files, 154/154 tests passed;
+  orchestrator build, Prettier, and `git diff --check` passed.
 
 ## Concerns
 

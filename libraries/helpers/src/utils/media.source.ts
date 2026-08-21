@@ -25,6 +25,23 @@ export type MediaSourceOptions = SafeRemoteFetchOptions & {
 
 export type MediaSourceStream = SafeRemoteStream & { local: boolean };
 
+export class InvalidMediaSourceError extends Error {
+  readonly code = 'INVALID_MEDIA_SOURCE';
+
+  constructor() {
+    super('Invalid media source');
+    this.name = 'InvalidMediaSourceError';
+  }
+}
+
+function isMissingLocalPathError(error: unknown): boolean {
+  const code =
+    error && typeof error === 'object'
+      ? (error as { code?: unknown }).code
+      : undefined;
+  return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
 function resolveMediaSource(
   path: string
 ): { kind: 'local'; path: string } | { kind: 'remote'; url: string } {
@@ -35,23 +52,21 @@ function resolveMediaSource(
       : { kind: 'remote', url: path };
   }
   const local = resolveLocalUploadFilePath(path);
-  if (!local) throw new Error('Invalid media source');
+  if (!local) throw new InvalidMediaSourceError();
   return { kind: 'local', path: local };
 }
 
 async function confinedLocalPath(path: string): Promise<string> {
   const uploadDirectory = process.env.UPLOAD_DIRECTORY;
-  if (!uploadDirectory) throw new Error('Invalid media source');
+  if (!uploadDirectory) throw new InvalidMediaSourceError();
 
-  let root: string;
+  const root = await realpath(resolve(uploadDirectory));
   let file: string;
   try {
-    [root, file] = await Promise.all([
-      realpath(resolve(uploadDirectory)),
-      realpath(path),
-    ]);
-  } catch {
-    throw new Error('Invalid media source');
+    file = await realpath(path);
+  } catch (error) {
+    if (isMissingLocalPathError(error)) throw new InvalidMediaSourceError();
+    throw error;
   }
   const relation = relative(root, file);
   if (
@@ -59,7 +74,7 @@ async function confinedLocalPath(path: string): Promise<string> {
     relation.startsWith(`..${sep}`) ||
     isAbsolute(relation)
   ) {
-    throw new Error('Invalid media source');
+    throw new InvalidMediaSourceError();
   }
   return file;
 }
@@ -67,7 +82,7 @@ async function confinedLocalPath(path: string): Promise<string> {
 async function confinedLocalFile(path: string) {
   const localPath = await confinedLocalPath(path);
   const details = await stat(localPath);
-  if (!details.isFile()) throw new Error('Invalid media source');
+  if (!details.isFile()) throw new InvalidMediaSourceError();
   return { localPath, details };
 }
 

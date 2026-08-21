@@ -17,6 +17,7 @@ import { PostResponse } from '@gitroom/nestjs-libraries/integrations/social/soci
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TypedSearchAttributes } from '@temporalio/common';
 import { postId as postIdSearchParam } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
+import { getPublicationPostsOrFail } from './publication.media.preflight.workflow';
 
 const proxyTaskQueue = (taskQueue: string) => {
   return proxyActivities<PostActivity>({
@@ -85,7 +86,14 @@ export async function postWorkflowV101({
 
   const startTime = new Date();
   // get all the posts and comments to post
-  const postsListBefore = await getPostsList(organizationId, postId);
+  const postsListBefore = await getPublicationPostsOrFail({
+    organizationId,
+    postId,
+    getPostsList,
+    changeState,
+    inAppNotification,
+  });
+  if (!postsListBefore) return false;
   const [post] = postsListBefore;
 
   // in case doesn't exists for some reason, fail it

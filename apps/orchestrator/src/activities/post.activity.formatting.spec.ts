@@ -5,6 +5,7 @@ import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.cap
 import type { ResolvedPlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.types';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { authorizeMediaSource } from '@gitroom/helpers/utils/media.source';
+import { ApplicationFailure } from '@temporalio/activity';
 
 vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => {
   const actual = await importOriginal<any>();
@@ -14,11 +15,15 @@ vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => {
       if (
         path.includes('169.254.169.254') ||
         path.includes('private.example.test') ||
-        path.includes('missing-local')
+        path.includes('missing-local') ||
+        path.includes('dns-timeout')
       ) {
+        if (path.includes('missing-local')) {
+          throw new actual.InvalidMediaSourceError();
+        }
         throw new Error(
-          path.includes('missing-local')
-            ? 'Invalid media source'
+          path.includes('dns-timeout')
+            ? 'Remote media DNS lookup timed out'
             : 'Blocked remote media URL'
         );
       }
@@ -354,6 +359,98 @@ describe('PostActivity platform formatting', () => {
     expect(postService.updateMedia).not.toHaveBeenCalled();
     expect(resolveCapabilities).not.toHaveBeenCalled();
     expect(provider.post).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'unsafe remote media',
+      JSON.stringify([
+        {
+          path: 'http://169.254.169.254/latest/meta-data/photo.jpg',
+          type: 'image',
+        },
+      ]),
+      'Blocked remote media URL',
+    ],
+    [
+      'missing local media',
+      JSON.stringify([{ path: 'missing-local.jpg', type: 'image' }]),
+      'Invalid media source',
+    ],
+    ['malformed media JSON', '{', 'Invalid publication media'],
+  ])(
+    'classifies %s preflight failures as structured and non-retryable',
+    async (_caseName, image, message) => {
+      const postService = {
+        getPostsRecursively: vi.fn().mockResolvedValue([
+          {
+            id: 'post-1',
+            organizationId: 'org-1',
+            settings: '{}',
+            image,
+            integration: { providerIdentifier: 'slack' },
+          },
+        ]),
+        resolveMediaSources: vi.fn(),
+      };
+      const activity = new PostActivity(
+        postService as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any
+      );
+
+      const request = activity.getPostsList('org-1', 'post-1');
+
+      await expect(request).rejects.toBeInstanceOf(ApplicationFailure);
+      await expect(request).rejects.toMatchObject({
+        message,
+        type: 'publication_media_preflight',
+        nonRetryable: true,
+      });
+      expect(postService.resolveMediaSources).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps transient preflight infrastructure failures retryable', async () => {
+    const error = new Error('Remote media DNS lookup timed out');
+    const postService = {
+      getPostsRecursively: vi.fn().mockResolvedValue([
+        {
+          id: 'post-1',
+          organizationId: 'org-1',
+          settings: '{}',
+          image: JSON.stringify([
+            {
+              path: 'https://dns-timeout.example.test/photo.jpg',
+              type: 'image',
+            },
+          ]),
+          integration: { providerIdentifier: 'slack' },
+        },
+      ]),
+      resolveMediaSources: vi.fn(),
+    };
+    const activity = new PostActivity(
+      postService as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await expect(activity.getPostsList('org-1', 'post-1')).rejects.toEqual(
+      error
+    );
   });
 
   it('publishes tagless special characters unchanged', async () => {

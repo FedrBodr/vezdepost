@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import * as fsPromises from 'node:fs/promises';
 import {
   authorizeMediaSource,
   getMediaSourceMetadata,
@@ -16,6 +17,11 @@ import {
   withMediaSourceRange,
 } from './media.source';
 import { SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES } from './ssrf.safe.fetch';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, realpath: vi.fn(actual.realpath) };
+});
 
 describe('MediaSource local and remote boundary', () => {
   let uploadDirectory: string;
@@ -114,6 +120,26 @@ describe('MediaSource local and remote boundary', () => {
     await expect(authorizeMediaSource('nested/fake.jpg')).rejects.toThrow(
       /invalid media source/i
     );
+  });
+
+  it('preserves transient local realpath failures for the caller to retry', async () => {
+    const realpathMock = vi.mocked(fsPromises.realpath) as any;
+    const realpath = realpathMock.getMockImplementation();
+    const transientError = Object.assign(new Error('storage I/O failure'), {
+      code: 'EIO',
+    });
+    realpathMock.mockImplementation(async (path: unknown, options: unknown) => {
+      if (String(path).endsWith('clip.mp4')) throw transientError;
+      return realpath(path, options);
+    });
+
+    try {
+      await expect(authorizeMediaSource('nested/clip.mp4')).rejects.toBe(
+        transientError
+      );
+    } finally {
+      realpathMock.mockImplementation(realpath);
+    }
   });
 
   it('provides local metadata and an exact ranged stream', async () => {
