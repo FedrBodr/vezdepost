@@ -38,7 +38,8 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
   }
 
   async fetchCapabilityRuntime(
-    _integration: Integration
+    _integration: Integration,
+    _settings?: unknown
   ): Promise<CapabilityRuntimeOverlay | undefined> {
     const url =
       (process.env.MASTODON_URL || 'https://mastodon.social') +

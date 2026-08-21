@@ -22,6 +22,7 @@ import { stripLinks as removeLinks } from '@gitroom/helpers/utils/strip.links';
 import { XDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/x.dto';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
 
 @Rules(
   `X can have maximum 4 pictures, or maximum one video, it can also be without attachments ${
@@ -54,6 +55,40 @@ export class XProvider extends SocialAbstract implements SocialProvider {
       ? !!additionalSettings.find((p: any) => p?.title === 'Verified')?.value
       : !!additionalSettings;
     return isTwitterPremium ? 4000 : 280;
+  }
+
+  async fetchCapabilityRuntime(
+    integration: Integration,
+    _settings?: unknown
+  ): Promise<CapabilityRuntimeOverlay | undefined> {
+    let additionalSettings: any;
+    try {
+      additionalSettings = JSON.parse(integration.additionalSettings || '[]');
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(additionalSettings)) {
+      return undefined;
+    }
+
+    const isTwitterPremium = !!additionalSettings.find(
+      (p: any) => p?.title === 'Verified'
+    )?.value;
+    if (!isTwitterPremium) {
+      return undefined;
+    }
+
+    return {
+      observedAt: integration.updatedAt?.toString() ?? new Date().toISOString(),
+      textLimits: {
+        body: {
+          max: 4000,
+          unit: 'weighted',
+          counter: 'x-weighted',
+          source: 'runtime',
+        },
+      },
+    };
   }
 
   override handleErrors(body: string):

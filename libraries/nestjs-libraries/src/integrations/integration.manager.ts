@@ -202,10 +202,6 @@ export class IntegrationManager {
     integration?: Integration;
   }): Promise<ResolvedPlatformCapabilityV2> {
     const provider = this.getSocialIntegration(providerName);
-    const runtimeOverlay =
-      integration && provider.fetchCapabilityRuntime
-        ? await provider.fetchCapabilityRuntime(integration)
-        : undefined;
     let additionalSettings: unknown = undefined;
     if (integration) {
       try {
@@ -214,6 +210,10 @@ export class IntegrationManager {
         additionalSettings = [];
       }
     }
+    const runtimeOverlay =
+      integration && provider.fetchCapabilityRuntime
+        ? await provider.fetchCapabilityRuntime(integration, additionalSettings)
+        : undefined;
 
     return resolvePlatformCapabilityV2({
       identifier: providerName,

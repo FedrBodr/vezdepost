@@ -46,6 +46,7 @@ describe('Batch 0 platform capability resolution', () => {
       'bluesky',
       'threads',
       'youtube',
+      'x',
     ]);
   });
 
@@ -407,6 +408,33 @@ describe('Batch 0 platform capability resolution', () => {
     }).toThrow(TypeError);
     expect(resolved.fields[0].limit?.max).toBe(777);
     expect(pinterest.structuredFields[2].required).toBe(true);
+  });
+
+  it('falls back to weighted 280 without an x runtime overlay', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('x'));
+    expect(capability.verification).toBe('runtime');
+    expect(capability.fields[0].limit).toMatchObject({
+      max: 280,
+      unit: 'weighted',
+      counter: 'x-weighted',
+    });
+    expect(
+      capability.diagnostics.some((d) => d.code === 'runtime-data-missing')
+    ).toBe(true);
+  });
+
+  it('raises x to premium 4000 only through a trusted overlay', () => {
+    const capability = resolvePlatformCapabilityV2({
+      ...ctx('x'),
+      runtimeOverlay: {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          body: { max: 4000, unit: 'weighted', counter: 'x-weighted', source: 'runtime' },
+        },
+      },
+    });
+    expect(capability.fields[0].limit).toMatchObject({ max: 4000, source: 'runtime' });
+    expect(capability.diagnostics).toHaveLength(0);
   });
 
   it('resolves bluesky as a verified grapheme-limited profile', () => {

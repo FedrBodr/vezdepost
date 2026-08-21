@@ -467,6 +467,40 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
     runtimeKeys: ['text-limit', 'media-rule'],
     runtimeMaxAgeSeconds: 3_600,
   },
+  x: {
+    identifier: 'x',
+    displayName: 'X',
+    verification: 'runtime',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: {
+        key: 'post',
+        fields: [
+          {
+            ...body(280, 'plain', plainFormatting),
+            limit: {
+              max: 280,
+              unit: 'weighted',
+              counter: 'x-weighted',
+              source: 'platform',
+            },
+          },
+        ],
+        structuredFields: [],
+        media: {
+          type: 'exclusive',
+          optional: true,
+          alternatives: [
+            { kind: 'images', min: 1, max: 4 },
+            { kind: 'video', min: 1, max: 1 },
+          ],
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+    runtimeKeys: ['text-limit'],
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -517,6 +551,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'bluesky',
   'threads',
   'youtube',
+  'x',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

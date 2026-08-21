@@ -177,7 +177,8 @@ export interface SocialProvider
   maxLength: (additionalSettings?: any) => number;
   capabilityMeasurement?: Pick<ContentLimit, 'unit' | 'counter'>;
   fetchCapabilityRuntime?(
-    integration: Integration
+    integration: Integration,
+    settings?: unknown
   ): Promise<CapabilityRuntimeOverlay | undefined>;
   checkValidity(
     posts: Array<{ path: string; thumbnail?: string }[]>,

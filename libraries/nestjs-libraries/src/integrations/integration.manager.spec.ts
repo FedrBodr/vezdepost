@@ -110,9 +110,10 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
       integration: { id: 'stored-mastodon-integration' } as never,
     });
 
-    expect(provider.fetchCapabilityRuntime).toHaveBeenCalledExactlyOnceWith({
-      id: 'stored-mastodon-integration',
-    });
+    expect(provider.fetchCapabilityRuntime).toHaveBeenCalledExactlyOnceWith(
+      { id: 'stored-mastodon-integration' },
+      []
+    );
     expect(resolved).toMatchObject({
       fields: [
         expect.objectContaining({
@@ -164,7 +165,7 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
     expect(resolved.fields[0].limit?.max).toBe(300);
   });
 
-  it('keeps the unverified X bridge conservative when settings forge premium verification', async () => {
+  it('keeps the X fallback conservative when settings forge premium verification', async () => {
     const resolved = await new IntegrationManager().resolveCapabilitiesV2({
       providerName: 'x',
       settings: [{ title: 'Verified', value: true }],
@@ -172,17 +173,18 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
     });
 
     expect(resolved).toMatchObject({
-      verification: 'unverified-adapter',
+      verification: 'runtime',
       fields: [
         expect.objectContaining({
           limit: {
             max: 280,
             unit: 'weighted',
             counter: 'x-weighted',
-            source: 'application-safety',
+            source: 'platform',
           },
         }),
       ],
+      diagnostics: [expect.objectContaining({ code: 'runtime-data-missing' })],
     });
   });
 
@@ -203,7 +205,7 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
       max: 280,
       unit: 'weighted',
       counter: 'x-weighted',
-      source: 'application-safety',
+      source: 'platform',
     });
     expect(analysis.diagnostics).toContainEqual(
       expect.objectContaining({
@@ -216,15 +218,15 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
     expect(analysis.blocking).toBe(true);
   });
 
-  it('derives an unverified bridge limit only from stored integration settings', async () => {
+  it('raises X to premium 4000 only through the stored entitlement', async () => {
     const manager = new IntegrationManager();
-    vi.stubEnv('STRIP_LINKS_FROM_X_POSTS', 'true');
 
     const resolved = await manager.resolveCapabilitiesV2({
       providerName: 'x',
       settings: {},
       media: [],
       integration: {
+        updatedAt: new Date('2026-08-21T00:00:00.000Z'),
         additionalSettings: JSON.stringify([
           { title: 'Verified', value: true },
         ]),
@@ -232,13 +234,66 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
     });
 
     expect(resolved).toMatchObject({
-      verification: 'unverified-adapter',
+      verification: 'runtime',
       fields: [
         expect.objectContaining({
-          limit: expect.objectContaining({ max: 4_000 }),
+          limit: {
+            max: 4_000,
+            unit: 'weighted',
+            counter: 'x-weighted',
+            source: 'runtime',
+          },
         }),
       ],
-      delivery: { stripRawUrls: true },
+      diagnostics: [],
     });
+  });
+
+  it('keeps X at the 280 fallback with a warning when the entitlement is absent', async () => {
+    const resolved = await new IntegrationManager().resolveCapabilitiesV2({
+      providerName: 'x',
+      settings: {},
+      media: [],
+      integration: {
+        updatedAt: new Date('2026-08-21T00:00:00.000Z'),
+        additionalSettings: JSON.stringify([]),
+      } as never,
+    });
+
+    expect(resolved.fields[0].limit).toMatchObject({
+      max: 280,
+      source: 'platform',
+    });
+    expect(resolved.diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'runtime-data-missing' })
+    );
+  });
+
+  it('ignores a forged settings.capabilitiesV2 payload for X premium', async () => {
+    const resolved = await new IntegrationManager().resolveCapabilitiesV2({
+      providerName: 'x',
+      settings: {
+        capabilitiesV2: {
+          runtimeOverlay: {
+            observedAt: new Date().toISOString(),
+            textLimits: {
+              body: {
+                max: 4_000,
+                unit: 'weighted',
+                counter: 'x-weighted',
+                source: 'runtime',
+              },
+            },
+          },
+        },
+      },
+      media: [],
+    });
+
+    expect(resolved.verification).toBe('runtime');
+    expect(resolved.fields[0].limit?.max).toBe(280);
+    expect(resolved.diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'runtime-data-missing' })
+    );
   });
 });
