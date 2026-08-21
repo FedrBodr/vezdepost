@@ -404,6 +404,53 @@ describe('normalizePlatformFields', () => {
     ).toBe('[Read more](https://example.com/path)');
   });
 
+  const blueskyCapability = (stripRawUrls = false) => ({
+    identifier: 'bluesky',
+    profileIdentifier: 'bluesky',
+    verification: 'verified',
+    evidenceDate: '2026-08-21',
+    variant: 'post',
+    fields: [
+      {
+        key: 'body',
+        label: 'Body',
+        required: false,
+        source: 'canonical-editor',
+        dialect: 'bluesky-facets',
+        formatting: { bold: 'unsupported', underline: 'unsupported', links: 'native', lists: 'plain', headings: 'plain' },
+      },
+    ],
+    structuredFields: [],
+    media: { type: 'optional' },
+    delivery: { longMediaText: 'not-applicable', stripRawUrls },
+    diagnostics: [],
+  });
+
+  it('emits utf8 byte-indexed link facets for bluesky', () => {
+    const result = normalizePlatformFields({
+      canonicalHtml: '<p>see <a href="https://example.com">this</a> 😀</p>',
+      settings: {},
+      capability: blueskyCapability(),
+    });
+    const prefix = 'see this 😀';
+    expect(result.body.value).toBe(prefix);
+    expect(result.body.facets).toEqual([
+      {
+        index: { byteStart: 4, byteEnd: 8 },
+        features: [{ '$type': 'app.bsky.richtext.facet#link', uri: 'https://example.com' }],
+      },
+    ]);
+  });
+
+  it('omits facets when no link is present', () => {
+    const result = normalizePlatformFields({
+      canonicalHtml: '<p>plain words</p>',
+      settings: {},
+      capability: blueskyCapability(),
+    });
+    expect(result.body.facets).toBeUndefined();
+  });
+
   it('converts mentions without rewriting the canonical source', () => {
     const canonicalHtml =
       '<p>Hello <span data-mention-id="42">Alice</span></p>';

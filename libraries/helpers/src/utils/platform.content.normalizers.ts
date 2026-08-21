@@ -344,36 +344,126 @@ const normalizeHtml = (
   );
 };
 
+type FacetRange = HttpUrlRange & { uri: string };
+
+const byteLengthUpTo = (value: string, index: number): number =>
+  new TextEncoder().encode(value.slice(0, index)).length;
+
+const collectAnchorFacetRanges = (
+  canonicalHtml: string,
+  value: string
+): FacetRange[] => {
+  if (!/<\/?[a-z][\s\S]*>/i.test(canonicalHtml)) {
+    return [];
+  }
+  const fragment = parseFragment(canonicalHtml) as unknown as HtmlNode;
+  const ranges: FacetRange[] = [];
+  let cursor = 0;
+  const visit = (node: HtmlNode): void => {
+    if (node.nodeName === '#text') {
+      return;
+    }
+    if (node.tagName === 'a') {
+      const href = getAttribute(node, 'href');
+      const uri = href ? normalizeGeneratedLinkHref(href) : undefined;
+      const label = collectNodeText(node);
+      if (uri && label) {
+        const start = value.indexOf(label, cursor);
+        if (start >= 0) {
+          cursor = start + label.length;
+          ranges.push({ start, end: cursor, uri });
+          return;
+        }
+      }
+    }
+    getChildNodes(node).forEach(visit);
+  };
+  visit(fragment);
+  return ranges;
+};
+
+const buildLinkFacets = (
+  canonicalHtml: string,
+  value: string
+): readonly unknown[] | undefined => {
+  const anchorRanges = collectAnchorFacetRanges(canonicalHtml, value);
+  const ranges = [
+    ...anchorRanges,
+    ...getHttpUrlRanges(value)
+      .filter(
+        (range) =>
+          !anchorRanges.some(
+            (anchor) => range.start >= anchor.start && range.end <= anchor.end
+          )
+      )
+      .map((range) => ({
+        ...range,
+        uri: value.slice(range.start, range.end),
+      })),
+  ].sort((left, right) => left.start - right.start);
+  if (!ranges.length) {
+    return undefined;
+  }
+  return ranges.map((range) => ({
+    index: {
+      byteStart: byteLengthUpTo(value, range.start),
+      byteEnd: byteLengthUpTo(value, range.end),
+    },
+    features: [
+      {
+        $type: 'app.bsky.richtext.facet#link',
+        uri: range.uri,
+      },
+    ],
+  }));
+};
+
 const normalizeCanonicalField = (
   canonicalHtml: string,
   field: TextFieldCapability,
   capability: ResolvedPlatformCapabilityV2,
   convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction']
-): string => {
+): NormalizedPlatformField => {
   switch (field.dialect) {
     case 'html':
-      return normalizeHtml(canonicalHtml, capability, convertMentionFunction);
+      return {
+        value: normalizeHtml(canonicalHtml, capability, convertMentionFunction),
+      };
     case 'markdown':
     case 'discord-markdown':
-      return renderMarkupDialect(
-        canonicalHtml,
-        'markdown',
-        convertMentionFunction
-      );
+      return {
+        value: renderMarkupDialect(
+          canonicalHtml,
+          'markdown',
+          convertMentionFunction
+        ),
+      };
     case 'slack-mrkdwn':
-      return renderMarkupDialect(
-        canonicalHtml,
-        'slack-mrkdwn',
-        convertMentionFunction
-      );
-    case 'plain':
-    case 'bluesky-facets':
-      return normalizePlain(
+      return {
+        value: renderMarkupDialect(
+          canonicalHtml,
+          'slack-mrkdwn',
+          convertMentionFunction
+        ),
+      };
+    case 'bluesky-facets': {
+      const value = normalizePlain(
         canonicalHtml,
         convertMentionFunction,
         field.formatting.bold === 'unicode' ||
           field.formatting.underline === 'unicode'
       );
+      return { value, facets: buildLinkFacets(canonicalHtml, value) };
+    }
+    case 'plain':
+      return {
+        value: normalizePlain(
+          canonicalHtml,
+          convertMentionFunction,
+          field.formatting.bold === 'unicode' ||
+            field.formatting.underline === 'unicode'
+        ),
+      };
   }
 };
 
@@ -577,12 +667,13 @@ export const normalizePlatformFields = ({
 > =>
   Object.fromEntries(
     capability.fields.map((field) => {
-      const value = (() => {
+      const entry = (() => {
         if (field.source === 'provider-setting') {
           const setting = providerSettingValue(settings, field);
-          return capability.delivery.stripRawUrls
+          const value = capability.delivery.stripRawUrls
             ? stripVisibleRawUrls(setting)
             : setting;
+          return { value };
         }
         const effectiveCanonicalHtml = capability.delivery.stripRawUrls
           ? stripVisibleRawUrls(canonicalHtml)
@@ -594,13 +685,7 @@ export const normalizePlatformFields = ({
           convertMentionFunction
         );
       })();
-      return [
-        field.key,
-        {
-          value,
-          facets: undefined,
-        },
-      ];
+      return [field.key, entry];
     })
   );
 
