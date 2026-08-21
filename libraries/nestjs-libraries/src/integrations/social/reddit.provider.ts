@@ -43,20 +43,31 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     return 10000;
   }
 
+  private extractSubreddit(settings: unknown): string | undefined {
+    const list = (settings as any)?.subreddit;
+    const raw = Array.isArray(list) ? list[0] : list;
+    const value =
+      typeof raw === 'string'
+        ? raw
+        : typeof raw?.value === 'string'
+          ? raw.value
+          : raw?.value?.subreddit;
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+    const name = value.split('/r/').pop()?.trim().toLowerCase();
+    return name || undefined;
+  }
+
   async fetchCapabilityRuntime(
     integration: Integration,
     settings?: unknown
   ): Promise<CapabilityRuntimeOverlay | undefined> {
     try {
-      const subredditList = (settings as any)?.subreddit;
-      const name = Array.isArray(subredditList)
-        ? subredditList[0]?.value?.subreddit
-        : undefined;
-      if (typeof name !== 'string' || !name.trim()) {
+      const subreddit = this.extractSubreddit(settings);
+      if (!subreddit) {
         return undefined;
       }
-
-      const subreddit = (name.split('/r/')[1] || name).toLowerCase();
       const { title_required_max: titleMax } = await (
         await this.fetch(
           `https://oauth.reddit.com/api/v1/${subreddit}/post_requirements`,

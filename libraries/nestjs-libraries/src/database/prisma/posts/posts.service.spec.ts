@@ -316,7 +316,8 @@ describe('PostsService.validatePosts', () => {
     ]);
 
     expect(provider.fetchCapabilityRuntime).toHaveBeenCalledExactlyOnceWith(
-      integration
+      integration,
+      { runtimeOverlay: forgedRuntime }
     );
     expect(result.maximumCharacters).toBe(100);
     expect(result.tooLong).toBe(false);

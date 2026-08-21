@@ -235,4 +235,35 @@ describe('RedditProvider.fetchCapabilityRuntime', () => {
     ).resolves.toBeUndefined();
     expect(providerFetch).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['plain string subreddit', { subreddit: '/r/testing' }],
+    ['array of strings', { subreddit: ['/r/testing'] }],
+    ['string value wrapper', { subreddit: [{ value: '/r/testing' }] }],
+    ['bare subreddit name', { subreddit: [{ value: { subreddit: 'Testing' } }] }],
+  ] as const)('extracts the subreddit from %s', async (_label, settings) => {
+    const providerFetch = vi
+      .spyOn(provider, 'fetch')
+      .mockResolvedValue({
+        json: async () => ({ title_required_max: 40 }),
+      } as Response);
+
+    const overlay = await provider.fetchCapabilityRuntime(
+      integration,
+      settings
+    );
+
+    expect(overlay).toMatchObject({
+      textLimits: {
+        title: { max: 40, unit: 'utf16-code-units', source: 'runtime' },
+      },
+    });
+    expect(providerFetch).toHaveBeenCalledWith(
+      'https://oauth.reddit.com/api/v1/testing/post_requirements',
+      expect.anything(),
+      'reddit',
+      0,
+      false
+    );
+  });
 });

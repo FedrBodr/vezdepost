@@ -212,7 +212,10 @@ export class IntegrationManager {
     }
     const runtimeOverlay =
       integration && provider.fetchCapabilityRuntime
-        ? await provider.fetchCapabilityRuntime(integration, additionalSettings)
+        ? await provider.fetchCapabilityRuntime(
+            integration,
+            (settings ?? {}) as Readonly<Record<string, unknown>>
+          )
         : undefined;
 
     return resolvePlatformCapabilityV2({

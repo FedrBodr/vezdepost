@@ -112,7 +112,7 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
 
     expect(provider.fetchCapabilityRuntime).toHaveBeenCalledExactlyOnceWith(
       { id: 'stored-mastodon-integration' },
-      []
+      {}
     );
     expect(resolved).toMatchObject({
       fields: [
@@ -133,6 +133,33 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
       }),
       diagnostics: [],
     });
+  });
+
+  it('forwards post settings, not integration additionalSettings, to fetchCapabilityRuntime', async () => {
+    const manager = new IntegrationManager();
+    const provider = manager.getSocialIntegration('reddit');
+    const spy = vi
+      .spyOn(provider, 'fetchCapabilityRuntime')
+      .mockResolvedValue(undefined);
+
+    const integration = {
+      id: 'stored-reddit-integration',
+      additionalSettings: JSON.stringify([
+        { title: 'Unrelated', value: true },
+      ]),
+    } as never;
+    const postSettings = {
+      subreddit: [{ value: { subreddit: '/r/testing', type: 'self' } }],
+    };
+
+    await manager.resolveCapabilitiesV2({
+      providerName: 'reddit',
+      settings: postSettings,
+      media: [],
+      integration,
+    });
+
+    expect(spy).toHaveBeenCalledExactlyOnceWith(integration, postSettings);
   });
 
   it('ignores client-supplied limit escalation in settings', async () => {
