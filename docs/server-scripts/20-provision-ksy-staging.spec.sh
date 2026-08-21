@@ -851,6 +851,20 @@ test_rejects_invalid_existing_env_without_mutation() {
   assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
   [[ ! -s "$case_dir/docker.calls" ]] || fail 'colon image alias invoked Docker'
 
+  case_dir="$TMP_DIR/reuse-spaced-colon-image-alias"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  printf 'KSY_DEALS_IMAGE : %s\n' "$alternate_image" >> "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'spaced colon image alias invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-bare-image-alias"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  printf 'KSY_DEALS_IMAGE\n' >> "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'bare image alias invoked Docker'
+
   case_dir="$TMP_DIR/reuse-whitespace-only-value"
   write_existing_installation "$case_dir"
   root="$case_dir/opt/ksy-deals"
@@ -870,6 +884,26 @@ test_rejects_invalid_existing_env_without_mutation() {
   chmod 600 "$root/.env"
   assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
   [[ ! -s "$case_dir/docker.calls" ]] || fail 'quoted-empty runtime value invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-quoted-empty-comment-value"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '{ if (/^ORDER_TELEGRAM_URL=/) print "ORDER_TELEGRAM_URL=\"\" # comment"; else print }' \
+    "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'quoted-empty comment value invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-interpolated-empty-value"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '{ if (/^ORDER_TELEGRAM_URL=/) print "ORDER_TELEGRAM_URL=${KSY_UNSET_VALUE}"; else print }' \
+    "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'interpolated-empty runtime value invoked Docker'
 
   case_dir="$TMP_DIR/reuse-missing-final-newline"
   write_existing_installation "$case_dir"
