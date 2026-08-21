@@ -243,7 +243,7 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
   [[ "$final_newline_count" == 1 ]] || fail EXISTING_ENV_INVALID
   for runtime_key in "${runtime_keys[@]}"; do
     runtime_key_state=$(awk -v key="$runtime_key" '
-      $0 ~ "^[[:space:]]*(export[[:space:]]+)?" key "[[:space:]]*=" {
+      $0 ~ "^[[:space:]]*(export[[:space:]]+)?" key "([[:space:]]*=|:[[:space:]]*)" {
         if (index($0, key "=") != 1) {
           noncanonical++
           next
@@ -254,7 +254,15 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
         sub(/^[ \t]+/, "", trimmed)
         sub(/[ \t]+$/, "", trimmed)
         if (trimmed != value) noncanonical++
-        if (length(trimmed) > 0) nonempty++
+        semantic = trimmed
+        if (length(semantic) >= 2 &&
+            ((substr(semantic, 1, 1) == "\"" && substr(semantic, length(semantic), 1) == "\"") ||
+             (substr(semantic, 1, 1) == "\047" && substr(semantic, length(semantic), 1) == "\047"))) {
+          semantic = substr(semantic, 2, length(semantic) - 2)
+          sub(/^[ \t]+/, "", semantic)
+          sub(/[ \t]+$/, "", semantic)
+        }
+        if (length(semantic) > 0) nonempty++
       }
       END { print (count + 0) ":" (nonempty + 0) ":" (noncanonical + 0) }
     ' "$ENV_FILE")
