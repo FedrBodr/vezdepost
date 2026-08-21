@@ -1,4 +1,5 @@
 import type {
+  ContentUnit,
   FormattingSupport,
   PlatformCapabilityProfileV2,
   PostVariantCapability,
@@ -42,6 +43,19 @@ const slackFormatting: TextFieldCapability['formatting'] = {
   headings: 'plain',
 };
 
+const limitUnitForDialect = (
+  dialect: TextFieldCapability['dialect']
+): ContentUnit => {
+  switch (dialect) {
+    case 'slack-mrkdwn':
+      return 'utf16-code-units';
+    case 'bluesky-facets':
+      return 'graphemes';
+    default:
+      return 'graphemes';
+  }
+};
+
 const body = (
   max: number,
   dialect: TextFieldCapability['dialect'],
@@ -59,7 +73,7 @@ const body = (
   dialect,
   limit: {
     max,
-    unit: dialect === 'slack-mrkdwn' ? 'utf16-code-units' : 'graphemes',
+    unit: limitUnitForDialect(dialect),
     source,
     ...(recommendedMax === undefined ? {} : { recommendedMax }),
   },
@@ -373,6 +387,29 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
     runtimeKeys: ['text-limit', 'media-rule'],
     runtimeMaxAgeSeconds: 3_600,
   },
+  bluesky: {
+    identifier: 'bluesky',
+    displayName: 'Bluesky',
+    verification: 'verified',
+    evidenceDate: '2026-08-21',
+    defaultVariant: 'post',
+    variants: {
+      post: simpleVariant('post', 300, 'bluesky-facets', {
+        bold: 'unsupported',
+        underline: 'unsupported',
+        links: 'native',
+        lists: 'plain',
+        headings: 'plain',
+      }, {
+        type: 'exclusive',
+        optional: true,
+        alternatives: [
+          { kind: 'images', min: 1, max: 4 },
+          { kind: 'video', min: 1, max: 1 },
+        ],
+      }),
+    },
+  },
 };
 
 const deepFreeze = <T>(value: T): T => {
@@ -385,7 +422,7 @@ const deepFreeze = <T>(value: T): T => {
   return value;
 };
 
-export const BATCH_0_IDENTIFIERS = deepFreeze([
+export const PROFILE_IDENTIFIERS = deepFreeze([
   'telegram',
   'max',
   'linkedin',
@@ -397,6 +434,7 @@ export const BATCH_0_IDENTIFIERS = deepFreeze([
   'slack',
   'tiktok',
   'mastodon',
+  'bluesky',
 ] as const);
 
-export const BATCH_0_PROFILES = deepFreeze(profiles);
+export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

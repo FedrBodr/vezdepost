@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BATCH_0_IDENTIFIERS } from '@gitroom/helpers/utils/platform.capability.profiles';
+import { PROFILE_IDENTIFIERS } from '@gitroom/helpers/utils/platform.capability.profiles';
 import {
   IntegrationManager,
   socialIntegrationList,
@@ -63,18 +63,27 @@ describe('registered platform capability matrix', () => {
         })
       )
     );
-    const batch0 = new Set<string>(BATCH_0_IDENTIFIERS);
+    const profiled = new Set<string>(PROFILE_IDENTIFIERS);
     const bridged = resolved.filter(
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(batch0.size).toBe(11);
-    expect(bridged).toHaveLength(25);
+    expect(PROFILE_IDENTIFIERS.length).toBe(12);
+    expect(profiled.size).toBe(12);
+    expect(bridged).toHaveLength(24);
+
+    const bluesky = resolved.find(
+      ({ identifier }) => identifier === 'bluesky'
+    );
+    expect(bluesky).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'bluesky',
+    });
 
     for (const [index, capability] of resolved.entries()) {
       expect(capability.identifier).toBe(identifiers[index]);
 
-      if (batch0.has(capability.identifier)) {
+      if (profiled.has(capability.identifier)) {
         expect(capability.verification).not.toBe('unverified-adapter');
       } else {
         expect(capability.verification).toBe('unverified-adapter');

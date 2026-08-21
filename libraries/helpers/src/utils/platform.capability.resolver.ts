@@ -1,4 +1,4 @@
-import { BATCH_0_PROFILES } from './platform.capability.profiles';
+import { PLATFORM_CAPABILITY_PROFILES } from './platform.capability.profiles';
 import type {
   CapabilityDiagnostic,
   CapabilityResolutionContext,
@@ -249,9 +249,9 @@ const cloneAndDeepFreeze = <T>(value: T): T => {
 export const resolvePlatformCapabilityV2 = (
   context: CapabilityResolutionContext
 ): ResolvedPlatformCapabilityV2 => {
-  const requestedProfile = BATCH_0_PROFILES[context.identifier];
+  const requestedProfile = PLATFORM_CAPABILITY_PROFILES[context.identifier];
   const profile = requestedProfile?.aliasOf
-    ? BATCH_0_PROFILES[requestedProfile.aliasOf]
+    ? PLATFORM_CAPABILITY_PROFILES[requestedProfile.aliasOf]
     : requestedProfile ?? createUnverifiedAdapterProfile(context);
   const { key, diagnostics } = selectVariant(
     profile,

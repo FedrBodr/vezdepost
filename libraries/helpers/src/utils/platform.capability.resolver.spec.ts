@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BATCH_0_IDENTIFIERS,
-  BATCH_0_PROFILES,
+  PLATFORM_CAPABILITY_PROFILES,
+  PROFILE_IDENTIFIERS,
 } from './platform.capability.profiles';
 import {
   createUnverifiedAdapterProfile,
   resolvePlatformCapabilityV2,
 } from './platform.capability.resolver';
+import { analyzePlatformContentV2 } from './platform.content.analysis';
 import type {
   CapabilityResolutionContext,
   CapabilityRuntimeOverlay,
@@ -29,8 +30,8 @@ const ctx = (
 });
 
 describe('Batch 0 platform capability resolution', () => {
-  it('registers every Batch 0 destination exactly once', () => {
-    expect(BATCH_0_IDENTIFIERS).toEqual([
+  it('registers every profile destination exactly once', () => {
+    expect(PROFILE_IDENTIFIERS).toEqual([
       'telegram',
       'max',
       'linkedin',
@@ -42,6 +43,7 @@ describe('Batch 0 platform capability resolution', () => {
       'slack',
       'tiktok',
       'mastodon',
+      'bluesky',
     ]);
   });
 
@@ -124,7 +126,7 @@ describe('Batch 0 platform capability resolution', () => {
       { key: 'board', label: 'Board', required: true },
     ]);
     expect(resolved.structuredFields).not.toBe(
-      BATCH_0_PROFILES.pinterest.variants.pin.structuredFields
+      PLATFORM_CAPABILITY_PROFILES.pinterest.variants.pin.structuredFields
     );
   });
 
@@ -403,6 +405,41 @@ describe('Batch 0 platform capability resolution', () => {
     }).toThrow(TypeError);
     expect(resolved.fields[0].limit?.max).toBe(777);
     expect(pinterest.structuredFields[2].required).toBe(true);
+  });
+
+  it('resolves bluesky as a verified grapheme-limited profile', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('bluesky'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'bluesky',
+      variant: 'post',
+    });
+    expect(capability.fields[0].limit).toEqual({
+      max: 300,
+      unit: 'graphemes',
+      source: 'platform',
+    });
+    expect(capability.fields[0].dialect).toBe('bluesky-facets');
+  });
+
+  it('rejects five bluesky images beyond the exclusive rule', () => {
+    const analysis = analyzePlatformContentV2({
+      canonicalHtml: '<p>hi</p>',
+      settings: {},
+      media: Array.from({ length: 5 }, () => ({ type: 'image' as const })),
+      capability: resolvePlatformCapabilityV2(ctx('bluesky')),
+    });
+    expect(analysis.blocking).toBe(true);
+  });
+
+  it('does not mutate frozen bluesky inputs', () => {
+    const settings = Object.freeze({ languages: 'en' });
+    const media = Object.freeze([{ type: 'image' as const }]);
+    const context = Object.freeze({ ...ctx('bluesky', media, { settings }) });
+
+    expect(() => resolvePlatformCapabilityV2(context)).not.toThrow();
+    expect(settings).toEqual({ languages: 'en' });
+    expect(media).toEqual([{ type: 'image' }]);
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {
