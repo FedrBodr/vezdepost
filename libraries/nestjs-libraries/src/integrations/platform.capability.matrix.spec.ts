@@ -68,9 +68,26 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(16);
-    expect(profiled.size).toBe(16);
-    expect(bridged).toHaveLength(20);
+    expect(PROFILE_IDENTIFIERS.length).toBe(18);
+    expect(profiled.size).toBe(18);
+    expect(bridged).toHaveLength(18);
+
+    const ALIASES: Record<string, string> = {
+      'linkedin-page': 'linkedin',
+      'instagram-standalone': 'instagram',
+    };
+    const aliased = resolved.filter(
+      ({ identifier }) => identifier in ALIASES
+    );
+    expect(
+      aliased.map(({ identifier, profileIdentifier }) => ({
+        identifier,
+        profileIdentifier,
+      }))
+    ).toEqual([
+      { identifier: 'linkedin-page', profileIdentifier: 'linkedin' },
+      { identifier: 'instagram-standalone', profileIdentifier: 'instagram' },
+    ]);
 
     const x = resolved.find(({ identifier }) => identifier === 'x');
     expect(x).toMatchObject({
@@ -112,9 +129,7 @@ describe('registered platform capability matrix', () => {
       }
 
       expect(capability.profileIdentifier).toBe(
-        capability.identifier === 'linkedin-page'
-          ? 'linkedin'
-          : capability.identifier
+        ALIASES[capability.identifier] ?? capability.identifier
       );
     }
   });

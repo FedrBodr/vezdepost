@@ -195,6 +195,27 @@ const threadsVariant = (
   delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
 });
 
+const instagramCaption = (): TextFieldCapability => ({
+  key: 'caption',
+  label: 'Caption',
+  required: false,
+  source: 'canonical-editor',
+  dialect: 'plain',
+  limit: { max: 2_200, unit: 'utf16-code-units', source: 'platform' },
+  formatting: plainFormatting,
+});
+
+const instagramVariant = (
+  key: string,
+  media: PostVariantCapability['media']
+): PostVariantCapability => ({
+  key,
+  fields: [instagramCaption()],
+  structuredFields: [],
+  media,
+  delivery: { longMediaText: 'caption', stripRawUrls: false },
+});
+
 const evidenceDate = '2026-08-20';
 
 const profiles: Record<string, PlatformCapabilityProfileV2> = {
@@ -556,6 +577,45 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
     },
     runtimeKeys: ['text-limit'],
   },
+  instagram: {
+    identifier: 'instagram',
+    displayName: 'Instagram',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'feed',
+    variants: {
+      feed: instagramVariant('feed', {
+        type: 'required',
+        images: { min: 1 },
+        videos: { min: 1 },
+        mixed: true,
+        maxTotal: 10,
+      }),
+      story: instagramVariant('story', {
+        type: 'required',
+        images: { min: 1 },
+        videos: { min: 1 },
+        mixed: true,
+      }),
+      reel: instagramVariant('reel', {
+        type: 'required',
+        videos: { min: 1, max: 1 },
+      }),
+      'trial-reel': instagramVariant('trial-reel', {
+        type: 'required',
+        videos: { min: 1, max: 1 },
+      }),
+    },
+  },
+  'instagram-standalone': {
+    identifier: 'instagram-standalone',
+    displayName: 'Instagram Standalone',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'feed',
+    variants: {},
+    aliasOf: 'instagram',
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -608,6 +668,8 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'youtube',
   'x',
   'reddit',
+  'instagram',
+  'instagram-standalone',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

@@ -48,7 +48,76 @@ describe('Batch 0 platform capability resolution', () => {
       'youtube',
       'x',
       'reddit',
+      'instagram',
+      'instagram-standalone',
     ]);
+  });
+
+  it.each([
+    [
+      'story with media',
+      { post_type: 'story' },
+      [{ type: 'image' as const }],
+      { variant: 'story', diagnostics: [] },
+    ],
+    [
+      'single video reel',
+      {},
+      [{ type: 'video' as const }],
+      { variant: 'reel', diagnostics: [] },
+    ],
+    [
+      'two images feed',
+      {},
+      [{ type: 'image' as const }, { type: 'image' as const }],
+      { variant: 'feed', diagnostics: [] },
+    ],
+    [
+      'trial reel with one video',
+      { is_trial_reel: true },
+      [{ type: 'video' as const }],
+      { variant: 'trial-reel', diagnostics: [] },
+    ],
+  ] as const)(
+    'selects instagram variant for %s',
+    (_name, settings, media, expected) => {
+      expect(
+        resolvePlatformCapabilityV2(ctx('instagram', media, { settings }))
+      ).toMatchObject({
+        identifier: 'instagram',
+        profileIdentifier: 'instagram',
+        verification: 'verified',
+        ...expected,
+      });
+    }
+  );
+
+  it('falls back to feed with an error diagnostic for trial reels without a single video', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('instagram', [{ type: 'image' }, { type: 'image' }], {
+        settings: { is_trial_reel: true },
+      })
+    );
+    expect(resolved.variant).toBe('feed');
+    expect(resolved.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'invalid-media-variant',
+        severity: 'error',
+        destination: 'instagram',
+        variant: 'feed',
+      })
+    );
+  });
+
+  it('resolves instagram-standalone through the instagram profile alias', () => {
+    expect(resolvePlatformCapabilityV2(ctx('instagram-standalone'))).toEqual(
+      expect.objectContaining({
+        identifier: 'instagram-standalone',
+        profileIdentifier: 'instagram',
+        verification: 'verified',
+        variant: 'feed',
+      })
+    );
   });
 
   it.each([

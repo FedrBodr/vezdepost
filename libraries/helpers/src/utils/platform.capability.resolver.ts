@@ -145,6 +145,35 @@ const selectVariant = (
     return { key: profile.defaultVariant, diagnostics: [] };
   }
 
+  if (profile.identifier === 'instagram') {
+    const singleVideo =
+      context.media.length === 1 && context.media[0].type === 'video';
+    if (context.settings.is_trial_reel) {
+      if (singleVideo) {
+        return { key: 'trial-reel', diagnostics: [] };
+      }
+      return {
+        key: profile.defaultVariant,
+        diagnostics: [
+          diagnostic(
+            'invalid-media-variant',
+            destination,
+            profile.defaultVariant,
+            'error',
+            'Instagram trial reels require exactly one video.'
+          ),
+        ],
+      };
+    }
+    if (context.settings.post_type === 'story') {
+      return { key: 'story', diagnostics: [] };
+    }
+    if (singleVideo) {
+      return { key: 'reel', diagnostics: [] };
+    }
+    return { key: profile.defaultVariant, diagnostics: [] };
+  }
+
   if (profile.identifier !== 'tiktok') {
     return { key: profile.defaultVariant, diagnostics: [] };
   }
