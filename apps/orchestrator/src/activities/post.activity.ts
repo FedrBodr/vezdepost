@@ -19,7 +19,11 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { authorizeMediaSource } from '@gitroom/helpers/utils/media.source';
-import { collectPublicationMediaSourcePaths } from './publication.media.sources';
+import {
+  collectPublicationMediaSourcePaths,
+  collectPublicationThreadMediaSourcePaths,
+  parsePublicationMediaSources,
+} from './publication.media.sources';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
@@ -164,7 +168,15 @@ export class PostActivity {
       return [];
     }
 
-    return getPosts.map(slimPost);
+    const posts = getPosts.map(slimPost);
+    const providerIdentifier = posts[0]?.integration?.providerIdentifier;
+    if (typeof providerIdentifier !== 'string' || !providerIdentifier) {
+      throw new Error('Invalid publication integration');
+    }
+    return this.resolveAndAuthorizePublicationThreadMedia(
+      providerIdentifier,
+      posts
+    );
   }
 
   @ActivityMethod()
@@ -228,9 +240,15 @@ export class PostActivity {
     posts: Post[],
     provider: SocialProvider
   ): Promise<PostDetails[]> {
+    const preflightedPosts =
+      await this.resolveAndAuthorizePublicationThreadMedia(
+        integration.providerIdentifier,
+        posts
+      );
+
     const newPosts = await this._postService.updateTags(
       integration.organizationId,
-      posts
+      preflightedPosts as Post[]
     );
 
     return Promise.all(
@@ -294,6 +312,28 @@ export class PostActivity {
         };
       })
     );
+  }
+
+  private async resolveAndAuthorizePublicationThreadMedia<
+    T extends { settings?: string | null; image?: string | null }
+  >(providerIdentifier: string, posts: readonly T[]): Promise<T[]> {
+    const resolvedPosts = await Promise.all(
+      posts.map(async (post) => {
+        const media = parsePublicationMediaSources(post.image);
+        const resolvedMedia = media.some(
+          ({ path }) => typeof path !== 'string' || !path.trim()
+        )
+          ? await this._postService.resolveMediaSources(media)
+          : media;
+        return { ...post, image: JSON.stringify(resolvedMedia) };
+      })
+    );
+    const sourcePaths = collectPublicationThreadMediaSourcePaths({
+      providerIdentifier,
+      posts: resolvedPosts,
+    });
+    await Promise.all(sourcePaths.map((path) => authorizeMediaSource(path)));
+    return resolvedPosts;
   }
 
   @ActivityMethod()

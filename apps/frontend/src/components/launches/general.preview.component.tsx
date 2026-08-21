@@ -114,6 +114,9 @@ export const GeneralPreviewComponent: FC<{
           ? ('video' as const)
           : ('image' as const),
       })) ?? [];
+    const serializedCanonicalField = integration?.capabilitiesV2?.fields.find(
+      ({ source, limit }) => source === 'canonical-editor' && !!limit
+    );
     const resolved = integration
       ? resolvePlatformCapabilityV2({
           identifier: integration.identifier,
@@ -125,14 +128,22 @@ export const GeneralPreviewComponent: FC<{
           adapter: {
             editor: integration.editor,
             maximum:
-              integration.capabilitiesV2?.fields.find(
-                ({ source, limit }) => source === 'canonical-editor' && !!limit
-              )?.limit?.max ??
+              serializedCanonicalField?.limit?.max ??
               props.maximumCharacters ??
               10_000,
             stripRawUrls:
               integration.capabilitiesV2?.delivery.stripRawUrls ??
               !!integration.stripLinks,
+            ...(serializedCanonicalField?.limit
+              ? {
+                  measurement: {
+                    unit: serializedCanonicalField.limit.unit,
+                    ...(serializedCanonicalField.limit.counter
+                      ? { counter: serializedCanonicalField.limit.counter }
+                      : {}),
+                  },
+                }
+              : {}),
           },
         })
       : undefined;

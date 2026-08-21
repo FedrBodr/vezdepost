@@ -41,6 +41,10 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     'You will be logged in into your current account, if you would like a different account, change it first on X';
 
   editor = 'normal' as const;
+  capabilityMeasurement = {
+    unit: 'weighted',
+    counter: 'x-weighted',
+  } as const;
   dto = XDto;
 
   maxLength(additionalSettings?: any) {
@@ -94,7 +98,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
       return {
         type: 'bad-body',
         value: 'You are not allowed to create a post with duplicate content',
-      }
+      };
     }
 
     if (body.includes('usage-capped')) {
@@ -121,8 +125,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     if (body.includes('Your account is not permitted to access this feature')) {
       return {
         type: 'bad-body',
-        value:
-          'X blocked your request',
+        value: 'X blocked your request',
       };
     }
     if (body.includes('The Tweet contains an invalid URL.')) {
@@ -510,7 +513,9 @@ export class XProvider extends SocialAbstract implements SocialProvider {
         : firstPost.message,
       ...(media_ids.length ? { media: { media_ids } } : {}),
       made_with_ai: this.assetBoolean(firstPost?.settings?.made_with_ai),
-      paid_partnership: this.assetBoolean(firstPost?.settings?.paid_partnership),
+      paid_partnership: this.assetBoolean(
+        firstPost?.settings?.paid_partnership
+      ),
     };
 
     const tweetResponse = await this.fetch(tweetUrl, {

@@ -60,8 +60,8 @@ describe('analyzePlatformContentV2', () => {
         field: 'body',
         measured: 4_097,
         limit: 4_096,
-        unit: 'graphemes',
-        message: 'Body exceeds the 4096-grapheme limit.',
+        unit: 'utf16-code-units',
+        message: 'Body exceeds the 4096-UTF-16-code-unit limit.',
       },
     ]);
     expect(result.blocking).toBe(true);
@@ -296,12 +296,70 @@ describe('analyzePlatformContentV2', () => {
         field: 'caption',
         measured: 1_025,
         limit: 1_024,
-        unit: 'graphemes',
+        unit: 'utf16-code-units',
         message:
           'Media will be published first, followed by the full text as a separate message.',
       },
     ]);
     expect(result.blocking).toBe(false);
+  });
+
+  it('allows Telegram media across multiple ten-item delivery groups', () => {
+    const media = Array.from({ length: 11 }, () => ({
+      type: 'image' as const,
+    }));
+    const resolved = capability('telegram', media);
+    const result = analyze({
+      canonicalHtml: '<p>album</p>',
+      media,
+      resolved,
+    });
+
+    expect(result.blocking).toBe(false);
+    expect(result.diagnostics).not.toContainEqual(
+      expect.objectContaining({ code: 'unsupported-media' })
+    );
+    expect(resolved.delivery.mediaGroupMaxItems).toBe(10);
+  });
+
+  it('uses Telegram transport UTF-16 boundaries for astral emoji', () => {
+    const media = [{ type: 'image' as const }];
+    const atCaptionLimit = analyze({
+      canonicalHtml: `<p>${'😀'.repeat(512)}</p>`,
+      media,
+      resolved: capability('telegram', media),
+    });
+    const overCaptionLimit = analyze({
+      canonicalHtml: `<p>${'😀'.repeat(513)}</p>`,
+      media,
+      resolved: capability('telegram', media),
+    });
+    const overBodyLimit = analyze({
+      canonicalHtml: `<p>${'😀'.repeat(2_049)}</p>`,
+      media,
+      resolved: capability('telegram', media),
+    });
+
+    expect(atCaptionLimit.diagnostics).not.toContainEqual(
+      expect.objectContaining({ code: 'media-text-split' })
+    );
+    expect(overCaptionLimit.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'media-text-split',
+        measured: 1_026,
+        limit: 1_024,
+        unit: 'utf16-code-units',
+      })
+    );
+    expect(overBodyLimit.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'text-too-long',
+        field: 'body',
+        measured: 4_098,
+        limit: 4_096,
+        unit: 'utf16-code-units',
+      })
+    );
   });
 
   it('still blocks Telegram body overflow in split-after-media delivery', () => {

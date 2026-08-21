@@ -147,6 +147,14 @@ const adapterFromSerializedCapability = (
     editor: editorFromSerializedCapability(capability),
     maximum: field?.limit?.max ?? 1_000_000,
     stripRawUrls: capability.delivery.stripRawUrls,
+    ...(field?.limit
+      ? {
+          measurement: {
+            unit: field.limit.unit,
+            ...(field.limit.counter ? { counter: field.limit.counter } : {}),
+          },
+        }
+      : {}),
   };
 };
 

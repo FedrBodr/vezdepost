@@ -552,6 +552,34 @@ describe('PostsService.validatePosts', () => {
   });
 });
 
+describe('PostsService media resolution', () => {
+  it('resolves ID-only media without persisting normalized images', async () => {
+    const repository = { updateImages: vi.fn() };
+    const mediaService = {
+      getMediaById: vi.fn().mockResolvedValue({
+        id: 'stored-video',
+        path: 'https://media.test/stored-video.mp4',
+        type: 'image',
+        thumbnail: 'https://media.test/stored-thumbnail.jpg',
+      }),
+    };
+    const service = createService({ repository, mediaService });
+
+    await expect(
+      service.resolveMediaSources([{ id: 'stored-video' }])
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: 'stored-video',
+        path: 'https://media.test/stored-video.mp4',
+        type: 'image',
+        thumbnail: 'https://media.test/stored-thumbnail.jpg',
+      }),
+    ]);
+    expect(mediaService.getMediaById).toHaveBeenCalledWith('stored-video');
+    expect(repository.updateImages).not.toHaveBeenCalled();
+  });
+});
+
 describe('PostsService.updateMedia', () => {
   it('normalizes a legacy null media list to an empty array', async () => {
     const service = createService();

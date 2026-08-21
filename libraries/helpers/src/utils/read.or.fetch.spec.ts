@@ -27,6 +27,20 @@ describe('readOrFetch remote media', () => {
     );
   });
 
+  it('forwards purpose-specific byte and body-timeout limits', async () => {
+    vi.mocked(readMediaSourceBuffer).mockResolvedValue(Buffer.from('image'));
+
+    await readOrFetch('https://media.example.test/photo.png', {
+      maxBytes: 10 * 1024 * 1024,
+      bodyTimeoutMs: 30_000,
+    });
+
+    expect(readMediaSourceBuffer).toHaveBeenCalledWith(
+      'https://media.example.test/photo.png',
+      { maxBytes: 10 * 1024 * 1024, bodyTimeoutMs: 30_000 }
+    );
+  });
+
   it('reads an exact app-owned local-storage URL from the confined upload root', async () => {
     vi.stubEnv('STORAGE_PROVIDER', 'local');
     vi.stubEnv('FRONTEND_URL', 'http://localhost:4200');

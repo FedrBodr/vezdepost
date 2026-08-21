@@ -2,6 +2,10 @@ import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { ApplicationFailure } from '@temporalio/activity';
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
+import {
+  SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+  SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+} from '@gitroom/helpers/utils/ssrf.safe.fetch';
 import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import sharp from 'sharp';
 
@@ -131,7 +135,10 @@ export abstract class SocialAbstract {
         ? `${process.env.FRONTEND_URL}/${path}`
         : path;
     const { width = 0, height = 0 } = await sharp(
-      await readOrFetch(url)
+      await readOrFetch(url, {
+        maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+        bodyTimeoutMs: SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+      })
     ).metadata();
     return { width, height };
   }

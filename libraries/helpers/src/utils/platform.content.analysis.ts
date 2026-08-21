@@ -78,6 +78,7 @@ const mediaMatchesStaticRule = (
     return media.length === 0;
   }
   if (rule.type === 'exclusive') {
+    if (media.length === 0) return rule.optional === true;
     return rule.alternatives.some((alternative) => {
       if (alternative.kind === 'images') {
         return (
@@ -119,12 +120,18 @@ const mediaMatchesStaticRule = (
     return false;
   }
   if (imageCount > 0 && rule.images) {
-    if (imageCount < rule.images.min || imageCount > rule.images.max) {
+    if (
+      imageCount < rule.images.min ||
+      (rule.images.max !== undefined && imageCount > rule.images.max)
+    ) {
       return false;
     }
   }
   if (videoCount > 0 && rule.videos) {
-    if (videoCount < rule.videos.min || videoCount > rule.videos.max) {
+    if (
+      videoCount < rule.videos.min ||
+      (rule.videos.max !== undefined && videoCount > rule.videos.max)
+    ) {
       return false;
     }
   }

@@ -118,7 +118,7 @@ describe('platform editor capabilities v2', () => {
     expect(result.destinations[0].activeField?.key).toBe('caption');
     expect(result.counters[0]).toMatchObject({
       measured: 1_025,
-      limit: { max: 1_024, unit: 'graphemes' },
+      limit: { max: 1_024, unit: 'utf16-code-units' },
     });
     expect(result.blocking).toBe(false);
     expect(result.diagnostics).toEqual(

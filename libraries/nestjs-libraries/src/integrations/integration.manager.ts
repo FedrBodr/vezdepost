@@ -224,6 +224,9 @@ export class IntegrationManager {
         editor: provider.editor,
         maximum: provider.maxLength(additionalSettings),
         stripRawUrls: !!provider.stripLinks?.(),
+        ...(provider.capabilityMeasurement
+          ? { measurement: provider.capabilityMeasurement }
+          : {}),
       },
     });
   }

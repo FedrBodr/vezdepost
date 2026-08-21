@@ -13,6 +13,9 @@ const previewContext = vi.hoisted(() => ({
   hasCapabilities: true,
   serializedCapability: undefined as any,
   editor: 'html' as 'none' | 'normal' | 'markdown' | 'html',
+  measurement: undefined as
+    | { unit: 'weighted'; counter: 'x-weighted' }
+    | undefined,
   value: [] as Array<{
     content: string;
     image: Array<{ id: string; path: string }>;
@@ -31,6 +34,9 @@ vi.mock(
           editor: previewContext.editor,
           maximum: previewContext.maximumCharacters,
           stripRawUrls: previewContext.stripRawUrls,
+          ...(previewContext.measurement
+            ? { measurement: previewContext.measurement }
+            : {}),
         },
       });
       return {
@@ -105,6 +111,7 @@ beforeEach(() => {
   previewContext.hasCapabilities = true;
   previewContext.serializedCapability = undefined;
   previewContext.editor = 'html';
+  previewContext.measurement = undefined;
   previewContext.value = [];
 });
 
@@ -284,6 +291,21 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
     expect(preview.innerHTML).toMatch(/^abcdefghij<mark/);
   });
 
+  it('crops X CJK content at the weighted limit preserved from serialized capabilities', () => {
+    previewContext.identifier = 'x';
+    previewContext.maximumCharacters = 280;
+    previewContext.editor = 'normal';
+    previewContext.measurement = {
+      unit: 'weighted',
+      counter: 'x-weighted',
+    };
+
+    const preview = renderPreview('漢'.repeat(141));
+
+    expect(preview.querySelector('mark')?.textContent).toBe('漢');
+    expect(preview.textContent).toBe('漢'.repeat(141));
+  });
+
   it('uses effective stripped content in the non-cropped preview while preserving mentions', () => {
     previewContext.identifier = 'x';
     previewContext.maximumCharacters = 100;
@@ -348,4 +370,14 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
       expect(preview.querySelector('b')).toBeNull();
     }
   );
+
+  it('crops Telegram astral emoji using the transport UTF-16 body limit', () => {
+    previewContext.identifier = 'telegram';
+    previewContext.maximumCharacters = 4_096;
+
+    const preview = renderPreview(`<p>${'😀'.repeat(2_049)}</p>`);
+
+    expect(preview.querySelector('mark')?.textContent).toBe('😀');
+    expect(preview.textContent).toBe('😀'.repeat(2_049));
+  });
 });

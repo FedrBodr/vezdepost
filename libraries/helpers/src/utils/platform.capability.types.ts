@@ -41,16 +41,22 @@ export interface StructuredFieldCapability {
   required: boolean;
 }
 
+export interface MediaCardinality {
+  min: number;
+  max?: number;
+}
+
 export type StaticMediaRule = (
   | { type: 'none' }
   | {
       type: 'optional' | 'required';
-      images?: { min: number; max: number };
-      videos?: { min: number; max: number; coverRequired?: boolean };
+      images?: MediaCardinality;
+      videos?: MediaCardinality & { coverRequired?: boolean };
       mixed?: boolean;
     }
   | {
       type: 'exclusive';
+      optional?: boolean;
       alternatives: Array<
         | { kind: 'images'; min: number; max: number }
         | { kind: 'video'; min: 1; max: 1; coverRequired?: boolean }
@@ -70,6 +76,7 @@ export interface PostVariantCapability {
   delivery: {
     longMediaText: 'caption' | 'split-after-media' | 'not-applicable';
     stripRawUrls: boolean;
+    mediaGroupMaxItems?: number;
   };
 }
 
@@ -101,6 +108,7 @@ export interface CapabilityResolutionContext {
     editor: 'none' | 'normal' | 'markdown' | 'html';
     maximum: number;
     stripRawUrls: boolean;
+    measurement?: Pick<ContentLimit, 'unit' | 'counter'>;
   };
 }
 

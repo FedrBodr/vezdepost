@@ -219,15 +219,7 @@ describe('PostActivity VK Group OAuth publishing', () => {
       'wall.post',
     ]);
     expect(mediaService.getMediaById).toHaveBeenCalledWith(media.id);
-    expect(repository.updateImages).toHaveBeenCalledWith(
-      'post-1',
-      JSON.stringify([
-        {
-          ...media,
-          url: media.path,
-        },
-      ])
-    );
+    expect(repository.updateImages).not.toHaveBeenCalled();
     for (const [, options] of fetchMock.mock.calls) {
       expect((options?.body as FormData).get('access_token')).toBe(
         userOAuthToken
@@ -282,20 +274,7 @@ describe('PostActivity VK Group OAuth publishing', () => {
       expect.any(Object),
       expect.any(Function)
     );
-    expect(repository.updateImages).toHaveBeenCalledWith(
-      'post-1',
-      expect.any(String)
-    );
-    expect(
-      JSON.parse(repository.updateImages.mock.calls[0][1]).map(
-        ({ id, path }: { id: string; path: string }) => ({ id, path })
-      )
-    ).toEqual(
-      ['stored-photo-0', 'stored-photo-1'].map((id) => ({
-        id,
-        path: storedMedia[id].path,
-      }))
-    );
+    expect(repository.updateImages).not.toHaveBeenCalled();
     const wallCall = fetchMock.mock.calls.find(([url]) =>
       String(url).endsWith('/method/wall.post')
     );

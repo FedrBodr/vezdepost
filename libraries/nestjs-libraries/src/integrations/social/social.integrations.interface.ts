@@ -1,5 +1,8 @@
 import { Integration } from '@prisma/client';
-import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
+import type {
+  CapabilityRuntimeOverlay,
+  ContentLimit,
+} from '@gitroom/helpers/utils/platform.capability.types';
 
 export interface ClientInformation {
   client_id: string;
@@ -172,6 +175,7 @@ export interface SocialProvider
   refreshCron?: boolean;
   dto?: any;
   maxLength: (additionalSettings?: any) => number;
+  capabilityMeasurement?: Pick<ContentLimit, 'unit' | 'counter'>;
   fetchCapabilityRuntime?(
     integration: Integration
   ): Promise<CapabilityRuntimeOverlay | undefined>;

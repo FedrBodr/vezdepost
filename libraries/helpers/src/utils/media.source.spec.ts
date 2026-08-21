@@ -15,6 +15,7 @@ import {
   readMediaSourceBuffer,
   withMediaSourceRange,
 } from './media.source';
+import { SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES } from './ssrf.safe.fetch';
 
 describe('MediaSource local and remote boundary', () => {
   let uploadDirectory: string;
@@ -69,6 +70,28 @@ describe('MediaSource local and remote boundary', () => {
     await expect(
       readMediaSourceBuffer('nested/clip.mp4', {
         maxBytes: 3,
+      })
+    ).rejects.toThrow(/too large/i);
+  });
+
+  it('accepts the exact image metadata cap and rejects one byte over it', async () => {
+    writeFileSync(
+      join(uploadDirectory, 'nested', 'exact.jpg'),
+      Buffer.alloc(SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES)
+    );
+    writeFileSync(
+      join(uploadDirectory, 'nested', 'oversize.jpg'),
+      Buffer.alloc(SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES + 1)
+    );
+
+    await expect(
+      readMediaSourceBuffer('nested/exact.jpg', {
+        maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+      })
+    ).resolves.toHaveLength(SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES);
+    await expect(
+      readMediaSourceBuffer('nested/oversize.jpg', {
+        maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
       })
     ).rejects.toThrow(/too large/i);
   });

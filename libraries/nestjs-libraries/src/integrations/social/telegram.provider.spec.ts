@@ -284,6 +284,29 @@ describe('TelegramProvider media captions', () => {
     expect(result[0].releaseURL).toContain('/51');
   });
 
+  it.each([
+    [11, [9, 2]],
+    [21, [10, 9, 2]],
+  ] as const)(
+    'keeps every Telegram album within the 2-to-10 item transport contract for %i media',
+    async (count, expectedGroupSizes) => {
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.post(
+        'channel',
+        '-1001',
+        details('album', mediaItems(count))
+      );
+
+      const groupSizes = bot.sendMediaGroup.mock.calls.map(
+        ([, group]) => group.length
+      );
+      expect(groupSizes).toEqual(expectedGroupSizes);
+      expect(groupSizes.every((size) => size >= 2 && size <= 10)).toBe(true);
+    }
+  );
+
   it('does not send text when a later media group fails', async () => {
     const { calls, bot } = makeBot();
     const provider = new TelegramProvider(bot as any);

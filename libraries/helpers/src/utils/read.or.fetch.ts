@@ -1,5 +1,10 @@
-import { readMediaSourceBuffer } from './media.source';
+import { type MediaSourceOptions, readMediaSourceBuffer } from './media.source';
 
-export const readOrFetch = async (path: string) => {
-  return readMediaSourceBuffer(path);
+export const readOrFetch = async (
+  path: string,
+  options?: MediaSourceOptions
+) => {
+  return options
+    ? readMediaSourceBuffer(path, options)
+    : readMediaSourceBuffer(path);
 };

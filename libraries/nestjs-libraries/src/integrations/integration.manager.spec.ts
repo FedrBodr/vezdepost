@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IntegrationManager } from './integration.manager';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -176,12 +177,43 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
         expect.objectContaining({
           limit: {
             max: 280,
-            unit: 'utf16-code-units',
+            unit: 'weighted',
+            counter: 'x-weighted',
             source: 'application-safety',
           },
         }),
       ],
     });
+  });
+
+  it('preserves explicit X weighted measurement and rejects weighted CJK overflow', async () => {
+    const resolved = await new IntegrationManager().resolveCapabilitiesV2({
+      providerName: 'x',
+      settings: {},
+      media: [],
+    });
+    const analysis = analyzePlatformContentV2({
+      canonicalHtml: `<p>${'漢'.repeat(141)}</p>`,
+      settings: {},
+      media: [],
+      capability: resolved,
+    });
+
+    expect(resolved.fields[0].limit).toEqual({
+      max: 280,
+      unit: 'weighted',
+      counter: 'x-weighted',
+      source: 'application-safety',
+    });
+    expect(analysis.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'text-too-long',
+        measured: 282,
+        limit: 280,
+        unit: 'weighted',
+      })
+    );
+    expect(analysis.blocking).toBe(true);
   });
 
   it('derives an unverified bridge limit only from stored integration settings', async () => {

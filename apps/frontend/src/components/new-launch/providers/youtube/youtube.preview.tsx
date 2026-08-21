@@ -5,6 +5,7 @@ import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
 import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
+import { SanitizedPostContent } from '@gitroom/frontend/components/preview/sanitized.post.content';
 
 export const YoutubePreview: FC<{
   maximumCharacters?: number;
@@ -140,9 +141,9 @@ export const YoutubePreview: FC<{
           </div>
         </div>
       </div>
-      <div
+      <SanitizedPostContent
         className="bg-youtubeBgAction rounded-[12px] p-[12px] text-[12px] font-[400] whitespace-pre-line"
-        dangerouslySetInnerHTML={{ __html: renderContent?.[0]?.text }}
+        content={renderContent?.[0]?.text}
       />
     </div>
   );

@@ -8,6 +8,7 @@ import { getPresetBackground } from '@gitroom/frontend/components/new-launch/pro
 import { FC } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
+import { SanitizedPostContent } from '@gitroom/frontend/components/preview/sanitized.post.content';
 
 const Icons = () => {
   return (
@@ -152,19 +153,15 @@ export const FacebookPreview: FC<{
         </div>
       </div>
       {background ? (
-        <div
+        <SanitizedPostContent
           className="-mx-[15px] min-h-[320px] flex items-center justify-center text-center px-[32px] py-[32px] text-[28px] font-[700] leading-[36px] whitespace-pre-line break-words"
           style={{ background: background.background, color: background.text }}
-          dangerouslySetInnerHTML={{
-            __html: renderContent?.[0]?.text,
-          }}
+          content={renderContent?.[0]?.text}
         />
       ) : (
-        <div
+        <SanitizedPostContent
           className="text-[14px] font-[400] whitespace-pre-line"
-          dangerouslySetInnerHTML={{
-            __html: renderContent?.[0]?.text,
-          }}
+          content={renderContent?.[0]?.text}
         />
       )}
       {!!renderContent?.[0]?.images?.length && (
@@ -294,11 +291,9 @@ export const FacebookPreview: FC<{
                         </div>
                       </div>
                     </div>
-                    <div
+                    <SanitizedPostContent
                       className="whitespace-pre-line text-[14px] font-[400]"
-                      dangerouslySetInnerHTML={{
-                        __html: value.text,
-                      }}
+                      content={value.text}
                     />
                     {!!value.images?.length && (
                       <div className="h-[100px] mt-[12px] -mx-[15px] overflow-hidden flex">

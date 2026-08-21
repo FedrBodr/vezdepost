@@ -71,9 +71,10 @@ export class PinterestProvider
       (firstItem?.length ?? 0) > 1 &&
       firstItem?.every((p) => (p?.path?.indexOf?.('mp4') ?? -1) === -1)
     ) {
-      const loadAll = await Promise.all(
-        firstItem?.map((p) => this.getImageDimensions(p?.path)) ?? []
-      );
+      const loadAll: Array<{ width: number; height: number }> = [];
+      for (const item of firstItem ?? []) {
+        loadAll.push(await this.getImageDimensions(item?.path));
+      }
       const checkAllTheSameWidthHeight = loadAll?.every((p, i, arr) => {
         return p?.width === arr?.[0]?.width && p?.height === arr?.[0]?.height;
       });

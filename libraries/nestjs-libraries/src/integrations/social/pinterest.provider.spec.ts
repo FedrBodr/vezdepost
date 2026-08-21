@@ -4,6 +4,7 @@ const originalEnv = { ...process.env };
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
+  getImageDimensions: vi.fn(),
 }));
 
 const response = (body: Record<string, unknown>) =>
@@ -27,6 +28,10 @@ vi.mock('@gitroom/nestjs-libraries/integrations/social.abstract', () => ({
   SocialAbstract: class {
     checkScopes() {
       return undefined;
+    }
+
+    getImageDimensions(path: string) {
+      return mocks.getImageDimensions(path);
     }
   },
 }));
@@ -105,5 +110,31 @@ describe('PinterestProvider refresh tokens', () => {
     await expect(
       new PinterestProvider().refreshToken('old-refresh-token')
     ).resolves.toMatchObject({ refreshToken: 'old-refresh-token' });
+  });
+});
+
+describe('PinterestProvider image validation memory bounds', () => {
+  it('reads image dimensions sequentially', async () => {
+    let inFlight = 0;
+    let maximumInFlight = 0;
+    mocks.getImageDimensions.mockImplementation(async () => {
+      inFlight += 1;
+      maximumInFlight = Math.max(maximumInFlight, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
+      return { width: 1_000, height: 1_000 };
+    });
+
+    await expect(
+      new PinterestProvider().checkValidity([
+        [
+          { path: 'https://cdn.test/one.jpg' },
+          { path: 'https://cdn.test/two.jpg' },
+          { path: 'https://cdn.test/three.jpg' },
+        ],
+      ])
+    ).resolves.toBe(true);
+    expect(mocks.getImageDimensions).toHaveBeenCalledTimes(3);
+    expect(maximumInFlight).toBe(1);
   });
 });

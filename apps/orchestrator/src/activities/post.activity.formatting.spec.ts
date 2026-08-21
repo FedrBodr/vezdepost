@@ -267,6 +267,95 @@ describe('PostActivity platform formatting', () => {
     }
   );
 
+  it('authorizes ID-resolved complete-thread media before persistence, conversion, sibling preparation, or provider effects', async () => {
+    vi.stubEnv('STRIPE_SECRET_KEY', '');
+    const unsafeThumbnail =
+      'http://169.254.169.254/latest/meta-data/secondary.jpg';
+    const integration = {
+      id: 'integration-1',
+      internalId: 'profile',
+      token: 'token',
+      providerIdentifier: 'reddit',
+      organizationId: 'org-1',
+    };
+    const posts = [
+      {
+        id: 'safe-sibling',
+        integration,
+        content: '<p>safe sibling</p>',
+        settings: '{}',
+        image: JSON.stringify([{ id: 'safe-media' }]),
+      },
+      {
+        id: 'unsafe-secondary',
+        integration,
+        content: '<p>unsafe secondary</p>',
+        settings: '{}',
+        image: JSON.stringify([{ id: 'unsafe-media' }]),
+      },
+    ] as any[];
+    const provider = {
+      post: vi.fn().mockResolvedValue([]),
+      editor: 'normal' as const,
+      mentionFormat: undefined,
+      convertToJPEG: true,
+      maxLength: vi.fn().mockReturnValue(10_000),
+    };
+    const postService = {
+      getPostsRecursively: vi.fn().mockResolvedValue(posts),
+      resolveMediaSources: vi.fn(async ([media]: Array<{ id: string }>) =>
+        media.id === 'safe-media'
+          ? [
+              {
+                id: media.id,
+                path: 'https://media.example.test/safe.png',
+                type: 'image',
+              },
+            ]
+          : [
+              {
+                id: media.id,
+                path: 'https://media.example.test/video.mp4',
+                type: 'video',
+                thumbnail: unsafeThumbnail,
+              },
+            ]
+      ),
+      updateTags: vi.fn().mockResolvedValue(posts),
+      updateMedia: vi.fn().mockResolvedValue([]),
+    };
+    const integrationManager = new IntegrationManager();
+    vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+      provider as any
+    );
+    const resolveCapabilities = vi.spyOn(
+      integrationManager,
+      'resolveCapabilitiesV2'
+    );
+    const activity = new PostActivity(
+      postService as any,
+      {} as any,
+      integrationManager,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await expect(
+      activity.getPostsList('org-1', 'safe-sibling')
+    ).rejects.toThrow(/blocked remote media/i);
+
+    expect(authorizeMediaSource).toHaveBeenCalledWith(unsafeThumbnail);
+    expect(postService.resolveMediaSources).toHaveBeenCalledTimes(2);
+    expect(postService.updateTags).not.toHaveBeenCalled();
+    expect(postService.updateMedia).not.toHaveBeenCalled();
+    expect(resolveCapabilities).not.toHaveBeenCalled();
+    expect(provider.post).not.toHaveBeenCalled();
+  });
+
   it('publishes tagless special characters unchanged', async () => {
     vi.stubEnv('STRIPE_SECRET_KEY', '');
     const mentionFormat = vi.fn(() => '@mention');

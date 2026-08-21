@@ -369,11 +369,7 @@ export class PostsService {
     );
   }
 
-  async updateMedia(
-    id: string,
-    imagesList: any[] | null,
-    convertToJPEG = false
-  ) {
+  async resolveMediaSources(imagesList: any[] | null): Promise<any[]> {
     if (imagesList === null) {
       return [];
     }
@@ -392,127 +388,139 @@ export class PostsService {
     }
 
     try {
-      let imageUpdateNeeded = false;
-      const getImageList = await Promise.all(
-        (
-          await Promise.all(
-            (imagesList || []).map(async (p: any) => {
-              if (!p.path && p.id) {
-                imageUpdateNeeded = true;
-                const stored = await this._mediaService.getMediaById(p.id);
-                if (!stored) {
-                  throw new BadRequestException('Invalid media attachment.');
-                }
-                return stored;
-              }
-
-              return p;
-            })
+      const resolved = await Promise.all(
+        imagesList.map(async (media: any) => {
+          if (media.path) return media;
+          const stored = await this._mediaService.getMediaById(media.id);
+          if (!stored) {
+            throw new BadRequestException('Invalid media attachment.');
+          }
+          return stored;
+        })
+      );
+      return resolved.map((media) => {
+        if (
+          typeof media?.path !== 'string' ||
+          !media.path ||
+          !mediaPathValidator.validate(media.path, mediaValidationArguments) ||
+          !mediaExtensionValidator.validate(
+            media.path,
+            mediaValidationArguments
           )
-        )
-          .map((media) => {
+        ) {
+          throw new BadRequestException('Invalid media attachment.');
+        }
+        return media;
+      });
+    } catch (err: any) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      throw new Error('Unable to prepare media safely.');
+    }
+  }
+
+  async updateMedia(
+    id: string,
+    imagesList: any[] | null,
+    convertToJPEG = false
+  ) {
+    let imageUpdateNeeded =
+      Array.isArray(imagesList) &&
+      imagesList.some((media) => !media?.path && media?.id);
+
+    try {
+      const resolvedMedia = (await this.resolveMediaSources(imagesList)).map(
+        (media) => {
+          const isRemote = /^https?:\/\//i.test(media.path);
+          const localFile = isRemote
+            ? resolveAppOwnedLocalUploadFilePath(media.path)
+            : resolveLocalUploadFilePath(media.path);
+          if (!isRemote && !localFile) {
+            throw new BadRequestException('Invalid media attachment.');
+          }
+          return {
+            ...media,
+            url: !isRemote
+              ? process.env.FRONTEND_URL +
+                '/' +
+                process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
+                media.path
+              : media.path,
+            type: hasExtension(media.path, 'mp4') ? 'video' : 'image',
+            path: !isRemote ? localFile : media.path,
+          };
+        }
+      );
+      const getImageList = await Promise.all(
+        resolvedMedia.map(async (media) => {
+          if (!convertToJPEG) {
+            return media;
+          }
+
+          if (media.type === 'image' && hasExtension(media.path, 'png')) {
+            imageUpdateNeeded = true;
+            const isRemote = /^https?:\/\//i.test(media.path);
+            const localFile = isRemote
+              ? resolveAppOwnedLocalUploadFilePath(media.path)
+              : resolveLocalUploadFilePath(media.path);
+            const imageBuffer = localFile
+              ? await readOrFetch(localFile)
+              : await fetchRemoteBuffer(media.url, {
+                  maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+                  bodyTimeoutMs: SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+                });
+
+            const buffer = await sharp(imageBuffer)
+              .jpeg({ quality: 100 })
+              .toBuffer();
+
+            const { path, originalname } = await this.storage.uploadFile({
+              buffer,
+              mimetype: 'image/jpeg',
+              size: buffer.length,
+              path: '',
+              fieldname: '',
+              destination: '',
+              stream: new Readable(),
+              filename: '',
+              originalname: '',
+              encoding: '',
+            });
+
+            const converted = {
+              ...media,
+              name: originalname,
+              url:
+                path.indexOf('http') === -1
+                  ? process.env.FRONTEND_URL +
+                    '/' +
+                    process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
+                    path
+                  : path,
+              type: 'image',
+              path:
+                path.indexOf('http') === -1
+                  ? process.env.UPLOAD_DIRECTORY + path
+                  : path,
+            };
             if (
-              typeof media?.path !== 'string' ||
-              !media.path ||
               !mediaPathValidator.validate(
-                media.path,
+                converted.path,
                 mediaValidationArguments
               ) ||
               !mediaExtensionValidator.validate(
-                media.path,
+                converted.path,
                 mediaValidationArguments
               )
             ) {
               throw new BadRequestException('Invalid media attachment.');
             }
-            return media;
-          })
-          .map((m) => {
-            const isRemote = /^https?:\/\//i.test(m.path);
-            const localFile = isRemote
-              ? resolveAppOwnedLocalUploadFilePath(m.path)
-              : resolveLocalUploadFilePath(m.path);
-            if (!isRemote && !localFile) {
-              throw new BadRequestException('Invalid media attachment.');
-            }
-            return {
-              ...m,
-              localFile,
-              url: !isRemote
-                ? process.env.FRONTEND_URL +
-                  '/' +
-                  process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
-                  m.path
-                : m.path,
-              type: hasExtension(m.path, 'mp4') ? 'video' : 'image',
-              path: !isRemote ? localFile : m.path,
-            };
-          })
-          .map(async ({ localFile, ...m }) => {
-            if (!convertToJPEG) {
-              return m;
-            }
+            return converted;
+          }
 
-            if (m.type === 'image' && hasExtension(m.path, 'png')) {
-              imageUpdateNeeded = true;
-              const imageBuffer = localFile
-                ? await readOrFetch(localFile)
-                : await fetchRemoteBuffer(m.url, {
-                    maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
-                    bodyTimeoutMs: SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
-                  });
-
-              // Use sharp to get the metadata of the image
-              const buffer = await sharp(imageBuffer)
-                .jpeg({ quality: 100 })
-                .toBuffer();
-
-              const { path, originalname } = await this.storage.uploadFile({
-                buffer,
-                mimetype: 'image/jpeg',
-                size: buffer.length,
-                path: '',
-                fieldname: '',
-                destination: '',
-                stream: new Readable(),
-                filename: '',
-                originalname: '',
-                encoding: '',
-              });
-
-              const converted = {
-                ...m,
-                name: originalname,
-                url:
-                  path.indexOf('http') === -1
-                    ? process.env.FRONTEND_URL +
-                      '/' +
-                      process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
-                      path
-                    : path,
-                type: 'image',
-                path:
-                  path.indexOf('http') === -1
-                    ? process.env.UPLOAD_DIRECTORY + path
-                    : path,
-              };
-              if (
-                !mediaPathValidator.validate(
-                  converted.path,
-                  mediaValidationArguments
-                ) ||
-                !mediaExtensionValidator.validate(
-                  converted.path,
-                  mediaValidationArguments
-                )
-              ) {
-                throw new BadRequestException('Invalid media attachment.');
-              }
-              return converted;
-            }
-
-            return m;
-          })
+          return media;
+        })
       );
 
       if (imageUpdateNeeded) {

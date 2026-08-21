@@ -15,6 +15,7 @@ import {
   getTelegramVisibleTextLength,
   normalizeTelegramHtml,
   shouldSendTelegramTextSeparately,
+  TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
 } from '@gitroom/helpers/utils/telegram.constraints';
 
 const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
@@ -249,7 +250,10 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     }
     // if there are multiple media, bot sends them as a media group - max 10 media per group - with the text as a caption (if there are more than 1 group, the caption will only be sent with the first group)
     else {
-      const mediaGroups = this.chunkMedia(processedMedia, 10);
+      const mediaGroups = this.chunkMedia(
+        processedMedia,
+        TELEGRAM_MEDIA_GROUP_MAX_ITEMS
+      );
       for (let i = 0; i < mediaGroups.length; i++) {
         const mediaGroup = mediaGroups[i].map((m, index) => ({
           type: m.type === 'document' ? 'document' : m.type, // Documents are not allowed in media groups
@@ -343,9 +347,19 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
   }
   // chunkMedia is used to split media into groups of "size". 10 is used here because telegram api allows a maximum of 10 media per group
   private chunkMedia(media: { type: string; media: string }[], size: number) {
-    const result = [];
+    const result: Array<Array<{ type: string; media: string }>> = [];
     for (let i = 0; i < media.length; i += size) {
       result.push(media.slice(i, i + size));
+    }
+    const finalGroup = result.at(-1);
+    const precedingGroup = result.at(-2);
+    if (
+      finalGroup?.length === 1 &&
+      precedingGroup &&
+      precedingGroup.length > 2
+    ) {
+      const rebalancedItem = precedingGroup.pop();
+      if (rebalancedItem) finalGroup.unshift(rebalancedItem);
     }
     return result;
   }

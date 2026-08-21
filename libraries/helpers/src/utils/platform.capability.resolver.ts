@@ -77,8 +77,11 @@ export const createUnverifiedAdapterProfile = (
     dialect: adapterDialect(adapter.editor),
     limit: {
       max: adapter.maximum,
-      unit: 'utf16-code-units',
+      unit: adapter.measurement?.unit ?? 'utf16-code-units',
       source: 'application-safety',
+      ...(adapter.measurement?.counter
+        ? { counter: adapter.measurement.counter }
+        : {}),
     },
     formatting: adapterFormatting(adapter.editor),
   };

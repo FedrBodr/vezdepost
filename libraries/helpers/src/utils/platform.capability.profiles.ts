@@ -4,6 +4,11 @@ import type {
   PostVariantCapability,
   TextFieldCapability,
 } from './platform.capability.types';
+import {
+  TELEGRAM_BODY_LIMIT,
+  TELEGRAM_MEDIA_CAPTION_LIMIT,
+  TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
+} from './telegram.constraints';
 
 const plainFormatting: TextFieldCapability['formatting'] = {
   bold: 'unicode',
@@ -65,26 +70,40 @@ const caption = (): TextFieldCapability => ({
   ...body(1_024, 'html', telegramFormatting),
   key: 'caption',
   label: 'Media caption',
+  limit: { ...TELEGRAM_MEDIA_CAPTION_LIMIT },
+});
+
+const telegramBody = (): TextFieldCapability => ({
+  ...body(4_096, 'html', telegramFormatting),
+  limit: { ...TELEGRAM_BODY_LIMIT },
 });
 
 const telegramText: PostVariantCapability = {
   key: 'text',
-  fields: [body(4_096, 'html', telegramFormatting)],
+  fields: [telegramBody()],
   structuredFields: [],
   media: {
     type: 'optional',
-    images: { min: 1, max: 10 },
-    videos: { min: 1, max: 1 },
+    images: { min: 1 },
+    videos: { min: 1 },
     mixed: true,
   },
-  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+  delivery: {
+    longMediaText: 'not-applicable',
+    stripRawUrls: false,
+    mediaGroupMaxItems: TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
+  },
 };
 
 const telegramMedia: PostVariantCapability = {
   ...telegramText,
   key: 'media',
-  fields: [body(4_096, 'html', telegramFormatting), caption()],
-  delivery: { longMediaText: 'split-after-media', stripRawUrls: false },
+  fields: [telegramBody(), caption()],
+  delivery: {
+    longMediaText: 'split-after-media',
+    stripRawUrls: false,
+    mediaGroupMaxItems: TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
+  },
 };
 
 const simpleVariant = (
@@ -145,10 +164,12 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
     defaultVariant: 'feed',
     variants: {
       feed: simpleVariant('feed', 3_000, 'plain', plainFormatting, {
-        type: 'optional',
-        images: { min: 1, max: 10 },
-        videos: { min: 1, max: 1 },
-        mixed: true,
+        type: 'exclusive',
+        optional: true,
+        alternatives: [
+          { kind: 'images', min: 1, max: 10 },
+          { kind: 'video', min: 1, max: 1 },
+        ],
       }),
     },
   },

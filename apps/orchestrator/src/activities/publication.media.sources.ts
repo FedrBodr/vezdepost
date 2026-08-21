@@ -23,10 +23,13 @@ export const PUBLICATION_SECONDARY_MEDIA_SOURCE_FIELDS = [
   },
 ] as const;
 
+export type PublicationMediaSource = Partial<MediaContent> &
+  Record<string, unknown>;
+
 type CollectPublicationMediaSourcePaths = {
   providerIdentifier: string;
   settings: unknown;
-  media: MediaContent[];
+  media: readonly PublicationMediaSource[];
 };
 
 function secondaryPath(value: unknown): string {
@@ -41,7 +44,9 @@ export function collectPublicationMediaSourcePaths({
   settings,
   media,
 }: CollectPublicationMediaSourcePaths): string[] {
-  const paths = media.map(({ path }) => path);
+  const paths = media.flatMap(({ path }) =>
+    typeof path === 'string' && path.trim() ? [path] : []
+  );
   const registrations = PUBLICATION_SECONDARY_MEDIA_SOURCE_FIELDS.filter(
     (registration) => registration.providerIdentifier === providerIdentifier
   );
@@ -68,4 +73,46 @@ export function collectPublicationMediaSourcePaths({
   }
 
   return [...new Set(paths)];
+}
+
+const parseSettings = (value?: string | null): Record<string, unknown> => {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {}
+  throw new Error('Invalid publication settings');
+};
+
+export const parsePublicationMediaSources = (
+  value?: string | null
+): PublicationMediaSource[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed as PublicationMediaSource[];
+  } catch {}
+  throw new Error('Invalid publication media');
+};
+
+export function collectPublicationThreadMediaSourcePaths({
+  providerIdentifier,
+  posts,
+}: {
+  providerIdentifier: string;
+  posts: ReadonlyArray<{ settings?: string | null; image?: string | null }>;
+}): string[] {
+  return [
+    ...new Set(
+      posts.flatMap((post) =>
+        collectPublicationMediaSourcePaths({
+          providerIdentifier,
+          settings: parseSettings(post.settings),
+          media: parsePublicationMediaSources(post.image),
+        })
+      )
+    ),
+  ];
 }
