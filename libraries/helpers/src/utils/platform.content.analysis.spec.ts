@@ -255,6 +255,62 @@ describe('analyzePlatformContentV2', () => {
     expect(result.blocking).toBe(true);
   });
 
+  it('accepts a YouTube description within its UTF-8 byte limit', () => {
+    const media = [{ type: 'video' as const }];
+    const result = analyze({
+      canonicalHtml: `<p>${'あ'.repeat(100)}</p>`,
+      settings: { title: 'Title' },
+      media,
+      resolved: capability('youtube', media, { title: 'Title' }),
+    });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.blocking).toBe(false);
+  });
+
+  it('blocks a YouTube description beyond its UTF-8 byte limit', () => {
+    const media = [{ type: 'video' as const }];
+    const result = analyze({
+      canonicalHtml: `<p>${'あ'.repeat(1_700)}</p>`,
+      settings: { title: 'Title' },
+      media,
+      resolved: capability('youtube', media, { title: 'Title' }),
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'text-too-long',
+        severity: 'error',
+        destination: 'youtube',
+        variant: 'upload',
+        field: 'description',
+        measured: 5_100,
+        limit: 5_000,
+        unit: 'utf8-bytes',
+      })
+    );
+    expect(result.blocking).toBe(true);
+  });
+
+  it('requires a YouTube title provider setting', () => {
+    const media = [{ type: 'video' as const }];
+    const result = analyze({
+      canonicalHtml: '<p>Body</p>',
+      media,
+      resolved: capability('youtube', media),
+    });
+
+    expect(result.diagnostics).toContainEqual({
+      code: 'required-field-missing',
+      severity: 'error',
+      destination: 'youtube',
+      variant: 'upload',
+      field: 'title',
+      message: 'Title is required.',
+    });
+    expect(result.blocking).toBe(true);
+  });
+
   it('warns when normalization loses declared formatting', () => {
     const result = analyze({
       canonicalHtml:

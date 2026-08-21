@@ -398,6 +398,46 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       }),
     },
   },
+  youtube: {
+    identifier: 'youtube',
+    displayName: 'YouTube',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'upload',
+    variants: {
+      upload: {
+        key: 'upload',
+        fields: [
+          {
+            key: 'title',
+            label: 'Title',
+            required: true,
+            source: 'provider-setting',
+            dialect: 'plain',
+            limit: {
+              max: 100,
+              unit: 'utf16-code-units',
+              source: 'platform',
+            },
+            formatting: plainFormatting,
+          },
+          {
+            ...body(5_000, 'plain', plainFormatting),
+            key: 'description',
+            label: 'Description',
+            limit: {
+              max: 5_000,
+              unit: 'utf8-bytes',
+              source: 'platform',
+            },
+          },
+        ],
+        structuredFields: [],
+        media: { type: 'required', videos: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
   mastodon: {
     identifier: 'mastodon',
     displayName: 'Mastodon',
@@ -476,6 +516,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'mastodon',
   'bluesky',
   'threads',
+  'youtube',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

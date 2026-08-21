@@ -45,6 +45,7 @@ describe('Batch 0 platform capability resolution', () => {
       'mastodon',
       'bluesky',
       'threads',
+      'youtube',
     ]);
   });
 
@@ -54,7 +55,7 @@ describe('Batch 0 platform capability resolution', () => {
     ['tiktok', [{ type: 'video' }], { variant: 'video' }],
     ['tiktok', [{ type: 'image' }], { variant: 'photo' }],
     ['mastodon', [], { verification: 'runtime', variant: 'status' }],
-    ['youtube', [], { verification: 'unverified-adapter', variant: 'adapter' }],
+    ['youtube', [], { verification: 'verified', variant: 'upload' }],
   ] as const)(
     'resolves %s deterministically',
     (identifier, media, expected) => {
@@ -462,6 +463,25 @@ describe('Batch 0 platform capability resolution', () => {
         source: 'platform',
       }
     );
+  });
+
+  it('models youtube as video-first with byte-counted description', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('youtube'));
+    expect(capability.variant).toBe('upload');
+    expect(capability.fields.map((f) => f.key)).toEqual([
+      'title',
+      'description',
+    ]);
+    expect(capability.fields[0]).toMatchObject({
+      source: 'provider-setting',
+      required: true,
+    });
+    expect(capability.fields[1].limit).toEqual({
+      max: 5000,
+      unit: 'utf8-bytes',
+      source: 'platform',
+    });
+    expect(capability.media).toEqual({ type: 'required', videos: { min: 1, max: 1 } });
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {

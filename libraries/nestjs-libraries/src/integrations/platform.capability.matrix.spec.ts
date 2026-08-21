@@ -68,9 +68,9 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(13);
-    expect(profiled.size).toBe(13);
-    expect(bridged).toHaveLength(23);
+    expect(PROFILE_IDENTIFIERS.length).toBe(14);
+    expect(profiled.size).toBe(14);
+    expect(bridged).toHaveLength(22);
 
     const bluesky = resolved.find(
       ({ identifier }) => identifier === 'bluesky'
