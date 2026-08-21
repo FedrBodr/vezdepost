@@ -68,9 +68,9 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(12);
-    expect(profiled.size).toBe(12);
-    expect(bridged).toHaveLength(24);
+    expect(PROFILE_IDENTIFIERS.length).toBe(13);
+    expect(profiled.size).toBe(13);
+    expect(bridged).toHaveLength(23);
 
     const bluesky = resolved.find(
       ({ identifier }) => identifier === 'bluesky'
@@ -78,6 +78,15 @@ describe('registered platform capability matrix', () => {
     expect(bluesky).toMatchObject({
       verification: 'verified',
       profileIdentifier: 'bluesky',
+    });
+
+    const threads = resolved.find(
+      ({ identifier }) => identifier === 'threads'
+    );
+    expect(threads).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'threads',
+      variant: 'text',
     });
 
     for (const [index, capability] of resolved.entries()) {

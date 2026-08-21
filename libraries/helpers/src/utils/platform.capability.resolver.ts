@@ -124,6 +124,14 @@ const selectVariant = (
     return { key: context.media.length ? 'media' : 'text', diagnostics: [] };
   }
 
+  if (profile.identifier === 'threads') {
+    const count = context.media.length;
+    return {
+      key: count === 0 ? 'text' : count === 1 ? 'single' : 'carousel',
+      diagnostics: [],
+    };
+  }
+
   if (profile.identifier !== 'tiktok') {
     return { key: profile.defaultVariant, diagnostics: [] };
   }

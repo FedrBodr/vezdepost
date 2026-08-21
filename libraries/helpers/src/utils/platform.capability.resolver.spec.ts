@@ -44,6 +44,7 @@ describe('Batch 0 platform capability resolution', () => {
       'tiktok',
       'mastodon',
       'bluesky',
+      'threads',
     ]);
   });
 
@@ -440,6 +441,27 @@ describe('Batch 0 platform capability resolution', () => {
     expect(() => resolvePlatformCapabilityV2(context)).not.toThrow();
     expect(settings).toEqual({ languages: 'en' });
     expect(media).toEqual([{ type: 'image' }]);
+  });
+
+  it.each([
+    [[], 'text'],
+    [[{ type: 'image' }], 'single'],
+    [[{ type: 'video' }], 'single'],
+    [[{ type: 'image' }, { type: 'image' }], 'carousel'],
+  ])('selects threads variant %j -> %s', (media, variant) => {
+    expect(resolvePlatformCapabilityV2(ctx('threads', media)).variant).toBe(
+      variant
+    );
+  });
+
+  it('limits threads body to 500 utf16 units', () => {
+    expect(resolvePlatformCapabilityV2(ctx('threads')).fields[0].limit).toEqual(
+      {
+        max: 500,
+        unit: 'utf16-code-units',
+        source: 'platform',
+      }
+    );
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {

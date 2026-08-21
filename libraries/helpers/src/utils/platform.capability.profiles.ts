@@ -146,6 +146,22 @@ const simpleVariant = (
   delivery,
 });
 
+const threadsBody = (): TextFieldCapability => ({
+  ...body(500, 'plain', plainFormatting),
+  limit: { max: 500, unit: 'utf16-code-units', source: 'platform' },
+});
+
+const threadsVariant = (
+  key: string,
+  media: PostVariantCapability['media']
+): PostVariantCapability => ({
+  key,
+  fields: [threadsBody()],
+  structuredFields: [],
+  media,
+  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+});
+
 const evidenceDate = '2026-08-20';
 
 const profiles: Record<string, PlatformCapabilityProfileV2> = {
@@ -358,6 +374,30 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       },
     },
   },
+  threads: {
+    identifier: 'threads',
+    displayName: 'Threads',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'text',
+    variants: {
+      text: threadsVariant('text', { type: 'none' }),
+      single: threadsVariant('single', {
+        type: 'exclusive',
+        alternatives: [
+          { kind: 'images', min: 1, max: 1 },
+          { kind: 'video', min: 1, max: 1 },
+        ],
+      }),
+      carousel: threadsVariant('carousel', {
+        type: 'required',
+        images: { min: 2 },
+        videos: { min: 1 },
+        mixed: true,
+        maxTotal: 20,
+      }),
+    },
+  },
   mastodon: {
     identifier: 'mastodon',
     displayName: 'Mastodon',
@@ -435,6 +475,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'tiktok',
   'mastodon',
   'bluesky',
+  'threads',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);
