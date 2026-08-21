@@ -858,6 +858,15 @@ test_rejects_invalid_existing_env_without_mutation() {
   assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
   [[ ! -s "$case_dir/docker.calls" ]] || fail 'spaced colon image alias invoked Docker'
 
+  case_dir="$TMP_DIR/reuse-nbsp-prefixed-image-alias"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  printf '\302\240KSY_DEALS_IMAGE=%s\n' "$alternate_image" >> "$root/.env"
+  LC_ALL=C grep -q $'^\302\240KSY_DEALS_IMAGE=' "$root/.env" ||
+    fail 'NBSP-prefixed alias fixture did not preserve its UTF-8 bytes'
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'NBSP-prefixed image alias invoked Docker'
+
   case_dir="$TMP_DIR/reuse-bare-image-alias"
   write_existing_installation "$case_dir"
   root="$case_dir/opt/ksy-deals"

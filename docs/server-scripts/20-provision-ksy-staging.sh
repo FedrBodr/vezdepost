@@ -239,6 +239,12 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
   [[ ! -L "$ENV_FILE" && -f "$ENV_FILE" ]] || fail PREVIOUS_ENV_UNSAFE
   [[ "$(file_uid "$ENV_FILE")" == "$expected_env_uid" ]] || fail PREVIOUS_ENV_UNSAFE
   [[ "$(file_mode "$ENV_FILE")" == 600 ]] || fail PREVIOUS_ENV_UNSAFE
+  if LC_ALL=C grep -q '[^ -~]' "$ENV_FILE"; then
+    fail EXISTING_ENV_INVALID
+  else
+    whole_file_status=$?
+    [[ "$whole_file_status" == 1 ]] || fail EXISTING_ENV_INVALID
+  fi
   final_newline_count=$(tail -c 1 "$ENV_FILE" | wc -l | awk '{print $1}')
   [[ "$final_newline_count" == 1 ]] || fail EXISTING_ENV_INVALID
   for runtime_key in "${runtime_keys[@]}"; do
