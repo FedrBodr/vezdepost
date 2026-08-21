@@ -242,7 +242,7 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
   final_newline_count=$(tail -c 1 "$ENV_FILE" | wc -l | awk '{print $1}')
   [[ "$final_newline_count" == 1 ]] || fail EXISTING_ENV_INVALID
   for runtime_key in "${runtime_keys[@]}"; do
-    runtime_key_state=$(awk -v key="$runtime_key" '
+    runtime_key_state=$(LC_ALL=C awk -v key="$runtime_key" '
       BEGIN {
         assignment = "^[[:space:]]*(export[[:space:]]+)?" key "[[:space:]]*[=:]"
         bare = "^[[:space:]]*(export[[:space:]]+)?" key "([[:space:]]*(#.*)?)?$"
@@ -254,13 +254,10 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
         }
         count++
         value = substr($0, length(key) + 2)
-        trimmed = value
-        sub(/^[ \t]+/, "", trimmed)
-        sub(/[ \t]+$/, "", trimmed)
-        if (trimmed != value) noncanonical++
-        if (value ~ /["\047]/ || value ~ /[ \t]#/ || value ~ /\$/ || index(value, "\\") > 0)
+        if (value !~ /^[!-~]+$/ || value ~ /["\047]/ || value ~ /\$/ || index(value, "\\") > 0)
           noncanonical++
-        if (length(trimmed) > 0) nonempty++
+        else
+          nonempty++
       }
       END { print (count + 0) ":" (nonempty + 0) ":" (noncanonical + 0) }
     ' "$ENV_FILE")

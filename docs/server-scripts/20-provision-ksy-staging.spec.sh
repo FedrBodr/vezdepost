@@ -875,6 +875,40 @@ test_rejects_invalid_existing_env_without_mutation() {
   assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
   [[ ! -s "$case_dir/docker.calls" ]] || fail 'whitespace-only runtime value invoked Docker'
 
+  case_dir="$TMP_DIR/reuse-cr-only-value"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  while IFS= read -r line; do
+    if [[ "$line" == ORDER_TELEGRAM_URL=* ]]; then
+      printf 'ORDER_TELEGRAM_URL=\r\n'
+    else
+      printf '%s\n' "$line"
+    fi
+  done < "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  LC_ALL=C grep -q $'^ORDER_TELEGRAM_URL=\r$' "$root/.env" ||
+    fail 'CR-only fixture did not preserve its mixed line ending'
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'CR-only runtime value invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-nbsp-only-value"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  while IFS= read -r line; do
+    if [[ "$line" == ORDER_TELEGRAM_URL=* ]]; then
+      printf 'ORDER_TELEGRAM_URL=\302\240\n'
+    else
+      printf '%s\n' "$line"
+    fi
+  done < "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  LC_ALL=C grep -q $'^ORDER_TELEGRAM_URL=\302\240$' "$root/.env" ||
+    fail 'NBSP-only fixture did not preserve its UTF-8 bytes'
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'NBSP-only runtime value invoked Docker'
+
   case_dir="$TMP_DIR/reuse-quoted-empty-value"
   write_existing_installation "$case_dir"
   root="$case_dir/opt/ksy-deals"
