@@ -161,16 +161,27 @@ rtk scp -q -o BatchMode=yes -o ConnectTimeout=10 \
   docs/server-scripts/20-provision-ksy-staging.sh \
   vezdepost:/tmp/20-provision-ksy-staging.sh
 rtk ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
-  'status=0; bash /tmp/20-provision-ksy-staging.sh || status=$?; rm -f /tmp/20-provision-ksy-staging.sh; exit "$status"'
+  'status=0; bash /tmp/20-provision-ksy-staging.sh --reuse-existing-secrets --image ghcr.io/fedrbodr/ksy-deals@sha256:<digest> || status=$?; rm -f /tmp/20-provision-ksy-staging.sh; exit "$status"'
 ```
 
 The script performs disk, immutable-digest and input validation before
-mutation. Copy values from the Bitwarden note `KSY Deals / staging` only into
-its hidden prompts. It atomically installs the root-only env and reviewed
-Compose file, creates `caddy-edge` and the empty imported-site placeholder,
-migrates the isolated database, and requires loopback liveness/readiness. A
-failed replacement restores the previous KSY files and restarts its previous
-image without touching Vezdepost or rolling migrations back.
+mutation. Routine repeat deployments reuse the installed root-only secret
+configuration and root Docker authentication, so they do not prompt for
+secrets. They atomically install the reviewed Compose file and candidate env,
+create `caddy-edge` and the empty imported-site placeholder, migrate the
+isolated database, and require loopback liveness/readiness. A failed
+replacement restores the previous KSY files and restarts its previous image
+without touching Vezdepost or rolling migrations back.
+
+The 12-field hidden batch is required only for initial installation, secret
+rotation, or recovery from `EXISTING_DOCKER_AUTH_REQUIRED`. In those cases run
+the bootstrap/rotation mode through an interactive TTY and copy the values from
+the Bitwarden note `KSY Deals / staging` only into its hidden prompt:
+
+```bash
+bash /tmp/20-provision-ksy-staging.sh \
+  --image ghcr.io/fedrbodr/ksy-deals@sha256:<digest>
+```
 
 Because the KSY repository and GHCR package are private, the note also contains
 `GHCR_USERNAME` and a dedicated `GHCR_READ_TOKEN` with package-read access only.

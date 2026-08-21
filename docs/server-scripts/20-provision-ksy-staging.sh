@@ -22,6 +22,14 @@ required_keys=(
   ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY POSTGRES_PASSWORD
   SESSION_COOKIE_KEY BACKUP_ENCRYPTION_PASSPHRASE PLATPRICES_PROXY_URL
 )
+runtime_keys=(
+  KSY_DEALS_IMAGE KSY_DEALS_PORT KSY_DEALS_BACKUP_DIR
+  POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL SESSION_COOKIE_KEY
+  TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET TELEGRAM_WEBHOOK_URL
+  ORDER_TELEGRAM_URL ADMIN_TELEGRAM_IDS
+  PLATPRICES_API_KEY PLATPRICES_BASE_URL PLATPRICES_REGION PLATPRICES_PROXY_URL
+  BACKUP_ENCRYPTION_PASSPHRASE BACKUP_RETENTION_DAYS
+)
 
 for required_key in "${required_keys[@]}"; do
   unset "$required_key"
@@ -65,8 +73,18 @@ progress() {
     "$step" "$PROGRESS_TOTAL" "$phase" "$message"
 }
 
-[[ $# -eq 2 && $1 == --image ]] || fail IMAGE_ARGUMENT_REQUIRED
-KSY_DEALS_IMAGE=$2
+REUSE_EXISTING_SECRETS=0
+case "$#:${1:-}" in
+  2:--image)
+    KSY_DEALS_IMAGE=$2
+    ;;
+  3:--reuse-existing-secrets)
+    [[ "$2" == --image ]] || fail IMAGE_ARGUMENT_REQUIRED
+    REUSE_EXISTING_SECRETS=1
+    KSY_DEALS_IMAGE=$3
+    ;;
+  *) fail IMAGE_ARGUMENT_REQUIRED ;;
+esac
 
 read_batch() {
   local input_fd=0
@@ -186,6 +204,14 @@ install_public() {
   fi
 }
 
+file_mode() {
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
+}
+
+file_uid() {
+  stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1"
+}
+
 progress 1 preflight 'Checking host prerequisites'
 [[ "$TEST_MODE" == 1 || $EUID -eq 0 ]] || fail ROOT_REQUIRED
 [[ -f "$STAGED_COMPOSE" ]] || fail STAGED_COMPOSE_MISSING
@@ -193,38 +219,66 @@ if [[ -e "$ENV_FILE" && ! -e "$COMPOSE_FILE" ]] ||
   [[ ! -e "$ENV_FILE" && -e "$COMPOSE_FILE" ]]; then
   fail PREVIOUS_INSTALLATION_INCOMPLETE
 fi
+if [[ "$REUSE_EXISTING_SECRETS" == 1 ]] &&
+  [[ ! -e "$ENV_FILE" || ! -e "$COMPOSE_FILE" ]]; then
+  fail PREVIOUS_INSTALLATION_REQUIRED
+fi
 used=$(disk_used_percent)
 [[ "$used" =~ ^[0-9]+$ && "$used" -lt 85 ]] || fail DISK_USAGE_LIMIT
 
-progress 2 secrets 'Reading hidden secret assignments'
-read_batch
-
 [[ "$KSY_DEALS_IMAGE" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] ||
   fail KSY_DEALS_IMAGE_INVALID
-[[ "$GHCR_USERNAME" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] ||
-  fail GHCR_USERNAME_INVALID
-safe_token "$GHCR_READ_TOKEN" || fail GHCR_READ_TOKEN_INVALID
-[[ "$VITE_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] ||
-  fail VITE_TELEGRAM_BOT_USERNAME_INVALID
-hex64 "$POSTGRES_PASSWORD" || fail POSTGRES_PASSWORD_INVALID
-hex64 "$SESSION_COOKIE_KEY" || fail SESSION_COOKIE_KEY_INVALID
-hex64 "$TELEGRAM_WEBHOOK_SECRET" || fail TELEGRAM_WEBHOOK_SECRET_INVALID
-hex64 "$BACKUP_ENCRYPTION_PASSPHRASE" || fail BACKUP_ENCRYPTION_PASSPHRASE_INVALID
-safe_token "$TELEGRAM_BOT_TOKEN" || fail TELEGRAM_BOT_TOKEN_INVALID
-safe_token "$PLATPRICES_API_KEY" || fail PLATPRICES_API_KEY_INVALID
-[[ "$PLATPRICES_PROXY_URL" =~ ^http://[A-Za-z0-9_-]{8,32}:[A-Za-z0-9_-]{43,86}@185\.158\.249\.84:3128$ ]] ||
-  fail PLATPRICES_PROXY_URL_INVALID
-[[ "$ORDER_TELEGRAM_URL" =~ ^https://t\.me/([A-Za-z0-9_]{5,32}|\+[A-Za-z0-9_-]+)$ ]] ||
-  fail ORDER_TELEGRAM_URL_INVALID
-[[ "$ADMIN_TELEGRAM_IDS" =~ ^([1-9][0-9]*),([1-9][0-9]*)$ ]] ||
-  fail ADMIN_TELEGRAM_IDS_INVALID
-[[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]] ||
-  fail ADMIN_TELEGRAM_IDS_DUPLICATE
-
-progress 3 install 'Installing reviewed configuration'
-encoded_password=$POSTGRES_PASSWORD
 candidate_env="$WORK_DIR/ksy.env"
-cat > "$candidate_env" <<ENV
+
+if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
+  progress 2 secrets 'Reusing existing secret configuration'
+  expected_env_uid=0
+  if [[ "$TEST_MODE" == 1 ]]; then
+    expected_env_uid=$(id -u)
+  fi
+  [[ ! -L "$ENV_FILE" && -f "$ENV_FILE" ]] || fail PREVIOUS_ENV_UNSAFE
+  [[ "$(file_uid "$ENV_FILE")" == "$expected_env_uid" ]] || fail PREVIOUS_ENV_UNSAFE
+  [[ "$(file_mode "$ENV_FILE")" == 600 ]] || fail PREVIOUS_ENV_UNSAFE
+  for runtime_key in "${runtime_keys[@]}"; do
+    runtime_key_state=$(awk -v key="$runtime_key" '
+      index($0, key "=") == 1 {
+        count++
+        if (length($0) > length(key) + 1) nonempty++
+      }
+      END { print count ":" nonempty }
+    ' "$ENV_FILE")
+    [[ "$runtime_key_state" == 1:1 ]] || fail EXISTING_ENV_INVALID
+  done
+  awk -v image="$KSY_DEALS_IMAGE" '
+    /^KSY_DEALS_IMAGE=/ { print "KSY_DEALS_IMAGE=" image; next }
+    { print }
+  ' "$ENV_FILE" > "$candidate_env"
+  chmod 600 "$candidate_env"
+else
+  progress 2 secrets 'Reading hidden secret assignments'
+  read_batch
+  [[ "$GHCR_USERNAME" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] ||
+    fail GHCR_USERNAME_INVALID
+  safe_token "$GHCR_READ_TOKEN" || fail GHCR_READ_TOKEN_INVALID
+  [[ "$VITE_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] ||
+    fail VITE_TELEGRAM_BOT_USERNAME_INVALID
+  hex64 "$POSTGRES_PASSWORD" || fail POSTGRES_PASSWORD_INVALID
+  hex64 "$SESSION_COOKIE_KEY" || fail SESSION_COOKIE_KEY_INVALID
+  hex64 "$TELEGRAM_WEBHOOK_SECRET" || fail TELEGRAM_WEBHOOK_SECRET_INVALID
+  hex64 "$BACKUP_ENCRYPTION_PASSPHRASE" || fail BACKUP_ENCRYPTION_PASSPHRASE_INVALID
+  safe_token "$TELEGRAM_BOT_TOKEN" || fail TELEGRAM_BOT_TOKEN_INVALID
+  safe_token "$PLATPRICES_API_KEY" || fail PLATPRICES_API_KEY_INVALID
+  [[ "$PLATPRICES_PROXY_URL" =~ ^http://[A-Za-z0-9_-]{8,32}:[A-Za-z0-9_-]{43,86}@185\.158\.249\.84:3128$ ]] ||
+    fail PLATPRICES_PROXY_URL_INVALID
+  [[ "$ORDER_TELEGRAM_URL" =~ ^https://t\.me/([A-Za-z0-9_]{5,32}|\+[A-Za-z0-9_-]+)$ ]] ||
+    fail ORDER_TELEGRAM_URL_INVALID
+  [[ "$ADMIN_TELEGRAM_IDS" =~ ^([1-9][0-9]*),([1-9][0-9]*)$ ]] ||
+    fail ADMIN_TELEGRAM_IDS_INVALID
+  [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]] ||
+    fail ADMIN_TELEGRAM_IDS_DUPLICATE
+
+  encoded_password=$POSTGRES_PASSWORD
+  cat > "$candidate_env" <<ENV
 KSY_DEALS_IMAGE=$KSY_DEALS_IMAGE
 KSY_DEALS_PORT=4300
 KSY_DEALS_BACKUP_DIR=$KSY_BACKUP_DIR
@@ -245,14 +299,7 @@ PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL
 BACKUP_ENCRYPTION_PASSPHRASE=$BACKUP_ENCRYPTION_PASSPHRASE
 BACKUP_RETENTION_DAYS=14
 ENV
-chmod 600 "$candidate_env"
-
-mkdir -p "$KSY_ROOT" "$KSY_BACKUP_DIR" "$CADDY_SITES_DIR"
-chmod 700 "$KSY_ROOT" "$KSY_BACKUP_DIR"
-empty_site="$WORK_DIR/00-empty.caddy"
-: > "$empty_site"
-if [[ ! -e "$CADDY_SITES_DIR/00-empty.caddy" ]]; then
-  install_public "$empty_site" "$CADDY_SITES_DIR/00-empty.caddy"
+  chmod 600 "$candidate_env"
 fi
 
 had_previous=0
@@ -274,10 +321,24 @@ if [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]]; then
   fi
 fi
 
-printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io \
-  --username "$GHCR_USERNAME" --password-stdin >/dev/null 2>&1 ||
-  fail GHCR_LOGIN_FAILED
-unset GHCR_READ_TOKEN
+progress 3 install 'Installing reviewed configuration'
+if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
+  docker pull "$KSY_DEALS_IMAGE" >/dev/null 2>&1 ||
+    fail EXISTING_DOCKER_AUTH_REQUIRED
+else
+  printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io \
+    --username "$GHCR_USERNAME" --password-stdin >/dev/null 2>&1 ||
+    fail GHCR_LOGIN_FAILED
+  unset GHCR_READ_TOKEN
+fi
+
+mkdir -p "$KSY_ROOT" "$KSY_BACKUP_DIR" "$CADDY_SITES_DIR"
+chmod 700 "$KSY_ROOT" "$KSY_BACKUP_DIR"
+empty_site="$WORK_DIR/00-empty.caddy"
+: > "$empty_site"
+if [[ ! -e "$CADDY_SITES_DIR/00-empty.caddy" ]]; then
+  install_public "$empty_site" "$CADDY_SITES_DIR/00-empty.caddy"
+fi
 docker network inspect caddy-edge >/dev/null 2>&1 ||
   docker network create caddy-edge >/dev/null
 install_public "$STAGED_COMPOSE" "$COMPOSE_FILE"

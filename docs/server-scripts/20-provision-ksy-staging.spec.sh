@@ -32,6 +32,9 @@ if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
   env | grep -E '^(VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
+if [[ "$1" == pull && "${DOCKER_PULL_FAIL:-0}" == 1 ]]; then
+  exit 1
+fi
 if [[ "$1 $2" == 'network inspect' ]]; then
   [[ -f "$NETWORK_MARKER" ]]
 elif [[ "$1 $2" == 'network create' ]]; then
@@ -77,6 +80,7 @@ YAML
 
 valid_environment() {
   VALID_IMAGE='ghcr.io/fedrbodr/ksy-deals@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  REUSE_IMAGE='ghcr.io/fedrbodr/ksy-deals@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
   GHCR_USERNAME='FedrBodr'
   GHCR_READ_TOKEN='github-read-token-secret'
   VITE_TELEGRAM_BOT_USERNAME='ksy_staging_bot'
@@ -212,6 +216,78 @@ run_case() {
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
       bash "$SCRIPT" --image "$image" > "$output" 2>&1
   fi
+}
+
+file_sha256() {
+  local path=$1
+  if [[ ! -e "$path" && ! -L "$path" ]]; then
+    printf 'ABSENT\n'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+  else
+    shasum -a 256 "$path" | awk '{print $1}'
+  fi
+}
+
+write_existing_installation() {
+  local case_dir=$1
+  mkdir -p "$case_dir"
+  valid_environment
+  write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+  run_case "$case_dir" "$case_dir/bootstrap.output"
+  awk '!/^KSY_DEALS_IMAGE=/' "$case_dir/opt/ksy-deals/.env" > \
+    "$case_dir/env-without-image.before"
+  : > "$case_dir/docker.calls"
+  : > "$case_dir/curl.calls"
+}
+
+run_reuse_case() {
+  local case_dir=$1
+  local output=$2
+  local curl_fail=${3:-0}
+  local docker_pull_fail=${4:-0}
+  local image=${5:-$REUSE_IMAGE}
+  local bin_dir="$case_dir/bin"
+  mkdir -p "$case_dir"
+  make_stubs "$bin_dir"
+  : > "$case_dir/docker.calls"
+  : > "$case_dir/curl.calls"
+
+  PATH="$bin_dir:$PATH" \
+    DOCKER_CALLS="$case_dir/docker.calls" \
+    DOCKER_PULL_FAIL="$docker_pull_fail" \
+    CURL_CALLS="$case_dir/curl.calls" \
+    CURL_FAIL="$curl_fail" \
+    NETWORK_MARKER="$case_dir/network.created" \
+    KSY_PROVISION_TEST_MODE=1 \
+    KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
+    KSY_ROOT="$case_dir/opt/ksy-deals" \
+    KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
+    STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
+    bash "$SCRIPT" --reuse-existing-secrets --image "$image" </dev/null > "$output" 2>&1
+}
+
+assert_reuse_rejection_unchanged() {
+  local case_dir=$1
+  local expected=$2
+  local docker_pull_fail=${3:-0}
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  local env_before compose_before
+  env_before=$(file_sha256 "$root/.env")
+  compose_before=$(file_sha256 "$root/docker-compose.yml")
+
+  if run_reuse_case "$case_dir" "$output" 0 "$docker_pull_fail"; then
+    fail "$(basename "$case_dir") reuse rejection was accepted"
+  fi
+  grep -q "^KSY_PROVISION_FAILED $expected$" "$output" ||
+    fail "$(basename "$case_dir") did not report $expected"
+  assert_eq "$env_before" "$(file_sha256 "$root/.env")" \
+    "$(basename "$case_dir") changed the previous env"
+  assert_eq "$compose_before" "$(file_sha256 "$root/docker-compose.yml")" \
+    "$(basename "$case_dir") changed the previous Compose file"
+  assert_synthetic_secrets_absent "$output"
 }
 
 assert_synthetic_secrets_absent() {
@@ -657,10 +733,154 @@ test_restores_previous_installation_after_failed_readiness() {
   assert_synthetic_secrets_absent "$output"
 }
 
+test_reuses_existing_secrets_without_prompting() {
+  local case_dir="$TMP_DIR/reuse-success"
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  local pull_line compose_line
+  write_existing_installation "$case_dir"
+
+  if ! run_reuse_case "$case_dir" "$output"; then
+    if grep -q '^KSY_PROVISION_FAILED IMAGE_ARGUMENT_REQUIRED$' "$output"; then
+      fail 'routine reuse was rejected by the bootstrap-only argument parser'
+    fi
+    fail 'routine reuse unexpectedly failed'
+  fi
+
+  ! grep -Fq 'Paste the twelve KSY secret assignments' "$output" ||
+    fail 'routine reuse emitted the hidden bootstrap prompt'
+  grep -q 'phase=secrets message="Reusing existing secret configuration"' "$output" ||
+    fail 'routine reuse did not report its secret phase'
+  pull_line=$(grep -nFx "pull $REUSE_IMAGE" "$case_dir/docker.calls" | head -1 | cut -d: -f1)
+  compose_line=$(grep -n 'compose --project-name ksy-deals ' "$case_dir/docker.calls" | head -1 | cut -d: -f1)
+  [[ -n "$pull_line" && -n "$compose_line" && "$pull_line" -lt "$compose_line" ]] ||
+    fail 'routine reuse did not pull the exact digest before Compose accessed installed files'
+  ! grep -q '^login ' "$case_dir/docker.calls" ||
+    fail 'routine reuse unexpectedly replaced existing Docker authentication'
+  awk '!/^KSY_DEALS_IMAGE=/' "$root/.env" > "$case_dir/env-without-image.after"
+  cmp -s "$case_dir/env-without-image.before" "$case_dir/env-without-image.after" ||
+    fail 'routine reuse changed a non-image env byte'
+  assert_eq 1 "$(grep -c "^KSY_DEALS_IMAGE=$REUSE_IMAGE$" "$root/.env")" \
+    'routine reuse did not install exactly one requested image digest'
+  grep -Fxq "PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL" "$root/.env" ||
+    fail 'routine reuse did not preserve the PlatPrices proxy URL'
+  assert_synthetic_secrets_absent "$output"
+}
+
+test_rejects_unsafe_or_incomplete_existing_installations_without_mutation() {
+  local case_dir root
+
+  case_dir="$TMP_DIR/reuse-no-installation"
+  valid_environment
+  write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+  assert_reuse_rejection_unchanged "$case_dir" PREVIOUS_INSTALLATION_REQUIRED
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'missing installation invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-incomplete-pair"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  rm "$root/docker-compose.yml"
+  assert_reuse_rejection_unchanged "$case_dir" PREVIOUS_INSTALLATION_INCOMPLETE
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'incomplete installation invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-symlink-env"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  mv "$root/.env" "$case_dir/linked.env"
+  ln -s "$case_dir/linked.env" "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" PREVIOUS_ENV_UNSAFE
+  [[ -L "$root/.env" ]] || fail 'symlink env was replaced during rejection'
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'symlink env rejection invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-wrong-env-mode"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  chmod 640 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" PREVIOUS_ENV_UNSAFE
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'wrong env mode rejection invoked Docker'
+}
+
+test_rejects_invalid_existing_env_without_mutation() {
+  local case_dir root
+
+  case_dir="$TMP_DIR/reuse-missing-proxy"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '!/^PLATPRICES_PROXY_URL=/' "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'missing runtime key invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-duplicate-session"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  printf '%s\n' "SESSION_COOKIE_KEY=$SESSION_COOKIE_KEY" >> "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'duplicate runtime key invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-empty-value"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '{ if (/^ORDER_TELEGRAM_URL=/) print "ORDER_TELEGRAM_URL="; else print }' \
+    "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'empty runtime value invoked Docker'
+}
+
+test_rejects_failed_existing_docker_auth_without_mutation() {
+  local case_dir="$TMP_DIR/reuse-pull-failure"
+  write_existing_installation "$case_dir"
+
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_DOCKER_AUTH_REQUIRED 1
+  assert_eq "pull $REUSE_IMAGE" "$(<"$case_dir/docker.calls")" \
+    'failed existing Docker auth must stop after the exact image pull'
+}
+
+test_reuse_restores_previous_installation_after_failed_readiness() {
+  local case_dir="$TMP_DIR/reuse-rollback"
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  local previous_image
+  write_existing_installation "$case_dir"
+  cp "$root/.env" "$case_dir/env.before"
+  cp "$root/docker-compose.yml" "$case_dir/compose.before"
+  previous_image=$(sed -n 's/^KSY_DEALS_IMAGE=//p' "$root/.env")
+
+  if run_reuse_case "$case_dir" "$output" 1; then
+    fail 'routine reuse accepted failed readiness'
+  fi
+  cmp -s "$case_dir/env.before" "$root/.env" ||
+    fail 'routine reuse did not restore the previous env'
+  cmp -s "$case_dir/compose.before" "$root/docker-compose.yml" ||
+    fail 'routine reuse did not restore the previous Compose file'
+  grep -Fxq "KSY_DEALS_IMAGE=$previous_image" "$root/.env" ||
+    fail 'routine reuse did not restore the previous image digest'
+  grep -q '^KSY_PROVISION_FAILED READINESS_FAILED$' "$output" ||
+    fail 'routine reuse health failure lost its compatible failure record'
+  assert_synthetic_secrets_absent "$output"
+}
+
+test_bootstrap_contract_still_names_twelve_hidden_fields() {
+  valid_environment
+  assert_eq 12 "$(valid_batch | awk -F= '/^[A-Z0-9_]+[[:space:]]*=/ { count++ } END { print count }')" \
+    'bootstrap fixture must provide twelve hidden assignments'
+  grep -Fq 'Paste the twelve KSY secret assignments, then KSY_SECRETS_END:' "$SCRIPT" ||
+    fail 'bootstrap prompt no longer names the twelve-field hidden batch'
+}
+
 test_rejects_full_disk_before_mutation
 test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
+test_reuses_existing_secrets_without_prompting
+test_rejects_unsafe_or_incomplete_existing_installations_without_mutation
+test_rejects_invalid_existing_env_without_mutation
+test_rejects_failed_existing_docker_auth_without_mutation
+test_reuse_restores_previous_installation_after_failed_readiness
+test_bootstrap_contract_still_names_twelve_hidden_fields
 test_rejects_batch_safety_failures_before_mutation
 test_rejects_missing_batch_key_despite_inherited_environment
 test_clears_inherited_application_secrets_before_any_child_process
