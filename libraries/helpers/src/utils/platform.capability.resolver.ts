@@ -132,6 +132,19 @@ const selectVariant = (
     };
   }
 
+  if (profile.identifier === 'reddit') {
+    if (typeof context.settings.url === 'string' && context.settings.url) {
+      return { key: 'link', diagnostics: [] };
+    }
+    if (context.media.length === 1 && context.media[0].type === 'video') {
+      return { key: 'video', diagnostics: [] };
+    }
+    if (context.media.length === 1 && context.media[0].type === 'image') {
+      return { key: 'image', diagnostics: [] };
+    }
+    return { key: profile.defaultVariant, diagnostics: [] };
+  }
+
   if (profile.identifier !== 'tiktok') {
     return { key: profile.defaultVariant, diagnostics: [] };
   }

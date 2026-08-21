@@ -68,14 +68,21 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(15);
-    expect(profiled.size).toBe(15);
-    expect(bridged).toHaveLength(21);
+    expect(PROFILE_IDENTIFIERS.length).toBe(16);
+    expect(profiled.size).toBe(16);
+    expect(bridged).toHaveLength(20);
 
     const x = resolved.find(({ identifier }) => identifier === 'x');
     expect(x).toMatchObject({
       verification: 'runtime',
       profileIdentifier: 'x',
+    });
+
+    const reddit = resolved.find(({ identifier }) => identifier === 'reddit');
+    expect(reddit).toMatchObject({
+      verification: 'runtime',
+      profileIdentifier: 'reddit',
+      variant: 'self',
     });
 
     const bluesky = resolved.find(

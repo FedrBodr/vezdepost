@@ -21,6 +21,7 @@ import WebSocket from 'ws';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Integration } from '@prisma/client';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
 import {
   SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
   SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
@@ -40,6 +41,55 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
 
   maxLength() {
     return 10000;
+  }
+
+  async fetchCapabilityRuntime(
+    integration: Integration,
+    settings?: unknown
+  ): Promise<CapabilityRuntimeOverlay | undefined> {
+    try {
+      const subredditList = (settings as any)?.subreddit;
+      const name = Array.isArray(subredditList)
+        ? subredditList[0]?.value?.subreddit
+        : undefined;
+      if (typeof name !== 'string' || !name.trim()) {
+        return undefined;
+      }
+
+      const subreddit = (name.split('/r/')[1] || name).toLowerCase();
+      const { title_required_max: titleMax } = await (
+        await this.fetch(
+          `https://oauth.reddit.com/api/v1/${subreddit}/post_requirements`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${integration.token}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          },
+          'reddit',
+          0,
+          false
+        )
+      ).json();
+
+      if (
+        !Number.isInteger(titleMax) ||
+        titleMax <= 0 ||
+        titleMax >= 300
+      ) {
+        return undefined;
+      }
+
+      return {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          title: { max: titleMax, unit: 'utf16-code-units', source: 'runtime' },
+        },
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   override async checkValidity(

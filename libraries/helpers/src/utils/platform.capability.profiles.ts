@@ -151,6 +151,39 @@ const threadsBody = (): TextFieldCapability => ({
   limit: { max: 500, unit: 'utf16-code-units', source: 'platform' },
 });
 
+const markdownFormatting: TextFieldCapability['formatting'] = {
+  bold: 'native',
+  underline: 'native',
+  links: 'native',
+  lists: 'plain',
+  headings: 'plain',
+};
+
+const redditTitle = (): TextFieldCapability => ({
+  key: 'title',
+  label: 'Title',
+  required: true,
+  source: 'provider-setting',
+  dialect: 'plain',
+  limit: { max: 300, unit: 'utf16-code-units', source: 'platform' },
+  formatting: plainFormatting,
+});
+
+const redditVariant = (
+  key: string,
+  media: PostVariantCapability['media'],
+  structuredFields: PostVariantCapability['structuredFields'] = []
+): PostVariantCapability => ({
+  key,
+  fields: [
+    redditTitle(),
+    body(10_000, 'markdown', markdownFormatting, 'application-safety'),
+  ],
+  structuredFields,
+  media,
+  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+});
+
 const threadsVariant = (
   key: string,
   media: PostVariantCapability['media']
@@ -501,6 +534,28 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
     },
     runtimeKeys: ['text-limit'],
   },
+  reddit: {
+    identifier: 'reddit',
+    displayName: 'Reddit',
+    verification: 'runtime',
+    evidenceDate,
+    defaultVariant: 'self',
+    variants: {
+      self: redditVariant('self', { type: 'none' }),
+      link: redditVariant('link', { type: 'none' }, [
+        { key: 'url', label: 'URL', required: true },
+      ]),
+      image: redditVariant('image', {
+        type: 'required',
+        images: { min: 1, max: 1 },
+      }),
+      video: redditVariant('video', {
+        type: 'required',
+        videos: { min: 1, max: 1, coverRequired: true },
+      }),
+    },
+    runtimeKeys: ['text-limit'],
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -552,6 +607,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'threads',
   'youtube',
   'x',
+  'reddit',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

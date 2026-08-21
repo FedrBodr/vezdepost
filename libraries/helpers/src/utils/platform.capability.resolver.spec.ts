@@ -47,6 +47,7 @@ describe('Batch 0 platform capability resolution', () => {
       'threads',
       'youtube',
       'x',
+      'reddit',
     ]);
   });
 
@@ -510,6 +511,101 @@ describe('Batch 0 platform capability resolution', () => {
       source: 'platform',
     });
     expect(capability.media).toEqual({ type: 'required', videos: { min: 1, max: 1 } });
+  });
+
+  it('selects reddit variants from url and media signals', () => {
+    expect(
+      resolvePlatformCapabilityV2(
+        ctx('reddit', [], { settings: { url: 'https://example.test' } })
+      ).variant
+    ).toBe('link');
+    expect(
+      resolvePlatformCapabilityV2(ctx('reddit', [{ type: 'image' }])).variant
+    ).toBe('image');
+    expect(
+      resolvePlatformCapabilityV2(ctx('reddit', [{ type: 'video' }])).variant
+    ).toBe('video');
+    expect(resolvePlatformCapabilityV2(ctx('reddit')).variant).toBe('self');
+  });
+
+  it('models reddit self posts as markdown bodies with a 300-unit title', () => {
+    const resolved = resolvePlatformCapabilityV2(ctx('reddit'));
+    expect(resolved).toMatchObject({
+      verification: 'runtime',
+      profileIdentifier: 'reddit',
+      variant: 'self',
+    });
+    expect(resolved.fields.map((field) => field.key)).toEqual([
+      'title',
+      'body',
+    ]);
+    expect(resolved.fields[0]).toMatchObject({
+      source: 'provider-setting',
+      required: true,
+      limit: { max: 300, unit: 'utf16-code-units', source: 'platform' },
+    });
+    expect(resolved.fields[1].dialect).toBe('markdown');
+    expect(resolved.media).toEqual({ type: 'none' });
+  });
+
+  it('requires a url for reddit link posts', () => {
+    expect(
+      resolvePlatformCapabilityV2(
+        ctx('reddit', [], { settings: { url: 'https://example.test' } })
+      ).structuredFields
+    ).toEqual([{ key: 'url', label: 'URL', required: true }]);
+  });
+
+  it('keeps the 10,000 reddit application-safety body when runtime data is missing', () => {
+    const resolved = resolvePlatformCapabilityV2(ctx('reddit'));
+    expect(
+      resolved.fields.find((field) => field.key === 'body')?.limit
+    ).toEqual({
+      max: 10_000,
+      unit: 'graphemes',
+      source: 'application-safety',
+    });
+    expect(resolved.diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'runtime-data-missing' })
+    );
+  });
+
+  it('lowers the reddit title limit only through a trusted overlay', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('reddit', [], {
+        runtimeOverlay: {
+          observedAt: new Date().toISOString(),
+          textLimits: {
+            title: { max: 40, unit: 'utf16-code-units', source: 'runtime' },
+          },
+        },
+      })
+    );
+    expect(
+      resolved.fields.find((field) => field.key === 'title')?.limit
+    ).toMatchObject({ max: 40, source: 'runtime' });
+    expect(
+      resolved.fields.find((field) => field.key === 'body')?.limit
+    ).toMatchObject({ max: 10_000, source: 'application-safety' });
+    expect(resolved.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ['link', { url: 'https://example.test' }, [], { type: 'none' }],
+    ['image', {}, [{ type: 'image' as const }], {
+      type: 'required',
+      images: { min: 1, max: 1 },
+    }],
+    [
+      'video',
+      {},
+      [{ type: 'video' as const }],
+      { type: 'required', videos: { min: 1, max: 1, coverRequired: true } },
+    ],
+  ] as const)('models reddit %s media as %j', (variant, settings, media, expected) => {
+    expect(
+      resolvePlatformCapabilityV2(ctx('reddit', media, { settings })).media
+    ).toEqual(expected);
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {

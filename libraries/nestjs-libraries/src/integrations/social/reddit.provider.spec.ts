@@ -169,3 +169,70 @@ describe('RedditProvider secondary media ordering', () => {
     expect(providerFetch).toHaveBeenCalledOnce();
   });
 });
+
+const integration = { token: 'access-token' } as never;
+const redditSettings = {
+  subreddit: [{ value: { subreddit: '/r/testing', type: 'self' } }],
+};
+
+describe('RedditProvider.fetchCapabilityRuntime', () => {
+  let provider: RedditProvider;
+
+  beforeEach(() => {
+    provider = new RedditProvider();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('maps a stricter title_required_max into a trusted title overlay', async () => {
+    const providerFetch = vi
+      .spyOn(provider, 'fetch')
+      .mockResolvedValue({
+        json: async () => ({ title_required_max: 40 }),
+      } as Response);
+
+    const overlay = await provider.fetchCapabilityRuntime(
+      integration,
+      redditSettings
+    );
+
+    expect(providerFetch).toHaveBeenCalledWith(
+      'https://oauth.reddit.com/api/v1/testing/post_requirements',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      }),
+      'reddit',
+      0,
+      false
+    );
+    expect(overlay).toMatchObject({
+      textLimits: {
+        title: { max: 40, unit: 'utf16-code-units', source: 'runtime' },
+      },
+    });
+    expect(Number.isFinite(Date.parse(overlay!.observedAt))).toBe(true);
+  });
+
+  it('returns undefined when the requirements fetch rejects', async () => {
+    vi.spyOn(provider, 'fetch').mockRejectedValue(new Error('network down'));
+
+    await expect(
+      provider.fetchCapabilityRuntime(integration, redditSettings)
+    ).resolves.toBeUndefined();
+  });
+
+  it('returns undefined without fetching when no subreddit is configured', async () => {
+    const providerFetch = vi.spyOn(provider, 'fetch').mockRejectedValue(
+      new Error('must not be called')
+    );
+
+    await expect(
+      provider.fetchCapabilityRuntime(integration, {})
+    ).resolves.toBeUndefined();
+    expect(providerFetch).not.toHaveBeenCalled();
+  });
+});
