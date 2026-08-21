@@ -92,7 +92,15 @@ export const parsePublicationMediaSources = (
   if (!value) return [];
   try {
     const parsed = JSON.parse(value);
-    if (Array.isArray(parsed)) return parsed as PublicationMediaSource[];
+    if (
+      Array.isArray(parsed) &&
+      parsed.every(
+        (media) =>
+          media !== null && typeof media === 'object' && !Array.isArray(media)
+      )
+    ) {
+      return parsed as PublicationMediaSource[];
+    }
   } catch {}
   throw new Error('Invalid publication media');
 };

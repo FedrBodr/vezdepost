@@ -378,6 +378,27 @@ describe('PostActivity platform formatting', () => {
       'Invalid media source',
     ],
     ['malformed media JSON', '{', 'Invalid publication media'],
+    ['null media member', '[null]', 'Invalid publication media'],
+    [
+      'mixed valid and null media members',
+      JSON.stringify([
+        { path: 'https://media.example.test/photo.jpg', type: 'image' },
+        null,
+      ]),
+      'Invalid publication media',
+    ],
+    [
+      'primitive media member',
+      JSON.stringify(['not-a-media-object']),
+      'Invalid publication media',
+    ],
+    [
+      'nested array media member',
+      JSON.stringify([
+        [{ path: 'https://media.example.test/photo.jpg', type: 'image' }],
+      ]),
+      'Invalid publication media',
+    ],
   ])(
     'classifies %s preflight failures as structured and non-retryable',
     async (_caseName, image, message) => {

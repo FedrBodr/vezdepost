@@ -50,6 +50,14 @@ state mutation was performed.
    operational `realpath` failures are rethrown. The helper adds no command on
    the success path, and the new failure type did not exist in historical
    activity results, preserving replay command order for v1.0.1–v1.0.5.
+10. Hardened the persisted-media parser at its shared boundary. JSON media
+    arrays are accepted only when every member is a non-null, non-array object,
+    so null, mixed-null, primitive, and nested-array members become the same
+    structured, non-retryable `Invalid publication media` preflight failure
+    instead of throwing an ordinary `TypeError` or silently losing the media
+    list. Safe path and ID object arrays remain supported, while malformed
+    attachment fields continue through `PostsService`'s deterministic
+    attachment validation.
 
 ## RED/GREEN evidence
 
@@ -87,14 +95,20 @@ state mutation was performed.
   also showed that the old generic local-source error swallowed operational
   failures; it is now rethrown for Temporal retry while missing-file
   `ENOENT`/`ENOTDIR` remains deterministic.
+- Persisted media members: null and mixed valid/null arrays initially threw an
+  ordinary destructuring `TypeError`; primitive and nested-array members could
+  resolve with an undefined image in the isolated activity harness. All four
+  cases now fail at the parser boundary with the structured non-retryable
+  preflight type, while the existing safe-array and transient controls remain
+  green.
 
 ## Verification
 
 All pnpm commands used Node 22.20.0.
 
 - Expanded remediation suite: 18 files, 226/226 tests passed.
-- Lifecycle workflow/activity/security suite: 7 files, 139/139 tests passed.
-- Full repository suite with coverage: 97 files, 1,020/1,020 tests passed.
+- Lifecycle workflow/activity/security suite: 7 files, 143/143 tests passed.
+- Full repository suite with coverage: 97 files, 1,024/1,024 tests passed.
 - Explicit frontend TypeScript check: passed.
 - Static V1 API/import proof: no matches.
 - Affected-preview raw `dangerouslySetInnerHTML` proof: no matches.
@@ -133,6 +147,22 @@ incremental re-review found:
 - Scope regressions or architecture mismatches: none.
 - Independent focused verification: 7 files, 154/154 tests passed;
   orchestrator build, Prettier, and `git diff --check` passed.
+
+The final external incremental review exposed one more Important malformed
+persisted-media boundary: arrays containing null members escaped the parser and
+threw an ordinary destructuring `TypeError`. The shared parser was hardened
+with activity-level RED/GREEN cases for null, mixed valid/null, primitive, and
+nested-array members. The same reviewer found only a formatting Minor, which
+was corrected, and returned the final verdict:
+
+- Critical findings: none.
+- Important findings: none.
+- Minor findings: none.
+- Replay, lifecycle, transient-classification, security, and compatibility
+  regressions: none.
+- Independent focused verification: 7 files, 158/158 tests before the
+  formatting-only correction; 71/71 relevant after-format tests, Prettier, and
+  `git diff --check` passed.
 
 ## Concerns
 
