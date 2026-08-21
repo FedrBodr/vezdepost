@@ -216,6 +216,15 @@ const instagramVariant = (
   delivery: { longMediaText: 'caption', stripRawUrls: false },
 });
 
+const facebookBody = (): TextFieldCapability => ({
+  ...body(63_206, 'plain', plainFormatting),
+  limit: {
+    max: 63_206,
+    unit: 'utf16-code-units',
+    source: 'platform',
+  },
+});
+
 const evidenceDate = '2026-08-20';
 
 const profiles: Record<string, PlatformCapabilityProfileV2> = {
@@ -616,6 +625,46 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
     variants: {},
     aliasOf: 'instagram',
   },
+  facebook: {
+    identifier: 'facebook',
+    displayName: 'Facebook',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'feed',
+    variants: {
+      feed: {
+        key: 'feed',
+        fields: [facebookBody()],
+        structuredFields: [
+          { key: 'link', label: 'Link', required: false },
+        ],
+        media: {
+          type: 'optional',
+          images: { min: 1, max: 10 },
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+      story: {
+        key: 'story',
+        fields: [],
+        structuredFields: [],
+        media: {
+          type: 'required',
+          images: { min: 1 },
+          videos: { min: 1 },
+          mixed: true,
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+      video: {
+        key: 'video',
+        fields: [facebookBody()],
+        structuredFields: [],
+        media: { type: 'required', videos: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -670,6 +719,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'reddit',
   'instagram',
   'instagram-standalone',
+  'facebook',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

@@ -68,9 +68,9 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(18);
-    expect(profiled.size).toBe(18);
-    expect(bridged).toHaveLength(18);
+    expect(PROFILE_IDENTIFIERS.length).toBe(19);
+    expect(profiled.size).toBe(19);
+    expect(bridged).toHaveLength(17);
 
     const ALIASES: Record<string, string> = {
       'linkedin-page': 'linkedin',
@@ -108,6 +108,15 @@ describe('registered platform capability matrix', () => {
     expect(bluesky).toMatchObject({
       verification: 'verified',
       profileIdentifier: 'bluesky',
+    });
+
+    const facebook = resolved.find(
+      ({ identifier }) => identifier === 'facebook'
+    );
+    expect(facebook).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'facebook',
+      variant: 'feed',
     });
 
     const threads = resolved.find(

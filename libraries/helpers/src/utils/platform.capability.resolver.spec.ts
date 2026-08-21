@@ -50,6 +50,7 @@ describe('Batch 0 platform capability resolution', () => {
       'reddit',
       'instagram',
       'instagram-standalone',
+      'facebook',
     ]);
   });
 
@@ -119,6 +120,98 @@ describe('Batch 0 platform capability resolution', () => {
       })
     );
   });
+
+  it.each([
+    [
+      'story setting',
+      { post_type: 'story' },
+      [{ type: 'image' as const }],
+      { variant: 'story', diagnostics: [] },
+    ],
+    [
+      'first video media',
+      {},
+      [{ type: 'video' as const }],
+      { variant: 'video', diagnostics: [] },
+    ],
+    [
+      'image media',
+      {},
+      [{ type: 'image' as const }],
+      { variant: 'feed', diagnostics: [] },
+    ],
+    [
+      'no media',
+      {},
+      [],
+      { variant: 'feed', diagnostics: [] },
+    ],
+  ] as const)(
+    'selects facebook variant for %s',
+    (_name, settings, media, expected) => {
+      expect(
+        resolvePlatformCapabilityV2(ctx('facebook', media, { settings }))
+      ).toMatchObject({
+        identifier: 'facebook',
+        profileIdentifier: 'facebook',
+        verification: 'verified',
+        ...expected,
+      });
+    }
+  );
+
+  it('limits facebook feed body to 63,206 utf16 units with an optional link field', () => {
+    const resolved = resolvePlatformCapabilityV2(ctx('facebook'));
+    expect(resolved.variant).toBe('feed');
+    expect(resolved.fields[0].limit).toEqual({
+      max: 63_206,
+      unit: 'utf16-code-units',
+      source: 'platform',
+    });
+    expect(resolved.fields[0].dialect).toBe('plain');
+    expect(resolved.structuredFields).toEqual([
+      { key: 'link', label: 'Link', required: false },
+    ]);
+  });
+
+  it('gives the facebook story variant no canonical-editor fields so analysis cannot block on text', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx(
+        'facebook',
+        [{ type: 'image' }],
+        { settings: { post_type: 'story' } }
+      )
+    );
+    expect(resolved.variant).toBe('story');
+    expect(resolved.fields).toEqual([]);
+    expect(resolved.media).toEqual({
+      type: 'required',
+      images: { min: 1 },
+      videos: { min: 1 },
+      mixed: true,
+    });
+    const analysis = analyzePlatformContentV2({
+      canonicalHtml: `<p>${'x'.repeat(70_000)}</p>`,
+      settings: { post_type: 'story' },
+      media: [{ type: 'image' }],
+      capability: resolved,
+    });
+    expect(analysis.blocking).toBe(false);
+  });
+
+  it('requires exactly one video for the facebook video variant with the body as description', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('facebook', [{ type: 'video' }])
+    );
+    expect(resolved.variant).toBe('video');
+    expect(resolved.fields.map((field) => field.key)).toEqual(['body']);
+    expect(resolved.fields[0].limit).toMatchObject({ max: 63_206 });
+    expect(resolved.media).toEqual({
+      type: 'required',
+      videos: { min: 1, max: 1 },
+    });
+  });
+
 
   it.each([
     ['linkedin-page', [], { profileIdentifier: 'linkedin', variant: 'feed' }],

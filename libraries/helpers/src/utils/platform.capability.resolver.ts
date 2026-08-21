@@ -174,6 +174,16 @@ const selectVariant = (
     return { key: profile.defaultVariant, diagnostics: [] };
   }
 
+  if (profile.identifier === 'facebook') {
+    if (context.settings.post_type === 'story') {
+      return { key: 'story', diagnostics: [] };
+    }
+    if (context.media.length > 0 && context.media[0].type === 'video') {
+      return { key: 'video', diagnostics: [] };
+    }
+    return { key: 'feed', diagnostics: [] };
+  }
+
   if (profile.identifier !== 'tiktok') {
     return { key: profile.defaultVariant, diagnostics: [] };
   }
