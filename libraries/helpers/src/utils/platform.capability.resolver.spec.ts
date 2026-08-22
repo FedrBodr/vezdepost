@@ -52,6 +52,8 @@ describe('Batch 0 platform capability resolution', () => {
       'instagram-standalone',
       'facebook',
       'discord',
+      'twitch',
+      'kick',
     ]);
   });
 
@@ -787,6 +789,29 @@ describe('Batch 0 platform capability resolution', () => {
     expect(capability.structuredFields).toEqual([
       { key: 'channel', label: 'Channel', required: true },
     ]);
+  });
+
+  it.each([
+    [
+      'twitch',
+      [{ key: 'messageType', label: 'Message type', required: false }],
+    ],
+    ['kick', []],
+  ] as const)('resolves %s as a verified chat profile', (identifier, structuredFields) => {
+    const capability = resolvePlatformCapabilityV2(ctx(identifier));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: identifier,
+      variant: 'chat',
+    });
+    expect(capability.fields[0].limit).toEqual({
+      max: 500,
+      unit: 'utf16-code-units',
+      source: 'platform',
+    });
+    expect(capability.fields[0].dialect).toBe('plain');
+    expect(capability.media).toEqual({ type: 'none' });
+    expect(capability.structuredFields).toEqual(structuredFields);
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {

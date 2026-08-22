@@ -51,6 +51,14 @@ const discordFormatting: TextFieldCapability['formatting'] = {
   headings: 'native',
 };
 
+const chatFormatting: TextFieldCapability['formatting'] = {
+  bold: 'unsupported',
+  underline: 'unsupported',
+  links: 'plain',
+  lists: 'plain',
+  headings: 'plain',
+};
+
 const limitUnitForDialect = (
   dialect: TextFieldCapability['dialect']
 ): ContentUnit => {
@@ -233,6 +241,21 @@ const facebookBody = (): TextFieldCapability => ({
     unit: 'utf16-code-units',
     source: 'platform',
   },
+});
+
+const chatBody = (): TextFieldCapability => ({
+  ...body(500, 'plain', chatFormatting),
+  limit: { max: 500, unit: 'utf16-code-units', source: 'platform' },
+});
+
+const chatVariant = (
+  structuredFields: PostVariantCapability['structuredFields'] = []
+): PostVariantCapability => ({
+  key: 'chat',
+  fields: [chatBody()],
+  structuredFields,
+  media: { type: 'none' },
+  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
 });
 
 const evidenceDate = '2026-08-20';
@@ -700,6 +723,28 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       ),
     },
   },
+  twitch: {
+    identifier: 'twitch',
+    displayName: 'Twitch',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'chat',
+    variants: {
+      chat: chatVariant([
+        { key: 'messageType', label: 'Message type', required: false },
+      ]),
+    },
+  },
+  kick: {
+    identifier: 'kick',
+    displayName: 'Kick',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'chat',
+    variants: {
+      chat: chatVariant(),
+    },
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -756,6 +801,8 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'instagram-standalone',
   'facebook',
   'discord',
+  'twitch',
+  'kick',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

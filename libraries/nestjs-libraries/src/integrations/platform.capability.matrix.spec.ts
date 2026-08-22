@@ -68,9 +68,9 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(20);
-    expect(profiled.size).toBe(20);
-    expect(bridged).toHaveLength(16);
+    expect(PROFILE_IDENTIFIERS.length).toBe(22);
+    expect(profiled.size).toBe(22);
+    expect(bridged).toHaveLength(14);
 
     const ALIASES: Record<string, string> = {
       'linkedin-page': 'linkedin',
