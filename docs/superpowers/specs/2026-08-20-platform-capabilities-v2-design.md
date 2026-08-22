@@ -289,7 +289,8 @@ Batch 1 reached its verified local pause point on 2026-08-22. Eight
 destinations moved off the unverified bridge onto dedicated profiles
 (`bluesky`, `threads`, `youtube`, `x`, `reddit`, `instagram`,
 `instagram-standalone`, `facebook`; all recording the audited evidence date
-2026-08-20), giving the exact matrix of 36 unique registered identifiers =
+2026-08-20 except `bluesky`, which records 2026-08-21), giving the exact
+matrix of 36 unique registered identifiers =
 19 dedicated profiles + 17 bridged. The two aliases are `linkedin-page`
 (Batch 0) and `instagram-standalone` (Batch 1); both preserve the requested
 identifier. Runtime overlays are live for the X Premium entitlement and
@@ -312,6 +313,29 @@ production-state change occurred.
 ### Batch 2: chat and federated destinations
 
 `slack`, `discord`, `twitch`, `kick`, `mastodon`, `lemmy`, `wrapcast`, `nostr`.
+
+Batch 2 reached its verified local pause point on 2026-08-22. The six
+remaining destinations moved off the unverified bridge onto dedicated
+profiles (`discord`, `twitch`, `kick`, `lemmy`, `wrapcast`, `nostr`; all
+`verified` with the audited evidence date 2026-08-20), giving the exact
+matrix of 36 unique registered identifiers = 25 dedicated profiles + 11
+bridged. The notable corrections: wrapcast's stale adapter limit of 800 was
+replaced by the 320 UTF-8-byte `platform` Farcaster cast protocol maximum;
+lemmy's output dialect was fixed to `markdown` despite the adapter's editor
+declaration; discord keeps 1,980 UTF-16 units as an explicit
+application-safety margin below Discord's 2,000 platform maximum; nostr keeps
+100,000 UTF-16 units as application-safety because no protocol-wide content
+maximum exists. The three deferred hardening items landed: bluesky facet
+anchoring hardening, `runtimeMaxCeiling` clamping on runtime overlays (`x`
+declares 4,000 and reddit declares 300), and Reddit multi-subreddit validation
+applying the strictest title maximum across all configured subreddits. The
+remaining 11 bridged identifiers are `gmb`, `dribbble`, `medium`, `devto`,
+`hashnode`, `wordpress`, `listmonk`, `moltbook`, `whop`, `skool`, and `mewe`.
+
+Verification used Node v22.23.2 (Homebrew `node@22`): the full `pnpm test`
+gate passed 1094/1094 tests across 97 files, and the frontend, backend, and
+orchestrator production builds all exited 0. No push, merge, release,
+deployment, database migration, or production-state change occurred.
 
 ### Batch 3: articles, CMS and email
 

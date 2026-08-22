@@ -4,13 +4,18 @@
 **Linear:** FED-346  
 **Scope:** The 29 registered destinations that are not part of the first verified
 wave (`telegram`, `max`, `linkedin`, `tumblr`, `pinterest`, `vk`, `vk-group`).
-Batch 0 has now verified or made runtime-aware four of those destinations;
-the remaining 25 use the explicit V2 `unverified-adapter` bridge.
+Batch 0 verified or made runtime-aware four of those destinations, Batch 1
+migrated eight high-usage publishers onto dedicated profiles, and Batch 2
+migrated the six remaining chat/federated destinations; the remaining 11 use
+the explicit V2 `unverified-adapter` bridge.
 
 **Batch 0 status:** Complete and verified locally on 2026-08-21; not pushed,
 merged, released, or deployed.
 
 **Batch 1 status:** Complete and verified locally on 2026-08-22; not pushed,
+merged, released, or deployed.
+
+**Batch 2 status:** Complete and verified locally on 2026-08-22; not pushed,
 merged, released, or deployed.
 
 ## Evidence policy
@@ -106,7 +111,7 @@ local Batch 0 pause point only; no external state changed.
 Batch 1 migrated the eight remaining high-usage public publishing destinations
 off the `unverified-adapter` bridge onto dedicated V2 profiles:
 
-- `bluesky` — verified 2026-08-20 evidence date; body 300 graphemes with the
+- `bluesky` — verified 2026-08-21 evidence date; body 300 graphemes with the
   `bluesky-facets` dialect and UTF-8 byte-indexed link facets;
 - `threads` — verified 2026-08-20; body 500 UTF-16 units with `text`,
   `single`, and `carousel` variants;
@@ -162,6 +167,74 @@ production builds all exited 0, and the static integrity proofs
 (`BATCH_0_*` symbols absent; no `unverified-adapter` in the profile record)
 passed. These results are a local Batch 1 pause point only; no external
 state changed.
+
+## Batch 2 completion evidence
+
+Batch 2 migrated the six remaining chat/federated destinations off the
+`unverified-adapter` bridge onto dedicated verified profiles, all recording
+the audited evidence date 2026-08-20:
+
+- `discord` — verified; body 1,980 UTF-16 units with dialect
+  `discord-markdown`. The 1,980 maximum is an explicit application-safety
+  margin below Discord's 2,000 platform maximum and is never labeled
+  platform. Optional mixed images/videos up to a total of 10 attachments and
+  a required structured `channel` field.
+- `twitch` — verified; body 500 UTF-16 units `platform` from the official
+  Helix chat limits; plain dialect with links plain only; no media.
+- `kick` — verified; body 500 UTF-16 units `platform` from the official
+  public `chat.send` API; plain dialect with links plain only; no media.
+- `lemmy` — verified; required `title` provider setting (no universal
+  platform maximum is declared) and a Markdown body of 10,000 UTF-16 units
+  `application-safety` for per-deployment variance. The adapter declares
+  editor mode `normal` while publishing Markdown bodies; the dedicated
+  profile fixes the output dialect to `markdown` without changing the
+  adapter's declaration. One optional image used as a custom thumbnail only.
+- `wrapcast` — verified; body 320 **UTF-8 bytes** `platform`, the Farcaster
+  cast protocol maximum. This corrects the stale adapter limit of 800
+  characters. Optional one-to-two images and an optional `channelId`
+  structured field.
+- `nostr` — verified; body 100,000 UTF-16 units `application-safety`. There
+  is no protocol-wide content maximum; the adapter sentinel is kept but never
+  labeled platform. Plain text only.
+
+The three hardening items deferred from the Batch 1 final review landed in
+commit d6826030 (with commit 37774a2c narrowing the Reddit subreddit entry
+types for production builds):
+
+1. **Facet anchoring hardening (bluesky):** anchor labels are searched
+   forward from the previous facet end, nested anchors never emit duplicate
+   facets, and bare-URL ranges partially overlapping anchor-derived facets
+   are dropped because Bluesky rejects overlapping index ranges.
+2. **Runtime overlay clamping:** `PlatformCapabilityProfileV2` gained the
+   optional `runtimeMaxCeiling` field and `applyRuntimeOverlay` clamps any
+   runtime text limit to it; `x` declares 4,000 and reddit declares 300, so
+   provider mistakes cannot become exploitable limits.
+3. **Reddit multi-subreddit validation:** all configured subreddits are
+   extracted (bounded to the first 10), each queried at runtime, and the
+   strictest (minimum) title maximum applied.
+
+The matrix is now 36 unique registered identifiers = 25 dedicated profiles +
+11 bridged:
+
+- 25 dedicated: the 19 from Batch 1 plus `discord`, `twitch`, `kick`,
+  `lemmy`, `wrapcast`, and `nostr`;
+- 2 aliases unchanged: `linkedin-page` → `linkedin` and
+  `instagram-standalone` → `instagram`;
+- runtime overlays unchanged in kind: X Premium entitlement (clamped at
+  4,000), Mastodon instance configuration, TikTok creator info, and Reddit
+  subreddit requirements (clamped at 300; strictest maximum across all
+  configured subreddits);
+- 11 bridged identifiers remain with `verification: 'unverified-adapter'`:
+  `gmb`, `dribbble`, `medium`, `devto`, `hashnode`, `wordpress`, `listmonk`,
+  `moltbook`, `whop`, `skool`, and `mewe`.
+
+Local verification used Node v22.23.2 (Homebrew `node@22`). The full
+`pnpm test` gate passed 1094/1094 tests across 97 files, the frontend,
+backend, and orchestrator production builds all exited 0, and the static
+integrity proofs passed (`unverified-adapter` absent from the profile record;
+the matrix spec proves exactly 36 unique registered identifiers = 25
+dedicated + 11 bridged). These results are a local Batch 2 pause point only;
+no external state changed.
 
 ## Prioritized implementation batches for FED-347
 
