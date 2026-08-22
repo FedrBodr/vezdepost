@@ -44,12 +44,15 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
   }
 
   private extractSubreddits(settings: unknown): string[] {
+    type SubredditEntry = string | {
+      value?: string | { subreddit?: string };
+    };
     const list = (settings as any)?.subreddit;
-    const rawList: unknown[] = Array.isArray(list)
-      ? list
+    const rawList: SubredditEntry[] = Array.isArray(list)
+      ? (list as SubredditEntry[])
       : list === undefined || list === null
         ? []
-        : [list];
+        : [list as SubredditEntry];
     const names = new Set<string>();
     for (const raw of rawList) {
       const value =
