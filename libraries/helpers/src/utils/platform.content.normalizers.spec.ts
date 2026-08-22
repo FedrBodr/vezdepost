@@ -507,6 +507,59 @@ describe('normalizePlatformFields', () => {
     ]);
   });
 
+  it('emits an anchor facet after a mention conversion shortens the text', () => {
+    const result = normalizePlatformFields({
+      canonicalHtml:
+        '<p>Hi <span data-mention-id="42">Alexander Smith</span> <a href="https://example.com">link</a></p>',
+      settings: {},
+      capability: blueskyCapability(),
+      convertMentionFunction: (id) => `@a-${id}`,
+    });
+    expect(result.body.value).toBe('Hi @a-42 link');
+    expect(result.body.facets).toEqual([
+      {
+        index: { byteStart: 9, byteEnd: 13 },
+        features: [
+          {
+            '$type': 'app.bsky.richtext.facet#link',
+            uri: 'https://example.com',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('emits facets for anchors on both sides of a length-shortening mention', () => {
+    const result = normalizePlatformFields({
+      canonicalHtml:
+        '<p><a href="https://one.example">one</a> <span data-mention-id="7">Long Display Name</span> <a href="https://two.example">two</a></p>',
+      settings: {},
+      capability: blueskyCapability(),
+      convertMentionFunction: (id) => `@u-${id}`,
+    });
+    expect(result.body.value).toBe('one @u-7 two');
+    expect(result.body.facets).toEqual([
+      {
+        index: { byteStart: 0, byteEnd: 3 },
+        features: [
+          {
+            '$type': 'app.bsky.richtext.facet#link',
+            uri: 'https://one.example',
+          },
+        ],
+      },
+      {
+        index: { byteStart: 9, byteEnd: 12 },
+        features: [
+          {
+            '$type': 'app.bsky.richtext.facet#link',
+            uri: 'https://two.example',
+          },
+        ],
+      },
+    ]);
+  });
+
   it('renders discord fields through the markdown path', () => {
     expect(
       normalizePlatformFields({

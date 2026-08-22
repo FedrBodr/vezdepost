@@ -261,6 +261,7 @@ const applyRuntimeOverlay = (
   const overlay = context.runtimeOverlay!;
   const runtimeKeys = profile.runtimeKeys ?? [];
   const ceiling = profile.runtimeMaxCeiling;
+  const clampDiagnostics: CapabilityDiagnostic[] = [];
   const textLimits = overlay.textLimits
     ? Object.fromEntries(
         Object.entries(overlay.textLimits).map(([key, limit]) => [
@@ -269,7 +270,20 @@ const applyRuntimeOverlay = (
             ...limit,
             source: 'runtime' as const,
             ...(ceiling !== undefined && limit.max > ceiling
-              ? { max: ceiling }
+              ? (() => {
+                  clampDiagnostics.push({
+                    code: 'runtime-limit-clamped',
+                    severity: 'information',
+                    destination: context.identifier,
+                    variant: variant.key,
+                    field: key,
+                    measured: limit.max,
+                    limit: ceiling,
+                    unit: limit.unit,
+                    message: `Runtime ${key} limit ${limit.max} exceeds the application-safety ceiling; clamped to ${ceiling} ${limit.unit}.`,
+                  });
+                  return { max: ceiling };
+                })()
               : {}),
           },
         ])
@@ -292,7 +306,7 @@ const applyRuntimeOverlay = (
     variant: { ...variant, fields, media },
     runtimeOverlay,
     runtimeObservedAt: overlay.observedAt,
-    diagnostics: [],
+    diagnostics: clampDiagnostics,
   };
 };
 

@@ -630,7 +630,20 @@ describe('Batch 0 platform capability resolution', () => {
     expect(capability.runtimeOverlay?.textLimits?.body).toMatchObject({
       max: 4_000,
     });
-    expect(capability.diagnostics).toHaveLength(0);
+    expect(capability.diagnostics).toEqual([
+      {
+        code: 'runtime-limit-clamped',
+        severity: 'information',
+        destination: 'x',
+        variant: 'post',
+        field: 'body',
+        measured: 10_000,
+        limit: 4_000,
+        unit: 'weighted',
+        message:
+          'Runtime body limit 10000 exceeds the application-safety ceiling; clamped to 4000 weighted.',
+      },
+    ]);
   });
 
   it('keeps a legitimate premium x overlay exactly at its ceiling', () => {
@@ -820,6 +833,18 @@ describe('Batch 0 platform capability resolution', () => {
     expect(resolved.runtimeOverlay?.textLimits?.title).toMatchObject({
       max: 300,
     });
+    expect(resolved.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'runtime-limit-clamped',
+        severity: 'information',
+        destination: 'reddit',
+        variant: 'self',
+        field: 'title',
+        measured: 500,
+        limit: 300,
+        unit: 'utf16-code-units',
+      }),
+    ]);
   });
 
   it('leaves mastodon runtime overlays unclamped without a declared ceiling', () => {

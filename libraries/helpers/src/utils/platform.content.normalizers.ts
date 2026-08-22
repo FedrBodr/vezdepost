@@ -351,7 +351,8 @@ const byteLengthUpTo = (value: string, index: number): number =>
 
 const collectAnchorFacetRanges = (
   canonicalHtml: string,
-  value: string
+  value: string,
+  convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction']
 ): FacetRange[] => {
   if (!/<\/?[a-z][\s\S]*>/i.test(canonicalHtml)) {
     return [];
@@ -365,6 +366,15 @@ const collectAnchorFacetRanges = (
       return;
     }
     const tagName = node.tagName;
+    const mentionId =
+      tagName === 'span' ? getAttribute(node, 'data-mention-id') : undefined;
+    if (mentionId !== undefined && convertMentionFunction) {
+      cursor += convertMentionFunction(
+        mentionId,
+        collectNodeText(node)
+      ).length;
+      return;
+    }
     if (tagName === 'a' && !insideEmittedAnchor) {
       const href = getAttribute(node, 'href');
       const uri = href ? normalizeGeneratedLinkHref(href) : undefined;
@@ -395,9 +405,14 @@ const collectAnchorFacetRanges = (
 
 const buildLinkFacets = (
   canonicalHtml: string,
-  value: string
+  value: string,
+  convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction']
 ): readonly unknown[] | undefined => {
-  const anchorRanges = collectAnchorFacetRanges(canonicalHtml, value);
+  const anchorRanges = collectAnchorFacetRanges(
+    canonicalHtml,
+    value,
+    convertMentionFunction
+  );
   const ranges = [
     ...anchorRanges,
     ...getHttpUrlRanges(value)
@@ -465,7 +480,7 @@ const normalizeCanonicalField = (
         field.formatting.bold === 'unicode' ||
           field.formatting.underline === 'unicode'
       );
-      return { value, facets: buildLinkFacets(canonicalHtml, value) };
+      return { value, facets: buildLinkFacets(canonicalHtml, value, convertMentionFunction) };
     }
     case 'plain':
       return {
