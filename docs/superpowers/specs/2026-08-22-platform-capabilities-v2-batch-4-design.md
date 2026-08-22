@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-22
 **Linear:** FED-347
-**Status:** Approved boundaries (final batch); not started
+**Status:** Complete and verified locally on 2026-08-22 (final batch;
+migration terminal at 36 = 32 + 4)
 **Parent design:** `docs/superpowers/specs/2026-08-20-platform-capabilities-v2-design.md`
 
 ## Goal
@@ -88,3 +89,22 @@ full suite plus all three production builds at the gate on node@22.
 ## Operational boundary
 
 Local commits only. No push, merge, release, deployment, or production-state change.
+
+## Completion record
+
+Implemented across commits 47ef3fea (gmb profile), 2d8b79d7 (dribbble
+profile), and 112ba5ea (listmonk alignment, clamp helper extraction,
+dual-ceiling test, reddit `toEqual`, title-absence proofs), followed by the
+final docs commit. All profile decisions above landed as specified; the
+out-of-scope adapter defects (gmb `languageCode: 'en'` hardcode,
+"reconnect your YouTube account" error copy, dead VIDEO branch; dribbble
+refreshToken copied from Pinterest hitting pinterest endpoints; listmonk
+`maxConcurrentJob` comment saying Bluesky) are recorded in
+`docs/content/platform-capability-audit.md`.
+
+Gate on Node v22.23.2 (Homebrew `node@22`): full `pnpm test` passed
+1117/1117 tests across 97 files; frontend, backend, and orchestrator
+production builds all exited 0. The matrix spec proves exactly 36 unique
+registered identifiers = 32 dedicated + 4 bridged (`moltbook`, `whop`,
+`skool`, `mewe`), matching `socialIntegrationList`. Prettier check over the
+changed docs and `git diff --check` are clean. No external state changed.

@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-20  
 **Linear:** FED-347  
-**Status:** Batches 0–3 implemented and verified locally; do not release or push
+**Status:** Complete — Batches 0–4 implemented and verified locally; migration
+at terminal state (36 = 32 + 4); do not release or push
 
 ## Goal
 
@@ -367,6 +368,38 @@ deployment, database migration, or production-state change occurred.
 ### Batch 4: niche and partner/private APIs
 
 `gmb`, `dribbble`, `moltbook`, `whop`, `skool`, `mewe`.
+
+Batch 4 reached its verified local pause point on 2026-08-22, closing the
+migration at its terminal matrix of 36 unique registered identifiers = 32
+dedicated profiles + 4 bridged. `gmb` shipped as a verified topic-type
+profile (`standard`, `event`, `offer` selected from `settings.topicType`;
+`summary` 1,500 UTF-16 units `platform`; optional single image; required
+`eventTitle` in the `event` variant) on the official Google Business Profile
+local-post contract. `dribbble` shipped as a verified media-first `shot`
+profile (required exactly one image, required `title`, `description` 40,000
+UTF-16 units `application-safety` on the official shots API, with the
+adapter's exact pixel-dimension check deliberately kept at its existing
+earlier boundary). The five minors carried from Batch 3 landed in commit
+112ba5ea: listmonk `maxLength()` aligned to 1,000,000, clamp logic extracted
+from `applyRuntimeOverlay` into a named helper, a dual-ceiling
+(`runtimeCeilings` + `runtimeMaxCeiling`) precedence test, a Reddit overlay
+test tightened to `toEqual`, and title-absence proofs for hashnode,
+wordpress, and listmonk. The remaining four destinations stay on
+`unverified-adapter` deliberately, each with a recorded reason: `moltbook`
+(public contract is mutable and niche), `whop` (adapter limit unverified
+against server behavior), `skool` (private/partner API requires
+authenticated contract tests), and `mewe` (adapter-specific behavior, no
+public evidence). Out-of-scope adapter defects were recorded in the audit:
+gmb hardcodes `languageCode: 'en'`, reuses a "reconnect your YouTube
+account" error message, and carries a dead VIDEO branch; the dribbble
+adapter's token refresh is copied from Pinterest and hits pinterest
+endpoints; the listmonk `maxConcurrentJob` comment says Bluesky. Lifting any
+terminal bridge destination now requires new external evidence, not code.
+
+Verification used Node v22.23.2 (Homebrew `node@22`): the full `pnpm test`
+gate passed 1117/1117 tests across 97 files, and the frontend, backend, and
+orchestrator production builds all exited 0. No push, merge, release,
+deployment, database migration, or production-state change occurred.
 
 Each batch removes its destinations from the unverified bridge and adds static,
 runtime, normalization, frontend and backend regression coverage.

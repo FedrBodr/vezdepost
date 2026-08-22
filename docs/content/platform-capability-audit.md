@@ -6,9 +6,11 @@
 wave (`telegram`, `max`, `linkedin`, `tumblr`, `pinterest`, `vk`, `vk-group`).
 Batch 0 verified or made runtime-aware four of those destinations, Batch 1
 migrated eight high-usage publishers onto dedicated profiles, Batch 2
-migrated the six remaining chat/federated destinations, and Batch 3 migrated
-the five article/CMS/email destinations; the remaining 6 use the explicit V2
-`unverified-adapter` bridge.
+migrated the six remaining chat/federated destinations, Batch 3 migrated
+the five article/CMS/email destinations, and Batch 4 migrated `gmb` and
+`dribbble`; the remaining 4 (`moltbook`, `whop`, `skool`, `mewe`) deliberately
+stay on the explicit V2 `unverified-adapter` bridge as the terminal state of
+the migration (matrix 36 = 32 + 4).
 
 **Batch 0 status:** Complete and verified locally on 2026-08-21; not pushed,
 merged, released, or deployed.
@@ -21,6 +23,10 @@ merged, released, or deployed.
 
 **Batch 3 status:** Complete and verified locally on 2026-08-22; not pushed,
 merged, released, or deployed.
+
+**Batch 4 status (final batch):** Complete and verified locally on 2026-08-22;
+the migration is at its terminal state. Not pushed, merged, released, or
+deployed.
 
 ## Evidence policy
 
@@ -63,8 +69,8 @@ existing mismatches that should be fixed before a profile is marked `verified`.
 | `hashnode`             | Native Markdown in the current adapter                                                |                                                                                  Adapter limit: 10,000 | Publication, title, tags, cover and canonical/original URL are structured settings                                                           | Adapter; public API search did not yield a stable current field contract                                                                                                                                         | Batch 3 ships a verified Markdown article profile on the official gql.hashnode.com contract with `publication` required          |
 | `wordpress`            | Native HTML content                                                                   |                                       No WordPress-wide content maximum; adapter safety limit: 100,000 | Title, status, categories, tags and featured media are separate fields                                                                       | [Official REST posts API](https://developer.wordpress.org/rest-api/reference/posts/), adapter                                                                                                                    | Batch 3 ships a verified HTML post profile on the official WP REST contract; 100,000 is never presented as a WordPress limit     |
 | `listmonk`             | HTML, Markdown, plain, richtext or visual campaign source depending on `content_type` |                                  No documented universal body maximum; adapter sentinel is 100,000,000 | Subject, lists, sender, campaign type, template, schedule and alternate plain body                                                           | [Official campaign API](https://listmonk.app/docs/apis/campaigns/), adapter                                                                                                                                      | Batch 3 ships a verified HTML campaign profile on the official campaigns API; the 100,000,000 sentinel is corrected to 1,000,000 |
-| `gmb`                  | Plain summary text                                                                    |                                                                                   1,500 in the adapter | Zero or one image, no video in current Local Posts flow; event title/date, offer and CTA fields depend on topic type                         | [Official Google Business Profile post guide](https://developers.google.com/my-business/content/posts-data), adapter                                                                                             | Structured local-post profile with topic-type variants                                                                           |
-| `dribbble`             | Description accepts limited HTML/autolinks; title is separate                         |                     Adapter safety limit: 40,000; official API does not document a description maximum | Exactly one image in the current create API, 400x300 or 800x600, max 8 MB; title required; API video creation is unsupported                 | [Official shots API](https://developer.dribbble.com/v2/shots/), [official description media types](https://developer.dribbble.com/v2/media/), adapter                                                            | Media-first profile; fix the misleading generic text-first UX                                                                    |
+| `gmb`                  | Plain summary text                                                                    |                                                                                   1,500 in the adapter | Zero or one image, no video in current Local Posts flow; event title/date, offer and CTA fields depend on topic type                         | [Official Google Business Profile post guide](https://developers.google.com/my-business/content/posts-data), adapter                                                                                             | Shipped as a verified topic-type profile in Batch 4 (`standard`, `event`, `offer`)                                               |
+| `dribbble`             | Description accepts limited HTML/autolinks; title is separate                         |                     Adapter safety limit: 40,000; official API does not document a description maximum | Exactly one image in the current create API, 400x300 or 800x600, max 8 MB; title required; API video creation is unsupported                 | [Official shots API](https://developer.dribbble.com/v2/shots/), [official description media types](https://developer.dribbble.com/v2/media/), adapter                                                            | Shipped as a verified media-first shot profile in Batch 4                                                                        |
 | `moltbook`             | Plain content in the current adapter                                                  |                                                                                     300 in the adapter | Submolt and title required; text or link post; current adapter has no media post path                                                        | [Moltbook API instructions](https://www.moltbook.com/post/2eddec41-96dd-4d71-9c28-59330384faef), adapter                                                                                                         | Niche structured profile; keep unverified because the public contract is mutable                                                 |
 | `whop`                 | Native Markdown message content                                                       |                    Adapter limit: 50,000; no maximum is exposed in the current public method reference | Channel required; attachments, polls, replies and link previews supported by the API                                                         | [Official create-message API](https://docs.whop.com/api-reference/messages/create-message), adapter                                                                                                              | Chat/community profile; retain the adapter limit as unverified until server behavior is tested                                   |
 | `skool`                | Plain text in the current adapter                                                     |                                                                                   5,000 in the adapter | Community/category identifiers are adapter-specific; no public media contract is established                                                 | Adapter only                                                                                                                                                                                                     | Defer until authenticated contract tests can capture the private/partner API behavior                                            |
@@ -312,6 +318,93 @@ the matrix spec proves exactly 36 unique registered identifiers = 30
 dedicated + 6 bridged, matching `socialIntegrationList`). These results are a
 local Batch 3 pause point only; no external state changed.
 
+## Batch 4 completion evidence (final batch)
+
+Batch 4 migrated the last two destinations with usable public contracts off
+the `unverified-adapter` bridge onto dedicated verified profiles, both
+recording the audited evidence date 2026-08-20, and declared the terminal
+bridge state for the remaining four:
+
+- `gmb` — verified; plain `summary` body of 1,500 UTF-16 units `platform`
+  from the official Google Business Profile local-post guide; plain dialect
+  with plain Unicode-fallback formatting. Optional single image (`1..1`);
+  video is rejected by the adapter's `checkValidity` and is not modeled.
+  Three variants selected deterministically from `settings.topicType`
+  (never from text): `standard` (default) with optional
+  `callToActionType`/`callToActionUrl`; `event` adding a **required**
+  `eventTitle` (the adapter rejects EVENT without it) plus optional
+  `eventStartDate`, `eventEndDate`, `eventStartTime`, `eventEndTime`;
+  `offer` adding optional `offerCouponCode`, `offerRedeemUrl`, `offerTerms`.
+- `dribbble` — verified; media-first single-variant `shot` profile on the
+  official Dribbble shots API: required exactly one image (`1..1`) because
+  the shot IS the post, plus a **required** structured `title`
+  (DTO `MinLength(1)`). Body (`description`) of 40,000 UTF-16 units
+  `application-safety` — no documented API maximum exists, so the adapter
+  sentinel is kept but never labeled platform. Plain dialect, links `plain`.
+  The adapter-enforced exact pixel dimensions (400x300 / 800x600) stay in
+  `checkValidity`: the V2 resolution context carries only media types, so a
+  dimension rule would be undeclarable in the shared analyzer, and validation
+  already lives at that earlier boundary. The dead `team` setting in the
+  adapter is not modeled.
+
+The four terminal bridge destinations stay on
+`verification: 'unverified-adapter'` deliberately, each with its own reason:
+
+- `moltbook` — public contract exists but is mutable and niche;
+- `whop` — the adapter limit is unverified against actual server behavior;
+- `skool` — private/partner API requiring authenticated contract tests before
+  any profile can claim verification;
+- `mewe` — adapter-specific behavior with no public evidence at all.
+
+The five minors carried from Batch 3 landed in commit 112ba5ea:
+
+1. `ListmonkProvider.maxLength()` returns `1_000_000`, aligning the advertised
+   limit (`GET /integration-settings/:id`) with the enforced capability
+   ceiling (the 100,000,000 sentinel was corrected in Batch 3).
+2. Clamp logic in `applyRuntimeOverlay` was extracted from the side-effecting
+   IIFE into a named helper.
+3. A synthetic dual-ceiling test proves a profile declaring BOTH
+   `runtimeCeilings` and `runtimeMaxCeiling` resolves per-key precedence with
+   global fallback for unlisted keys.
+4. The Reddit overlay test was tightened to a full-object `toEqual`.
+5. Title-field absence is asserted for hashnode, wordpress, and listmonk
+   (matching the existing medium/devto proofs).
+
+Adapter defects discovered during Batch 4 were recorded as explicitly OUT of
+scope (they are provider bugs, not capability-contract work):
+
+- `gmb.provider.ts` hardcodes `languageCode: 'en'`, shows a copy-pasted
+  "reconnect your YouTube account" error message for Google Business Profile,
+  and contains a dead VIDEO branch;
+- the dribbble adapter copies Pinterest's token-refresh flow verbatim, so its
+  `refreshToken` path hits pinterest endpoints instead of Dribbble's;
+- the listmonk provider's `maxConcurrentJob` comment says Bluesky.
+
+**Terminal matrix:** 36 unique registered identifiers = 32 dedicated profiles
+
+- 4 bridged (proven by `platform.capability.matrix.spec.ts` against
+  `socialIntegrationList`):
+
+* 32 dedicated: the 30 from Batch 3 plus `gmb` and `dribbble`;
+* 2 aliases unchanged: `linkedin-page` → `linkedin` and
+  `instagram-standalone` → `instagram`;
+* runtime overlays unchanged in kind: X Premium entitlement (clamped at
+  4,000), Mastodon instance configuration, TikTok creator info, and Reddit
+  subreddit requirements (clamped per key at `title: 300`; strictest maximum
+  across all configured subreddits);
+* 4 bridged identifiers remain terminal with
+  `verification: 'unverified-adapter'`: `moltbook`, `whop`, `skool`, and
+  `mewe`. No further batches are planned; lifting any of these requires new
+  external evidence, not code.
+
+Local verification used Node v22.23.2 (Homebrew `node@22`). The full
+`pnpm test` gate passed 1117/1117 tests across 97 files, the frontend,
+backend, and orchestrator production builds all exited 0, and the static
+integrity proofs passed (`unverified-adapter` absent from the profile record;
+the matrix spec proves exactly 36 unique registered identifiers = 32
+dedicated + 4 bridged, matching `socialIntegrationList`). These results are
+the migration's terminal local pause point; no external state changed.
+
 ## Prioritized implementation batches for FED-347
 
 ### Batch 0 — correctness guardrails
@@ -346,13 +439,14 @@ plaintext) and runtime/server capability support.
 These should use an article/campaign contract with title, body, metadata and
 publish state instead of pretending to be short social posts.
 
-### Batch 4 — niche and partner/private APIs
+### Batch 4 — niche and partner/private APIs (complete)
 
 `gmb`, `dribbble`, `moltbook`, `whop`, `skool`, `mewe`.
 
-Google Business Profile and Dribbble have usable public contracts. The other
-four should stay unverified until authenticated contract tests or stable partner
-documentation can prove their current behavior.
+Complete as of 2026-08-22. Google Business Profile and Dribbble shipped as
+verified profiles; the other four remain on the terminal unverified bridge
+until authenticated contract tests, stable partner documentation, or other
+public evidence can prove their current behavior.
 
 ## Required model changes discovered by the audit
 
