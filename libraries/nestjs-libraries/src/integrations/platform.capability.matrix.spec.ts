@@ -68,13 +68,11 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(27);
-    expect(profiled.size).toBe(27);
+    expect(PROFILE_IDENTIFIERS.length).toBe(29);
+    expect(profiled.size).toBe(29);
     expect(bridged.map(({ identifier }) => identifier)).toEqual([
       'gmb',
       'dribbble',
-      'hashnode',
-      'wordpress',
       'listmonk',
       'moltbook',
       'whop',

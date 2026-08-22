@@ -895,6 +895,50 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       },
     },
   },
+  hashnode: {
+    identifier: 'hashnode',
+    displayName: 'Hashnode',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'article',
+    variants: {
+      article: {
+        key: 'article',
+        fields: [articleBody(10_000)],
+        structuredFields: [
+          { key: 'title', label: 'Title', required: true },
+          { key: 'publication', label: 'Publication', required: true },
+          { key: 'tags', label: 'Tags', required: false },
+          { key: 'subtitle', label: 'Subtitle', required: false },
+          { key: 'canonical', label: 'Canonical', required: false },
+        ],
+        media: { type: 'optional', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  wordpress: {
+    identifier: 'wordpress',
+    displayName: 'WordPress',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: {
+        key: 'post',
+        fields: [htmlArticleBody(100_000)],
+        structuredFields: [
+          { key: 'title', label: 'Title', required: true },
+          { key: 'type', label: 'Type', required: true },
+          { key: 'status', label: 'Status', required: false },
+          { key: 'categories', label: 'Categories', required: false },
+          { key: 'tags', label: 'Tags', required: false },
+        ],
+        media: { type: 'optional', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -958,6 +1002,8 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'nostr',
   'medium',
   'devto',
+  'hashnode',
+  'wordpress',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

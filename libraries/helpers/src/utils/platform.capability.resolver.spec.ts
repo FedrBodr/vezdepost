@@ -8,6 +8,7 @@ import {
   resolvePlatformCapabilityV2,
 } from './platform.capability.resolver';
 import { analyzePlatformContentV2 } from './platform.content.analysis';
+import { normalizePlatformFields } from './platform.content.normalizers';
 import type {
   CapabilityResolutionContext,
   CapabilityRuntimeOverlay,
@@ -59,6 +60,8 @@ describe('Batch 0 platform capability resolution', () => {
       'nostr',
       'medium',
       'devto',
+      'hashnode',
+      'wordpress',
     ]);
   });
 
@@ -1049,6 +1052,65 @@ describe('Batch 0 platform capability resolution', () => {
       { key: 'organization', label: 'Organization', required: false },
       { key: 'canonical', label: 'Canonical', required: false },
     ]);
+  });
+
+  it('resolves hashnode as a verified markdown article profile requiring a publication', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('hashnode'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'hashnode',
+      variant: 'article',
+    });
+    expect(capability.fields[0].dialect).toBe('markdown');
+    expect(capability.fields[0].limit).toEqual({
+      max: 10_000,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(capability.media).toEqual({
+      type: 'optional',
+      images: { min: 1, max: 1 },
+    });
+    expect(capability.structuredFields).toEqual([
+      { key: 'title', label: 'Title', required: true },
+      { key: 'publication', label: 'Publication', required: true },
+      { key: 'tags', label: 'Tags', required: false },
+      { key: 'subtitle', label: 'Subtitle', required: false },
+      { key: 'canonical', label: 'Canonical', required: false },
+    ]);
+  });
+
+  it('resolves wordpress as a verified HTML post profile and keeps markup through normalization', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('wordpress'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'wordpress',
+      variant: 'post',
+    });
+    expect(capability.fields[0].dialect).toBe('html');
+    expect(capability.fields[0].limit).toEqual({
+      max: 100_000,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(capability.media).toEqual({
+      type: 'optional',
+      images: { min: 1, max: 1 },
+    });
+    expect(capability.structuredFields).toEqual([
+      { key: 'title', label: 'Title', required: true },
+      { key: 'type', label: 'Type', required: true },
+      { key: 'status', label: 'Status', required: false },
+      { key: 'categories', label: 'Categories', required: false },
+      { key: 'tags', label: 'Tags', required: false },
+    ]);
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>Hello <strong>world</strong></p>',
+        settings: {},
+        capability,
+      }).body.value
+    ).toBe('<p>Hello <strong>world</strong></p>');
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {
