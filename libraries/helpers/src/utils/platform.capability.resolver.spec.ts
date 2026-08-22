@@ -4,6 +4,7 @@ import {
   PROFILE_IDENTIFIERS,
 } from './platform.capability.profiles';
 import {
+  applyRuntimeOverlay,
   createUnverifiedAdapterProfile,
   resolvePlatformCapabilityV2,
 } from './platform.capability.resolver';
@@ -12,6 +13,7 @@ import { normalizePlatformFields } from './platform.content.normalizers';
 import type {
   CapabilityResolutionContext,
   CapabilityRuntimeOverlay,
+  PlatformCapabilityProfileV2,
 } from './platform.capability.types';
 
 const ctx = (
@@ -1070,6 +1072,9 @@ describe('Batch 0 platform capability resolution', () => {
       unit: 'utf16-code-units',
       source: 'application-safety',
     });
+    expect(capability.fields.every((field) => field.key !== 'title')).toBe(
+      true
+    );
     expect(capability.media).toEqual({
       type: 'optional',
       images: { min: 1, max: 1 },
@@ -1096,6 +1101,9 @@ describe('Batch 0 platform capability resolution', () => {
       unit: 'utf16-code-units',
       source: 'application-safety',
     });
+    expect(capability.fields.every((field) => field.key !== 'title')).toBe(
+      true
+    );
     expect(capability.media).toEqual({
       type: 'optional',
       images: { min: 1, max: 1 },
@@ -1129,6 +1137,9 @@ describe('Batch 0 platform capability resolution', () => {
       unit: 'utf16-code-units',
       source: 'application-safety',
     });
+    expect(capability.fields.every((field) => field.key !== 'title')).toBe(
+      true
+    );
     expect(capability.media).toEqual({ type: 'none' });
     expect(capability.structuredFields).toEqual([
       { key: 'subject', label: 'Subject', required: true },
@@ -1151,8 +1162,122 @@ describe('Batch 0 platform capability resolution', () => {
     );
     expect(
       resolved.fields.find((field) => field.key === 'body')?.limit
-    ).toMatchObject({ max: 40_000, source: 'runtime' });
+    ).toEqual({ max: 40_000, unit: 'graphemes', source: 'runtime' });
     expect(resolved.diagnostics).toEqual([]);
+  });
+
+  it('clamps a synthetic dual-ceiling overlay per key with the global ceiling as fallback', () => {
+    const profile: PlatformCapabilityProfileV2 = {
+      identifier: 'synthetic',
+      displayName: 'Synthetic',
+      verification: 'runtime',
+      evidenceDate: '2026-08-20',
+      defaultVariant: 'post',
+      runtimeKeys: ['text-limit'],
+      runtimeCeilings: { title: 100 },
+      runtimeMaxCeiling: 500,
+      variants: {
+        post: {
+          key: 'post',
+          fields: [
+            {
+              key: 'title',
+              label: 'Title',
+              required: true,
+              source: 'provider-setting',
+              dialect: 'plain',
+              limit: { max: 300, unit: 'utf16-code-units', source: 'platform' },
+              formatting: {
+                bold: 'unicode',
+                underline: 'unicode',
+                links: 'plain',
+                lists: 'plain',
+                headings: 'plain',
+              },
+            },
+            {
+              key: 'body',
+              label: 'Body',
+              required: false,
+              source: 'canonical-editor',
+              dialect: 'plain',
+              limit: { max: 2_000, unit: 'utf16-code-units', source: 'platform' },
+              formatting: {
+                bold: 'unicode',
+                underline: 'unicode',
+                links: 'plain',
+                lists: 'plain',
+                headings: 'plain',
+              },
+            },
+          ],
+          structuredFields: [],
+          media: { type: 'none' },
+          delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+        },
+      },
+    };
+    const context: CapabilityResolutionContext = {
+      identifier: 'synthetic',
+      settings: {},
+      media: [],
+      runtimeOverlay: {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          title: { max: 400, unit: 'utf16-code-units', source: 'runtime' },
+          body: { max: 900, unit: 'utf16-code-units', source: 'runtime' },
+        },
+      },
+    };
+
+    const result = applyRuntimeOverlay(profile.variants.post, profile, context);
+
+    expect(result.runtimeOverlay?.textLimits?.title).toMatchObject({
+      max: 100,
+    });
+    expect(result.runtimeOverlay?.textLimits?.body).toMatchObject({
+      max: 500,
+    });
+    expect(
+      result.variant.fields.find((field) => field.key === 'title')?.limit
+    ).toEqual({
+      max: 100,
+      unit: 'utf16-code-units',
+      source: 'runtime',
+    });
+    expect(
+      result.variant.fields.find((field) => field.key === 'body')?.limit
+    ).toEqual({
+      max: 500,
+      unit: 'utf16-code-units',
+      source: 'runtime',
+    });
+    expect(result.diagnostics).toEqual([
+      {
+        code: 'runtime-limit-clamped',
+        severity: 'information',
+        destination: 'synthetic',
+        variant: 'post',
+        field: 'title',
+        measured: 400,
+        limit: 100,
+        unit: 'utf16-code-units',
+        message:
+          'Runtime title limit 400 exceeds the application-safety ceiling; clamped to 100 utf16-code-units.',
+      },
+      {
+        code: 'runtime-limit-clamped',
+        severity: 'information',
+        destination: 'synthetic',
+        variant: 'post',
+        field: 'body',
+        measured: 900,
+        limit: 500,
+        unit: 'utf16-code-units',
+        message:
+          'Runtime body limit 900 exceeds the application-safety ceiling; clamped to 500 utf16-code-units.',
+      },
+    ]);
   });
 
   it.each([

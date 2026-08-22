@@ -2,6 +2,7 @@ import { PLATFORM_CAPABILITY_PROFILES } from './platform.capability.profiles';
 import type {
   CapabilityDiagnostic,
   CapabilityResolutionContext,
+  ContentLimit,
   PlatformCapabilityProfileV2,
   PostVariantCapability,
   ResolvedPlatformCapabilityV2,
@@ -239,7 +240,32 @@ const isRuntimeOverlayFresh = (
   );
 };
 
-const applyRuntimeOverlay = (
+export const clampRuntimeTextLimit = (
+  fieldKey: string,
+  limit: ContentLimit,
+  ceiling: number | undefined,
+  destination: string,
+  variantKey: string,
+  onClamp: (diagnostic: CapabilityDiagnostic) => void
+): { max?: number } => {
+  if (ceiling === undefined || limit.max <= ceiling) {
+    return {};
+  }
+  onClamp({
+    code: 'runtime-limit-clamped',
+    severity: 'information',
+    destination,
+    variant: variantKey,
+    field: fieldKey,
+    measured: limit.max,
+    limit: ceiling,
+    unit: limit.unit,
+    message: `Runtime ${fieldKey} limit ${limit.max} exceeds the application-safety ceiling; clamped to ${ceiling} ${limit.unit}.`,
+  });
+  return { max: ceiling };
+};
+
+export const applyRuntimeOverlay = (
   variant: PostVariantCapability,
   profile: PlatformCapabilityProfileV2,
   context: CapabilityResolutionContext
@@ -280,24 +306,16 @@ const applyRuntimeOverlay = (
           {
             ...limit,
             source: 'runtime' as const,
-            ...((): { max: number } | {} => {
-              const ceiling = keyCeilings?.[fieldKey] ?? globalCeiling;
-              if (ceiling === undefined || limit.max <= ceiling) {
-                return {};
+            ...clampRuntimeTextLimit(
+              fieldKey,
+              limit,
+              keyCeilings?.[fieldKey] ?? globalCeiling,
+              context.identifier,
+              variant.key,
+              (diagnostic) => {
+                clampDiagnostics.push(diagnostic);
               }
-              clampDiagnostics.push({
-                code: 'runtime-limit-clamped',
-                severity: 'information',
-                destination: context.identifier,
-                variant: variant.key,
-                field: fieldKey,
-                measured: limit.max,
-                limit: ceiling,
-                unit: limit.unit,
-                message: `Runtime ${fieldKey} limit ${limit.max} exceeds the application-safety ceiling; clamped to ${ceiling} ${limit.unit}.`,
-              });
-              return { max: ceiling };
-            })(),
+            ),
           },
         ])
       )
