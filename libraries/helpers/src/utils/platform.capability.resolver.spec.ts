@@ -64,6 +64,7 @@ describe('Batch 0 platform capability resolution', () => {
       'wordpress',
       'listmonk',
       'gmb',
+      'dribbble',
     ]);
   });
 
@@ -1236,6 +1237,40 @@ describe('Batch 0 platform capability resolution', () => {
         images: { min: 1, max: 1 },
       });
     }
+  });
+
+  it('resolves dribbble as a verified single-image shot profile', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('dribbble', [{ type: 'image' }])
+    );
+    expect(resolved).toMatchObject({
+      identifier: 'dribbble',
+      profileIdentifier: 'dribbble',
+      verification: 'verified',
+      variant: 'shot',
+    });
+    expect(resolved.fields).toHaveLength(1);
+    expect(resolved.fields[0].key).toBe('body');
+    expect(resolved.fields[0].dialect).toBe('plain');
+    expect(resolved.fields[0].limit).toEqual({
+      max: 40_000,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(resolved.fields[0].formatting).toEqual({
+      bold: 'unsupported',
+      underline: 'unsupported',
+      links: 'plain',
+      lists: 'unsupported',
+      headings: 'unsupported',
+    });
+    expect(resolved.media).toEqual({
+      type: 'required',
+      images: { min: 1, max: 1 },
+    });
+    expect(resolved.structuredFields).toEqual([
+      { key: 'title', label: 'Title', required: true },
+    ]);
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {

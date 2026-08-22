@@ -320,6 +320,14 @@ const gmbCallToActionFields: PostVariantCapability['structuredFields'] = [
   { key: 'callToActionUrl', label: 'Call to action URL', required: false },
 ];
 
+const dribbbleFormatting: TextFieldCapability['formatting'] = {
+  bold: 'unsupported',
+  underline: 'unsupported',
+  links: 'plain',
+  lists: 'unsupported',
+  headings: 'unsupported',
+};
+
 const evidenceDate = '2026-08-20';
 
 const profiles: Record<string, PlatformCapabilityProfileV2> = {
@@ -1028,6 +1036,31 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       ]),
     },
   },
+  dribbble: {
+    identifier: 'dribbble',
+    displayName: 'Dribbble',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'shot',
+    variants: {
+      shot: {
+        key: 'shot',
+        fields: [
+          {
+            ...body(40_000, 'plain', dribbbleFormatting),
+            limit: {
+              max: 40_000,
+              unit: 'utf16-code-units',
+              source: 'application-safety',
+            },
+          },
+        ],
+        structuredFields: [{ key: 'title', label: 'Title', required: true }],
+        media: { type: 'required', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
 };
 
 const deepFreeze = <T>(value: T): T => {
@@ -1072,6 +1105,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'wordpress',
   'listmonk',
   'gmb',
+  'dribbble',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

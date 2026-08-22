@@ -586,4 +586,66 @@ describe('analyzePlatformContentV2', () => {
       },
     ]);
   });
+
+  it('flags a dribbble shot without media as a required-media violation', () => {
+    const result = analyze({
+      canonicalHtml: '<p>Shot</p>',
+      resolved: capability('dribbble'),
+    });
+
+    expect(result.diagnostics).toEqual([
+      {
+        code: 'required-field-missing',
+        severity: 'error',
+        destination: 'dribbble',
+        variant: 'shot',
+        field: 'title',
+        message: 'Title is required.',
+      },
+      {
+        code: 'unsupported-media',
+        severity: 'error',
+        destination: 'dribbble',
+        variant: 'shot',
+        message:
+          'Attached media does not match the shot variant requirements.',
+      },
+    ]);
+    expect(result.blocking).toBe(true);
+  });
+
+  it('accepts a dribbble shot with exactly one image and a title', () => {
+    const media = [{ type: 'image' as const }];
+    const result = analyze({
+      canonicalHtml: '<p>Shot</p>',
+      settings: { title: 'My shot' },
+      media,
+      resolved: capability('dribbble', media),
+    });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.blocking).toBe(false);
+  });
+
+  it('rejects a dribbble shot with a second media block', () => {
+    const media = [{ type: 'image' as const }, { type: 'image' as const }];
+    const result = analyze({
+      canonicalHtml: '<p>Shot</p>',
+      settings: { title: 'My shot' },
+      media,
+      resolved: capability('dribbble', media),
+    });
+
+    expect(result.diagnostics).toEqual([
+      {
+        code: 'unsupported-media',
+        severity: 'error',
+        destination: 'dribbble',
+        variant: 'shot',
+        message:
+          'Attached media does not match the shot variant requirements.',
+      },
+    ]);
+    expect(result.blocking).toBe(true);
+  });
 });
