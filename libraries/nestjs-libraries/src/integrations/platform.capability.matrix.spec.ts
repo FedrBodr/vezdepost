@@ -68,10 +68,9 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(30);
-    expect(profiled.size).toBe(30);
+    expect(PROFILE_IDENTIFIERS.length).toBe(31);
+    expect(profiled.size).toBe(31);
     expect(bridged.map(({ identifier }) => identifier)).toEqual([
-      'gmb',
       'dribbble',
       'moltbook',
       'whop',

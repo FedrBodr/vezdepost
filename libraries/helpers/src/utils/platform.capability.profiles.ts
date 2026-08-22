@@ -299,6 +299,27 @@ const htmlArticleBody = (max: number): TextFieldCapability => ({
   },
 });
 
+const gmbBody = (): TextFieldCapability => ({
+  ...body(1_500, 'plain', plainFormatting),
+  limit: { max: 1_500, unit: 'utf16-code-units', source: 'platform' },
+});
+
+const gmbVariant = (
+  key: string,
+  structuredFields: PostVariantCapability['structuredFields']
+): PostVariantCapability => ({
+  key,
+  fields: [gmbBody()],
+  structuredFields,
+  media: { type: 'optional', images: { min: 1, max: 1 } },
+  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+});
+
+const gmbCallToActionFields: PostVariantCapability['structuredFields'] = [
+  { key: 'callToActionType', label: 'Call to action type', required: false },
+  { key: 'callToActionUrl', label: 'Call to action URL', required: false },
+];
+
 const evidenceDate = '2026-08-20';
 
 const profiles: Record<string, PlatformCapabilityProfileV2> = {
@@ -983,6 +1004,30 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       }),
     },
   },
+  gmb: {
+    identifier: 'gmb',
+    displayName: 'Google My Business',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'standard',
+    variants: {
+      standard: gmbVariant('standard', gmbCallToActionFields),
+      event: gmbVariant('event', [
+        ...gmbCallToActionFields,
+        { key: 'eventTitle', label: 'Event title', required: true },
+        { key: 'eventStartDate', label: 'Event start date', required: false },
+        { key: 'eventEndDate', label: 'Event end date', required: false },
+        { key: 'eventStartTime', label: 'Event start time', required: false },
+        { key: 'eventEndTime', label: 'Event end time', required: false },
+      ]),
+      offer: gmbVariant('offer', [
+        ...gmbCallToActionFields,
+        { key: 'offerCouponCode', label: 'Offer coupon code', required: false },
+        { key: 'offerRedeemUrl', label: 'Offer redeem URL', required: false },
+        { key: 'offerTerms', label: 'Offer terms', required: false },
+      ]),
+    },
+  },
 };
 
 const deepFreeze = <T>(value: T): T => {
@@ -1026,6 +1071,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'hashnode',
   'wordpress',
   'listmonk',
+  'gmb',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

@@ -184,6 +184,16 @@ const selectVariant = (
     return { key: 'feed', diagnostics: [] };
   }
 
+  if (profile.identifier === 'gmb') {
+    if (context.settings.topicType === 'EVENT') {
+      return { key: 'event', diagnostics: [] };
+    }
+    if (context.settings.topicType === 'OFFER') {
+      return { key: 'offer', diagnostics: [] };
+    }
+    return { key: 'standard', diagnostics: [] };
+  }
+
   if (profile.identifier !== 'tiktok') {
     return { key: profile.defaultVariant, diagnostics: [] };
   }

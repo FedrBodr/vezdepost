@@ -63,6 +63,7 @@ describe('Batch 0 platform capability resolution', () => {
       'hashnode',
       'wordpress',
       'listmonk',
+      'gmb',
     ]);
   });
 
@@ -1151,6 +1152,90 @@ describe('Batch 0 platform capability resolution', () => {
       resolved.fields.find((field) => field.key === 'body')?.limit
     ).toMatchObject({ max: 40_000, source: 'runtime' });
     expect(resolved.diagnostics).toEqual([]);
+  });
+
+  it.each([
+    ['no topic type', {}, 'standard'],
+    ['STANDARD topic type', { topicType: 'STANDARD' }, 'standard'],
+    ['EVENT topic type', { topicType: 'EVENT' }, 'event'],
+    ['OFFER topic type', { topicType: 'OFFER' }, 'offer'],
+  ] as const)('selects the gmb variant for %s', (_name, settings, variant) => {
+    expect(resolvePlatformCapabilityV2(ctx('gmb', [], { settings }))).toMatchObject(
+      {
+        identifier: 'gmb',
+        profileIdentifier: 'gmb',
+        verification: 'verified',
+        variant,
+      }
+    );
+  });
+
+  it('models gmb standard posts with optional call-to-action settings', () => {
+    const resolved = resolvePlatformCapabilityV2(ctx('gmb'));
+    expect(resolved.structuredFields).toEqual([
+      { key: 'callToActionType', label: 'Call to action type', required: false },
+      { key: 'callToActionUrl', label: 'Call to action URL', required: false },
+    ]);
+  });
+
+  it('models gmb event posts with a required event title and optional schedule settings', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('gmb', [], { settings: { topicType: 'EVENT' } })
+    );
+    expect(resolved.structuredFields).toEqual([
+      { key: 'callToActionType', label: 'Call to action type', required: false },
+      { key: 'callToActionUrl', label: 'Call to action URL', required: false },
+      { key: 'eventTitle', label: 'Event title', required: true },
+      { key: 'eventStartDate', label: 'Event start date', required: false },
+      { key: 'eventEndDate', label: 'Event end date', required: false },
+      { key: 'eventStartTime', label: 'Event start time', required: false },
+      { key: 'eventEndTime', label: 'Event end time', required: false },
+    ]);
+  });
+
+  it('models gmb offer posts with optional coupon settings', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('gmb', [], { settings: { topicType: 'OFFER' } })
+    );
+    expect(resolved.structuredFields).toEqual([
+      { key: 'callToActionType', label: 'Call to action type', required: false },
+      { key: 'callToActionUrl', label: 'Call to action URL', required: false },
+      { key: 'offerCouponCode', label: 'Offer coupon code', required: false },
+      { key: 'offerRedeemUrl', label: 'Offer redeem URL', required: false },
+      { key: 'offerTerms', label: 'Offer terms', required: false },
+    ]);
+  });
+
+  it('shares a 1500-unit plain unicode-fallback body and single optional image across gmb variants', () => {
+    for (const settings of [
+      {},
+      { topicType: 'STANDARD' },
+      { topicType: 'EVENT' },
+      { topicType: 'OFFER' },
+    ]) {
+      const resolved = resolvePlatformCapabilityV2(
+        ctx('gmb', [], { settings })
+      );
+      expect(resolved.fields).toHaveLength(1);
+      expect(resolved.fields[0].key).toBe('body');
+      expect(resolved.fields[0].dialect).toBe('plain');
+      expect(resolved.fields[0].limit).toEqual({
+        max: 1_500,
+        unit: 'utf16-code-units',
+        source: 'platform',
+      });
+      expect(resolved.fields[0].formatting).toEqual({
+        bold: 'unicode',
+        underline: 'unicode',
+        links: 'plain',
+        lists: 'plain',
+        headings: 'plain',
+      });
+      expect(resolved.media).toEqual({
+        type: 'optional',
+        images: { min: 1, max: 1 },
+      });
+    }
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {
