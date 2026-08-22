@@ -285,6 +285,30 @@ release, deployment, database migration, or production-state change occurred.
 `x`, `facebook`, `instagram`, `instagram-standalone`, `threads`, `youtube`,
 `tiktok`, `bluesky`, `reddit`, `linkedin-page`.
 
+Batch 1 reached its verified local pause point on 2026-08-22. Eight
+destinations moved off the unverified bridge onto dedicated profiles
+(`bluesky`, `threads`, `youtube`, `x`, `reddit`, `instagram`,
+`instagram-standalone`, `facebook`; all recording the audited evidence date
+2026-08-20), giving the exact matrix of 36 unique registered identifiers =
+19 dedicated profiles + 17 bridged. The two aliases are `linkedin-page`
+(Batch 0) and `instagram-standalone` (Batch 1); both preserve the requested
+identifier. Runtime overlays are live for the X Premium entitlement and
+Reddit subreddit requirements via
+`fetchCapabilityRuntime(integration, settings)`. Two deliberate behavior
+changes shipped: `STRIP_LINKS_FROM_X_POSTS` was removed entirely (X
+preserves raw URLs, counted as 23 weighted units each), and publication
+media authorization now runs before capability analysis so required-field
+diagnostics can never mask an SSRF rejection. The remaining 17 bridged
+identifiers are `gmb`, `dribbble`, `discord`, `kick`, `twitch`, `lemmy`,
+`wrapcast`, `nostr`, `medium`, `devto`, `hashnode`, `wordpress`,
+`listmonk`, `moltbook`, `whop`, `skool`, and `mewe`.
+
+Verification used Node v22.23.2 (`node@22`, within the declared engine
+range): the full `pnpm test` gate passed 1072/1072 tests across 97 files,
+and the frontend, backend, and orchestrator production builds all exited 0.
+No push, merge, release, deployment, database migration, or
+production-state change occurred.
+
 ### Batch 2: chat and federated destinations
 
 `slack`, `discord`, `twitch`, `kick`, `mastodon`, `lemmy`, `wrapcast`, `nostr`.

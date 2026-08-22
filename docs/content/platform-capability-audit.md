@@ -10,6 +10,9 @@ the remaining 25 use the explicit V2 `unverified-adapter` bridge.
 **Batch 0 status:** Complete and verified locally on 2026-08-21; not pushed,
 merged, released, or deployed.
 
+**Batch 1 status:** Complete and verified locally on 2026-08-22; not pushed,
+merged, released, or deployed.
+
 ## Evidence policy
 
 This audit separates three kinds of evidence:
@@ -97,6 +100,68 @@ Local verification used Node 22.20.0. The focused Task 7 gate passed 195/195
 tests, `pnpm test` passed 976/976 tests, and the frontend, backend, and
 orchestrator production builds all exited successfully. These results are a
 local Batch 0 pause point only; no external state changed.
+
+## Batch 1 completion evidence
+
+Batch 1 migrated the eight remaining high-usage public publishing destinations
+off the `unverified-adapter` bridge onto dedicated V2 profiles:
+
+- `bluesky` — verified 2026-08-20 evidence date; body 300 graphemes with the
+  `bluesky-facets` dialect and UTF-8 byte-indexed link facets;
+- `threads` — verified 2026-08-20; body 500 UTF-16 units with `text`,
+  `single`, and `carousel` variants;
+- `youtube` — verified 2026-08-20; required `title` (100 UTF-16 units) and
+  5,000-byte `description`, required single video;
+- `x` — runtime 2026-08-20; weighted body with a 280 platform fallback and a
+  4,000 runtime overlay from the stored Premium entitlement;
+- `reddit` — runtime 2026-08-20; structured variants (`self`, `link`,
+  `image`, `video`) with subreddit `post_requirements` runtime overlay;
+- `instagram` — verified 2026-08-20; caption 2,200 UTF-16 units with `feed`,
+  `story`, `reel`, and `trial-reel` variants;
+- `instagram-standalone` — verified alias of `instagram` preserving the
+  requested identifier;
+- `facebook` — verified 2026-08-20; `feed`, `story` (no text), and `video`
+  variants.
+
+The matrix is now 36 unique registered identifiers = 19 with dedicated
+profiles + 17 on the bridge:
+
+- 19 dedicated: `telegram`, `max`, `linkedin`, `linkedin-page`, `tumblr`,
+  `pinterest`, `vk`, `vk-group`, `slack`, `tiktok`, `mastodon`, `bluesky`,
+  `threads`, `youtube`, `x`, `reddit`, `instagram`, `instagram-standalone`,
+  and `facebook`;
+- 2 aliases: `linkedin-page` (Batch 0, resolves the `linkedin` profile) and
+  `instagram-standalone` (Batch 1, resolves the `instagram` profile), both
+  preserving the requested identifier;
+- runtime overlays: X Premium entitlement (no staleness window; auth-time
+  data) and Reddit subreddit `post_requirements` (title maximum; failures
+  resolve the static fallback with a warning). Client data can never raise a
+  limit or flip verification;
+- 17 bridged identifiers remain with `verification: 'unverified-adapter'`:
+  `gmb`, `dribbble`, `discord`, `kick`, `twitch`, `lemmy`, `wrapcast`,
+  `nostr`, `medium`, `devto`, `hashnode`, `wordpress`, `listmonk`,
+  `moltbook`, `whop`, `skool`, and `mewe`.
+
+Two deliberate behavior changes shipped with Batch 1:
+
+1. `STRIP_LINKS_FROM_X_POSTS` was removed entirely; X no longer strips raw
+   URLs at transport or capability level, and raw URLs are preserved and
+   counted by the weighted counter (23 units per URL).
+2. `fetchCapabilityRuntime` receives post settings as its second argument so
+   Reddit can resolve subreddit requirements; Mastodon ignores it.
+
+Batch 1 also reordered publication media authorization to run before
+capability analysis, so SSRF authorization of secondary sources (such as
+`settings.thumbnail.path` and `media.thumbnail`) can no longer be masked by
+required-field diagnostics.
+
+Local verification used Node v22.23.2 (Homebrew `node@22`, satisfying the
+`>=22.12.0 <23.0.0` engine range). The full `pnpm test` gate passed
+1072/1072 tests across 97 files, the frontend, backend, and orchestrator
+production builds all exited 0, and the static integrity proofs
+(`BATCH_0_*` symbols absent; no `unverified-adapter` in the profile record)
+passed. These results are a local Batch 1 pause point only; no external
+state changed.
 
 ## Prioritized implementation batches for FED-347
 
