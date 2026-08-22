@@ -463,6 +463,19 @@ describe('normalizePlatformFields', () => {
     });
   });
 
+  it('renders lemmy body through the markdown path while passing its title setting through', () => {
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>Hello <strong>world</strong></p>',
+        settings: { title: 'Lemmy title' },
+        capability: capability('lemmy'),
+      })
+    ).toEqual({
+      title: { value: 'Lemmy title', facets: undefined },
+      body: { value: 'Hello **world**', facets: undefined },
+    });
+  });
+
   it('converts mentions without rewriting the canonical source', () => {
     const canonicalHtml =
       '<p>Hello <span data-mention-id="42">Alice</span></p>';

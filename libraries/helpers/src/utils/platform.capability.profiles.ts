@@ -248,6 +248,15 @@ const chatBody = (): TextFieldCapability => ({
   limit: { max: 500, unit: 'utf16-code-units', source: 'platform' },
 });
 
+const lemmyBody = (): TextFieldCapability => ({
+  ...body(10_000, 'markdown', markdownFormatting),
+  limit: {
+    max: 10_000,
+    unit: 'utf16-code-units',
+    source: 'application-safety',
+  },
+});
+
 const chatVariant = (
   structuredFields: PostVariantCapability['structuredFields'] = []
 ): PostVariantCapability => ({
@@ -745,6 +754,32 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       chat: chatVariant(),
     },
   },
+  lemmy: {
+    identifier: 'lemmy',
+    displayName: 'Lemmy',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: {
+        key: 'post',
+        fields: [
+          {
+            key: 'title',
+            label: 'Title',
+            required: true,
+            source: 'provider-setting',
+            dialect: 'plain',
+            formatting: plainFormatting,
+          },
+          lemmyBody(),
+        ],
+        structuredFields: [{ key: 'url', label: 'URL', required: false }],
+        media: { type: 'optional', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -803,6 +838,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'discord',
   'twitch',
   'kick',
+  'lemmy',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

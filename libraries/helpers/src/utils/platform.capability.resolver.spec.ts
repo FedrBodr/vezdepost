@@ -54,6 +54,7 @@ describe('Batch 0 platform capability resolution', () => {
       'discord',
       'twitch',
       'kick',
+      'lemmy',
     ]);
   });
 
@@ -812,6 +813,38 @@ describe('Batch 0 platform capability resolution', () => {
     expect(capability.fields[0].dialect).toBe('plain');
     expect(capability.media).toEqual({ type: 'none' });
     expect(capability.structuredFields).toEqual(structuredFields);
+  });
+
+  it('resolves lemmy as a verified markdown post profile with an unlimited title', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('lemmy'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'lemmy',
+      variant: 'post',
+    });
+    expect(capability.fields.map((field) => field.key)).toEqual([
+      'title',
+      'body',
+    ]);
+    expect(capability.fields[0]).toMatchObject({
+      source: 'provider-setting',
+      required: true,
+      dialect: 'plain',
+    });
+    expect(capability.fields[0]).not.toHaveProperty('limit');
+    expect(capability.fields[1].dialect).toBe('markdown');
+    expect(capability.fields[1].limit).toEqual({
+      max: 10_000,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(capability.media).toEqual({
+      type: 'optional',
+      images: { min: 1, max: 1 },
+    });
+    expect(capability.structuredFields).toEqual([
+      { key: 'url', label: 'URL', required: false },
+    ]);
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {
