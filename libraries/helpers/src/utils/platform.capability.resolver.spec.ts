@@ -57,6 +57,8 @@ describe('Batch 0 platform capability resolution', () => {
       'lemmy',
       'wrapcast',
       'nostr',
+      'medium',
+      'devto',
     ]);
   });
 
@@ -994,6 +996,59 @@ describe('Batch 0 platform capability resolution', () => {
       videos: { min: 1 },
       mixed: true,
     });
+  });
+
+  it('resolves medium as a verified markdown article profile with a required title setting', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('medium'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'medium',
+      variant: 'article',
+    });
+    expect(capability.fields.map((field) => field.key)).toEqual(['body']);
+    expect(capability.fields[0].dialect).toBe('markdown');
+    expect(capability.fields[0].limit).toEqual({
+      max: 100_000,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(
+      capability.fields.some((field) => field.key === 'title')
+    ).toBe(false);
+    expect(capability.media).toEqual({ type: 'none' });
+    expect(capability.structuredFields[0]).toEqual({
+      key: 'title',
+      label: 'Title',
+      required: true,
+    });
+  });
+
+  it('resolves devto like medium but with one optional image and its own settings', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('devto'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'devto',
+      variant: 'article',
+    });
+    expect(capability.fields[0].dialect).toBe('markdown');
+    expect(capability.fields[0].limit).toEqual({
+      max: 100_000,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(capability.fields.some((field) => field.key === 'title')).toBe(
+      false
+    );
+    expect(capability.media).toEqual({
+      type: 'optional',
+      images: { min: 1, max: 1 },
+    });
+    expect(capability.structuredFields).toEqual([
+      { key: 'title', label: 'Title', required: true },
+      { key: 'tags', label: 'Tags', required: false },
+      { key: 'organization', label: 'Organization', required: false },
+      { key: 'canonical', label: 'Canonical', required: false },
+    ]);
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {

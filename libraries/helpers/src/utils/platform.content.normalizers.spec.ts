@@ -585,6 +585,18 @@ describe('normalizePlatformFields', () => {
     });
   });
 
+  it('renders medium and devto article bodies through the markdown path', () => {
+    for (const identifier of ['medium', 'devto'] as const) {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: '<p>Hello <strong>world</strong></p>',
+          settings: {},
+          capability: capability(identifier),
+        }).body.value
+      ).toBe('Hello **world**');
+    }
+  });
+
   it('converts mentions without rewriting the canonical source', () => {
     const canonicalHtml =
       '<p>Hello <span data-mention-id="42">Alice</span></p>';

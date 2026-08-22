@@ -281,6 +281,24 @@ const nostrBody = (): TextFieldCapability => ({
   },
 });
 
+const articleBody = (max: number): TextFieldCapability => ({
+  ...body(max, 'markdown', markdownFormatting),
+  limit: {
+    max,
+    unit: 'utf16-code-units',
+    source: 'application-safety',
+  },
+});
+
+const htmlArticleBody = (max: number): TextFieldCapability => ({
+  ...body(max, 'html', maxFormatting),
+  limit: {
+    max,
+    unit: 'utf16-code-units',
+    source: 'application-safety',
+  },
+});
+
 const evidenceDate = '2026-08-20';
 
 const profiles: Record<string, PlatformCapabilityProfileV2> = {
@@ -835,6 +853,48 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       },
     },
   },
+  medium: {
+    identifier: 'medium',
+    displayName: 'Medium',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'article',
+    variants: {
+      article: {
+        key: 'article',
+        fields: [articleBody(100_000)],
+        structuredFields: [
+          { key: 'title', label: 'Title', required: true },
+          { key: 'tags', label: 'Tags', required: false },
+          { key: 'canonical', label: 'Canonical', required: false },
+          { key: 'publication', label: 'Publication', required: false },
+        ],
+        media: { type: 'none' },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  devto: {
+    identifier: 'devto',
+    displayName: 'DevTo',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'article',
+    variants: {
+      article: {
+        key: 'article',
+        fields: [articleBody(100_000)],
+        structuredFields: [
+          { key: 'title', label: 'Title', required: true },
+          { key: 'tags', label: 'Tags', required: false },
+          { key: 'organization', label: 'Organization', required: false },
+          { key: 'canonical', label: 'Canonical', required: false },
+        ],
+        media: { type: 'optional', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -896,6 +956,8 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'lemmy',
   'wrapcast',
   'nostr',
+  'medium',
+  'devto',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);
