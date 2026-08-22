@@ -1135,7 +1135,11 @@ describe('PostActivity platform formatting', () => {
     ],
     [
       'wordpress',
-      { main_image: { path: 'https://cdn.example.test/main.jpg' } },
+      {
+        title: 'Fixture title',
+        type: 'post',
+        main_image: { path: 'https://cdn.example.test/main.jpg' },
+      },
       'https://cdn.example.test/main.jpg',
     ],
   ] as const)(
@@ -1146,10 +1150,15 @@ describe('PostActivity platform formatting', () => {
       vi.stubEnv('STORAGE_PROVIDER', 'local');
       vi.mocked(authorizeMediaSource).mockClear();
       const media = [
-        {
-          path: 'https://media.example.test/primary.mp4',
-          type: 'video' as const,
-        },
+        providerIdentifier === 'wordpress'
+          ? {
+              path: 'https://media.example.test/primary.jpg',
+              type: 'image' as const,
+            }
+          : {
+              path: 'https://media.example.test/primary.mp4',
+              type: 'video' as const,
+            },
       ];
       const provider = {
         post: vi.fn().mockResolvedValue([]),

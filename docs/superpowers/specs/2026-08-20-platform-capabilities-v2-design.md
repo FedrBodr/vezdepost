@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-20  
 **Linear:** FED-347  
-**Status:** Batch 0 implemented and verified locally; do not release or push
+**Status:** Batches 0–3 implemented and verified locally; do not release or push
 
 ## Goal
 
@@ -340,6 +340,29 @@ deployment, database migration, or production-state change occurred.
 ### Batch 3: articles, CMS and email
 
 `medium`, `devto`, `hashnode`, `wordpress`, `listmonk`.
+
+Batch 3 reached its verified local pause point on 2026-08-22. The five
+article/CMS/email destinations moved off the unverified bridge onto dedicated
+verified single-variant profiles (all recording the audited evidence date
+2026-08-20), giving the exact matrix of 36 unique registered identifiers =
+30 dedicated profiles + 6 bridged. Contracts: medium and devto Markdown
+articles at 100,000 UTF-16 units `application-safety` (no durable API body
+limit; Medium's API is legacy/archived, dev.to is the official Forem API);
+hashnode a Markdown article at 10,000 UTF-16 units on the official
+gql.hashnode.com contract with `publication` required; wordpress an HTML post
+at 100,000 UTF-16 units on the official WP REST posts API with `title` and
+`type` required; listmonk an HTML campaign at 1,000,000 UTF-16 units
+`application-safety` on the official campaigns API — correcting the
+meaningless 100,000,000 adapter sentinel. No title limits were invented for
+any of the five. The two carried hardening minors landed in commit 09d2f662:
+key-scoped `runtimeCeilings` (reddit `{ title: 300 }`; x keeps its global
+4,000) and a wrapcast exact-320-byte boundary test. The remaining 6 bridged
+identifiers are `gmb`, `dribbble`, `moltbook`, `whop`, `skool`, and `mewe`.
+
+Verification used Node v22.23.2 (Homebrew `node@22`): the full `pnpm test`
+gate passed 1104/1104 tests across 97 files, and the frontend, backend, and
+orchestrator production builds all exited 0. No push, merge, release,
+deployment, database migration, or production-state change occurred.
 
 ### Batch 4: niche and partner/private APIs
 

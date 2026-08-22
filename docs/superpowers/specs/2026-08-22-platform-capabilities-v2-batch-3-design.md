@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-22
 **Linear:** FED-347
-**Status:** Approved boundaries (audit Batch 3 + carried minors); not started
+**Status:** Complete and verified locally on 2026-08-22; not pushed, merged,
+released, or deployed
 **Parent design:** `docs/superpowers/specs/2026-08-20-platform-capabilities-v2-design.md`
 
 ## Goal
@@ -20,13 +21,13 @@ All five are single-variant profiles (constant variant, no selection
 branches). Titles are provider-settings with no declared limit — no
 universal title maximum exists for any of these APIs, and none is invented.
 
-| Destination | Verification | Body contract | Media | Structured fields |
-| --- | --- | --- | --- | --- |
-| `medium` | `verified` | Markdown, 100,000 UTF-16 `application-safety` (no documented API body limit; adapter sentinel kept, never labeled platform) | none | `title` required; `tags` optional (≤4, DTO cap); `canonical`, `publication` optional |
-| `devto` | `verified` | Markdown, 100,000 UTF-16 `application-safety` (same rationale) | optional `images(1..1)` cover (`main_image`) | `title` required; `tags` optional (≤4); `organization`, `canonical` optional |
-| `hashnode` | `verified` | Markdown, 10,000 UTF-16 `application-safety` (adapter cap; no documented maximum) | optional `images(1..1)` cover | `title` required; `publication` required; `tags` (ids), `subtitle`, `canonical` optional |
-| `wordpress` | `verified` | HTML (native dialect), 100,000 UTF-16 `application-safety` (no WordPress-wide content maximum) | optional `images(1..1)` featured image | `title` required; `type` required; `status`, `categories`, `tags` optional |
-| `listmonk` | `verified` | HTML (native), 1,000,000 UTF-16 `application-safety` — **corrects the meaningless 100,000,000 adapter sentinel** to a bounded application cap | none | `subject` required; `list` required; `template`, `preview` optional |
+| Destination | Verification | Body contract                                                                                                                                 | Media                                        | Structured fields                                                                        |
+| ----------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `medium`    | `verified`   | Markdown, 100,000 UTF-16 `application-safety` (no documented API body limit; adapter sentinel kept, never labeled platform)                   | none                                         | `title` required; `tags` optional (≤4, DTO cap); `canonical`, `publication` optional     |
+| `devto`     | `verified`   | Markdown, 100,000 UTF-16 `application-safety` (same rationale)                                                                                | optional `images(1..1)` cover (`main_image`) | `title` required; `tags` optional (≤4); `organization`, `canonical` optional             |
+| `hashnode`  | `verified`   | Markdown, 10,000 UTF-16 `application-safety` (adapter cap; no documented maximum)                                                             | optional `images(1..1)` cover                | `title` required; `publication` required; `tags` (ids), `subtitle`, `canonical` optional |
+| `wordpress` | `verified`   | HTML (native dialect), 100,000 UTF-16 `application-safety` (no WordPress-wide content maximum)                                                | optional `images(1..1)` featured image       | `title` required; `type` required; `status`, `categories`, `tags` optional               |
+| `listmonk`  | `verified`   | HTML (native), 1,000,000 UTF-16 `application-safety` — **corrects the meaningless 100,000,000 adapter sentinel** to a bounded application cap | none                                         | `subject` required; `list` required; `template`, `preview` optional                      |
 
 Evidence notes recorded in docs: Medium API is legacy/archived; dev.to is
 the official Forem API; hashnode uses the official gql.hashnode.com GraphQL
@@ -61,3 +62,22 @@ node@22 via pnpm.
 
 Local commits only in the isolated worktree. No push, merge, release,
 deployment, or production-state change.
+
+## Completion record
+
+Batch 3 reached its verified local pause point on 2026-08-22. All five
+profiles landed as specified (evidence dates 2026-08-20; titles carry no
+invented limits; the listmonk sentinel is corrected to 1,000,000) and both
+carried minors are in commit 09d2f662. The final matrix is 36 unique
+registered identifiers = 30 dedicated profiles + 6 bridged (`gmb`,
+`dribbble`, `moltbook`, `whop`, `skool`, `mewe`).
+
+Verification used Node v22.23.2 (Homebrew `node@22`): the full `pnpm test`
+gate passed 1104/1104 tests across 97 files, and the frontend, backend, and
+orchestrator production builds all exited 0. Static proofs passed:
+`unverified-adapter` is absent from the profile record, and the matrix spec
+proves exactly 36 identifiers matching `socialIntegrationList`. One fixture
+drift was corrected during the gate: the pre-Batch-3 wordpress
+secondary-source fixture gained `title`/`type` settings and an image primary
+to match the verified wordpress contract. No push, merge, release,
+deployment, or production-state change occurred.
