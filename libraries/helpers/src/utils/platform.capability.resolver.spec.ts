@@ -51,6 +51,7 @@ describe('Batch 0 platform capability resolution', () => {
       'instagram',
       'instagram-standalone',
       'facebook',
+      'discord',
     ]);
   });
 
@@ -768,6 +769,24 @@ describe('Batch 0 platform capability resolution', () => {
     expect(
       resolvePlatformCapabilityV2(ctx('reddit', media, { settings })).media
     ).toEqual(expected);
+  });
+
+  it('resolves discord as a verified message profile with a 1980-unit application-safety body', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('discord'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'discord',
+      variant: 'message',
+    });
+    expect(capability.fields[0].limit).toEqual({
+      max: 1_980,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(capability.fields[0].dialect).toBe('discord-markdown');
+    expect(capability.structuredFields).toEqual([
+      { key: 'channel', label: 'Channel', required: true },
+    ]);
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {

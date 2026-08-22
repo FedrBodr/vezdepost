@@ -43,11 +43,21 @@ const slackFormatting: TextFieldCapability['formatting'] = {
   headings: 'plain',
 };
 
+const discordFormatting: TextFieldCapability['formatting'] = {
+  bold: 'native',
+  underline: 'native',
+  links: 'native',
+  lists: 'native',
+  headings: 'native',
+};
+
 const limitUnitForDialect = (
   dialect: TextFieldCapability['dialect']
 ): ContentUnit => {
   switch (dialect) {
     case 'slack-mrkdwn':
+      return 'utf16-code-units';
+    case 'discord-markdown':
       return 'utf16-code-units';
     case 'bluesky-facets':
       return 'graphemes';
@@ -665,6 +675,31 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       },
     },
   },
+  discord: {
+    identifier: 'discord',
+    displayName: 'Discord',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'message',
+    variants: {
+      message: simpleVariant(
+        'message',
+        1_980,
+        'discord-markdown',
+        discordFormatting,
+        {
+          type: 'optional',
+          images: { min: 1, max: 10 },
+          videos: { min: 1, max: 10 },
+          mixed: true,
+          maxTotal: 10,
+        },
+        [{ key: 'channel', label: 'Channel', required: true }],
+        { longMediaText: 'not-applicable', stripRawUrls: false },
+        'application-safety'
+      ),
+    },
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -720,6 +755,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'instagram',
   'instagram-standalone',
   'facebook',
+  'discord',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

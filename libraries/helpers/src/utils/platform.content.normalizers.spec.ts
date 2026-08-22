@@ -451,6 +451,18 @@ describe('normalizePlatformFields', () => {
     expect(result.body.facets).toBeUndefined();
   });
 
+  it('renders discord fields through the markdown path', () => {
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p>Hello <strong>world</strong></p>',
+        settings: {},
+        capability: capability('discord'),
+      })
+    ).toEqual({
+      body: { value: 'Hello **world**', facets: undefined },
+    });
+  });
+
   it('converts mentions without rewriting the canonical source', () => {
     const canonicalHtml =
       '<p>Hello <span data-mention-id="42">Alice</span></p>';
