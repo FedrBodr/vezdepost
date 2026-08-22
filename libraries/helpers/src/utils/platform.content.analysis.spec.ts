@@ -311,6 +311,72 @@ describe('analyzePlatformContentV2', () => {
     expect(result.blocking).toBe(true);
   });
 
+  it('measures wrapcast casts in platform utf8 bytes', () => {
+    const passing = analyze({
+      canonicalHtml: `<p>${'あ'.repeat(100)}</p>`,
+      resolved: capability('wrapcast'),
+    });
+    expect(passing.blocking).toBe(false);
+
+    const blocked = analyze({
+      canonicalHtml: `<p>${'あ'.repeat(107)}</p>`,
+      resolved: capability('wrapcast'),
+    });
+    expect(blocked.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'text-too-long',
+        severity: 'error',
+        destination: 'wrapcast',
+        variant: 'cast',
+        field: 'body',
+        measured: 321,
+        limit: 320,
+        unit: 'utf8-bytes',
+      })
+    );
+    expect(blocked.blocking).toBe(true);
+  });
+
+  it('blocks wrapcast casts beyond two images', () => {
+    const media = [
+      { type: 'image' as const },
+      { type: 'image' as const },
+      { type: 'image' as const },
+    ];
+    const result = analyze({
+      canonicalHtml: '<p>hi</p>',
+      media,
+      resolved: capability('wrapcast', media),
+    });
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'unsupported-media',
+        destination: 'wrapcast',
+        variant: 'cast',
+      })
+    );
+    expect(result.blocking).toBe(true);
+  });
+
+  it('accepts nostr mixed optional media', () => {
+    for (const media of [
+      [],
+      [{ type: 'image' as const }],
+      [{ type: 'video' as const }],
+      [{ type: 'image' as const }, { type: 'video' as const }],
+    ]) {
+      const result = analyze({
+        canonicalHtml: '<p>note</p>',
+        media,
+        resolved: capability('nostr', media),
+      });
+      expect(result.diagnostics).not.toContainEqual(
+        expect.objectContaining({ code: 'unsupported-media' })
+      );
+      expect(result.blocking).toBe(false);
+    }
+  });
+
   it('warns when normalization loses declared formatting', () => {
     const result = analyze({
       canonicalHtml:

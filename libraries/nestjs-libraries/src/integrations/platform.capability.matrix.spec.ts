@@ -68,9 +68,21 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(23);
-    expect(profiled.size).toBe(23);
-    expect(bridged).toHaveLength(13);
+    expect(PROFILE_IDENTIFIERS.length).toBe(25);
+    expect(profiled.size).toBe(25);
+    expect(bridged.map(({ identifier }) => identifier)).toEqual([
+      'gmb',
+      'dribbble',
+      'medium',
+      'devto',
+      'hashnode',
+      'wordpress',
+      'listmonk',
+      'moltbook',
+      'whop',
+      'skool',
+      'mewe',
+    ]);
 
     const ALIASES: Record<string, string> = {
       'linkedin-page': 'linkedin',

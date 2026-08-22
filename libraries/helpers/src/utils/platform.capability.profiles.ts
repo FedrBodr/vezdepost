@@ -267,6 +267,20 @@ const chatVariant = (
   delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
 });
 
+const wrapcastBody = (): TextFieldCapability => ({
+  ...body(320, 'plain', plainFormatting),
+  limit: { max: 320, unit: 'utf8-bytes', source: 'platform' },
+});
+
+const nostrBody = (): TextFieldCapability => ({
+  ...body(100_000, 'plain', plainFormatting),
+  limit: {
+    max: 100_000,
+    unit: 'utf16-code-units',
+    source: 'application-safety',
+  },
+});
+
 const evidenceDate = '2026-08-20';
 
 const profiles: Record<string, PlatformCapabilityProfileV2> = {
@@ -780,6 +794,45 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       },
     },
   },
+  wrapcast: {
+    identifier: 'wrapcast',
+    displayName: 'Wrapcast',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'cast',
+    variants: {
+      cast: {
+        key: 'cast',
+        fields: [wrapcastBody()],
+        structuredFields: [
+          { key: 'channelId', label: 'Channel ID', required: false },
+        ],
+        media: { type: 'optional', images: { min: 1, max: 2 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  nostr: {
+    identifier: 'nostr',
+    displayName: 'Nostr',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'note',
+    variants: {
+      note: {
+        key: 'note',
+        fields: [nostrBody()],
+        structuredFields: [],
+        media: {
+          type: 'optional',
+          images: { min: 1 },
+          videos: { min: 1 },
+          mixed: true,
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -839,6 +892,8 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'twitch',
   'kick',
   'lemmy',
+  'wrapcast',
+  'nostr',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

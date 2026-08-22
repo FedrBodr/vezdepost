@@ -55,6 +55,8 @@ describe('Batch 0 platform capability resolution', () => {
       'twitch',
       'kick',
       'lemmy',
+      'wrapcast',
+      'nostr',
     ]);
   });
 
@@ -845,6 +847,49 @@ describe('Batch 0 platform capability resolution', () => {
     expect(capability.structuredFields).toEqual([
       { key: 'url', label: 'URL', required: false },
     ]);
+  });
+
+  it('resolves wrapcast as a verified 320-utf8-byte cast profile', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('wrapcast'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'wrapcast',
+      variant: 'cast',
+    });
+    expect(capability.fields[0].limit).toEqual({
+      max: 320,
+      unit: 'utf8-bytes',
+      source: 'platform',
+    });
+    expect(capability.fields[0].dialect).toBe('plain');
+    expect(capability.media).toEqual({
+      type: 'optional',
+      images: { min: 1, max: 2 },
+    });
+    expect(capability.structuredFields).toEqual([
+      { key: 'channelId', label: 'Channel ID', required: false },
+    ]);
+  });
+
+  it('resolves nostr as a verified application-safety note profile', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('nostr'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'nostr',
+      variant: 'note',
+    });
+    expect(capability.fields[0].limit).toEqual({
+      max: 100_000,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(capability.fields[0].dialect).toBe('plain');
+    expect(capability.media).toEqual({
+      type: 'optional',
+      images: { min: 1 },
+      videos: { min: 1 },
+      mixed: true,
+    });
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {
