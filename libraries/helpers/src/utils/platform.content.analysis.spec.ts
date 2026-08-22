@@ -337,6 +337,22 @@ describe('analyzePlatformContentV2', () => {
     expect(blocked.blocking).toBe(true);
   });
 
+  it('accepts mixed-content wrapcast casts at exactly 320 utf8 bytes', () => {
+    const emojiRun = '😀'.repeat(78);
+    const padding = 'a'.repeat(320 - Buffer.byteLength(emojiRun, 'utf8'));
+    const content = emojiRun + padding;
+    expect(Buffer.byteLength(content, 'utf8')).toBe(320);
+
+    const result = analyze({
+      canonicalHtml: `<p>${content}</p>`,
+      resolved: capability('wrapcast'),
+    });
+    expect(result.blocking).toBe(false);
+    expect(result.diagnostics).not.toContainEqual(
+      expect.objectContaining({ code: 'text-too-long' })
+    );
+  });
+
   it('blocks wrapcast casts beyond two images', () => {
     const media = [
       { type: 'image' as const },

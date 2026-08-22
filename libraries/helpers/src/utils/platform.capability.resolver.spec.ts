@@ -62,6 +62,7 @@ describe('Batch 0 platform capability resolution', () => {
       'devto',
       'hashnode',
       'wordpress',
+      'listmonk',
     ]);
   });
 
@@ -1111,6 +1112,45 @@ describe('Batch 0 platform capability resolution', () => {
         capability,
       }).body.value
     ).toBe('<p>Hello <strong>world</strong></p>');
+  });
+
+  it('resolves listmonk as a verified HTML campaign profile requiring subject and list', () => {
+    const capability = resolvePlatformCapabilityV2(ctx('listmonk'));
+    expect(capability).toMatchObject({
+      verification: 'verified',
+      profileIdentifier: 'listmonk',
+      variant: 'campaign',
+    });
+    expect(capability.fields[0].dialect).toBe('html');
+    expect(capability.fields[0].limit).toEqual({
+      max: 1_000_000,
+      unit: 'utf16-code-units',
+      source: 'application-safety',
+    });
+    expect(capability.media).toEqual({ type: 'none' });
+    expect(capability.structuredFields).toEqual([
+      { key: 'subject', label: 'Subject', required: true },
+      { key: 'list', label: 'List', required: true },
+      { key: 'template', label: 'Template', required: false },
+      { key: 'preview', label: 'Preview', required: false },
+    ]);
+  });
+
+  it('leaves a reddit body runtime overlay unclamped under key-scoped ceilings', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('reddit', [], {
+        runtimeOverlay: {
+          observedAt: new Date().toISOString(),
+          textLimits: {
+            body: { max: 40_000, unit: 'graphemes', source: 'runtime' },
+          },
+        },
+      })
+    );
+    expect(
+      resolved.fields.find((field) => field.key === 'body')?.limit
+    ).toMatchObject({ max: 40_000, source: 'runtime' });
+    expect(resolved.diagnostics).toEqual([]);
   });
 
   it('bridges an unaudited adapter without claiming platform verification', () => {

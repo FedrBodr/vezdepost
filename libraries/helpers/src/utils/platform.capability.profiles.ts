@@ -660,7 +660,7 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       }),
     },
     runtimeKeys: ['text-limit'],
-    runtimeMaxCeiling: 300,
+    runtimeCeilings: { title: 300 },
   },
   instagram: {
     identifier: 'instagram',
@@ -939,6 +939,27 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       },
     },
   },
+  listmonk: {
+    identifier: 'listmonk',
+    displayName: 'Listmonk',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'campaign',
+    variants: {
+      campaign: {
+        key: 'campaign',
+        fields: [htmlArticleBody(1_000_000)],
+        structuredFields: [
+          { key: 'subject', label: 'Subject', required: true },
+          { key: 'list', label: 'List', required: true },
+          { key: 'template', label: 'Template', required: false },
+          { key: 'preview', label: 'Preview', required: false },
+        ],
+        media: { type: 'none' },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
   bluesky: {
     identifier: 'bluesky',
     displayName: 'Bluesky',
@@ -1004,6 +1025,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'devto',
   'hashnode',
   'wordpress',
+  'listmonk',
 ] as const);
 
 export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

@@ -91,6 +91,7 @@ export interface PlatformCapabilityProfileV2 {
   runtimeKeys?: readonly ('text-limit' | 'media-rule')[];
   runtimeMaxAgeSeconds?: number;
   runtimeMaxCeiling?: number;
+  runtimeCeilings?: Readonly<Record<string, number>>;
 }
 
 export interface CapabilityRuntimeOverlay {

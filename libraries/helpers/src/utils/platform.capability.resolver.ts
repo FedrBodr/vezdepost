@@ -260,31 +260,34 @@ const applyRuntimeOverlay = (
 
   const overlay = context.runtimeOverlay!;
   const runtimeKeys = profile.runtimeKeys ?? [];
-  const ceiling = profile.runtimeMaxCeiling;
+  const globalCeiling = profile.runtimeMaxCeiling;
+  const keyCeilings = profile.runtimeCeilings;
   const clampDiagnostics: CapabilityDiagnostic[] = [];
   const textLimits = overlay.textLimits
     ? Object.fromEntries(
-        Object.entries(overlay.textLimits).map(([key, limit]) => [
-          key,
+        Object.entries(overlay.textLimits).map(([fieldKey, limit]) => [
+          fieldKey,
           {
             ...limit,
             source: 'runtime' as const,
-            ...(ceiling !== undefined && limit.max > ceiling
-              ? (() => {
-                  clampDiagnostics.push({
-                    code: 'runtime-limit-clamped',
-                    severity: 'information',
-                    destination: context.identifier,
-                    variant: variant.key,
-                    field: key,
-                    measured: limit.max,
-                    limit: ceiling,
-                    unit: limit.unit,
-                    message: `Runtime ${key} limit ${limit.max} exceeds the application-safety ceiling; clamped to ${ceiling} ${limit.unit}.`,
-                  });
-                  return { max: ceiling };
-                })()
-              : {}),
+            ...((): { max: number } | {} => {
+              const ceiling = keyCeilings?.[fieldKey] ?? globalCeiling;
+              if (ceiling === undefined || limit.max <= ceiling) {
+                return {};
+              }
+              clampDiagnostics.push({
+                code: 'runtime-limit-clamped',
+                severity: 'information',
+                destination: context.identifier,
+                variant: variant.key,
+                field: fieldKey,
+                measured: limit.max,
+                limit: ceiling,
+                unit: limit.unit,
+                message: `Runtime ${fieldKey} limit ${limit.max} exceeds the application-safety ceiling; clamped to ${ceiling} ${limit.unit}.`,
+              });
+              return { max: ceiling };
+            })(),
           },
         ])
       )
