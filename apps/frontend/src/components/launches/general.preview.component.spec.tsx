@@ -281,8 +281,25 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
     );
   });
 
-  it('crops only the eleventh ASCII character for X at a limit of ten', () => {
+  it('crops only the eleventh ASCII character for X at a runtime limit of ten', () => {
     previewContext.identifier = 'x';
+    previewContext.serializedCapability = resolvePlatformCapabilityV2({
+      identifier: 'x',
+      settings: {},
+      media: [],
+      now: '2026-08-21T10:00:00.000Z',
+      runtimeOverlay: {
+        observedAt: '2026-08-21T10:00:00.000Z',
+        textLimits: {
+          body: {
+            max: 10,
+            unit: 'weighted',
+            counter: 'x-weighted',
+            source: 'runtime',
+          },
+        },
+      },
+    });
 
     const preview = renderPreview('abcdefghijk');
 
@@ -306,45 +323,78 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
     expect(preview.textContent).toBe('漢'.repeat(141));
   });
 
-  it('uses effective stripped content in the non-cropped preview while preserving mentions', () => {
+  it('preserves raw URLs in the non-cropped preview while keeping mention decoration', () => {
     previewContext.identifier = 'x';
     previewContext.maximumCharacters = 100;
-    previewContext.stripRawUrls = true;
 
     const preview = renderPreview(
       '<p>Hello <span data-mention-id="ada">@Ada</span> https://example.com/path</p>'
     );
 
-    expect(preview.textContent).toBe('Hello @Ada');
+    expect(preview.textContent).toBe('Hello @Ada https://example.com/path');
     expect(preview.querySelector('.font-bold')?.textContent).toBe('@Ada');
-    expect(preview.innerHTML).not.toContain('https://');
+    expect(preview.innerHTML).toContain('https://example.com/path');
   });
 
-  it('uses effective stripped content before rendering the crop marker', () => {
+  it('counts preserved raw URLs against the X weighted limit before rendering the crop marker', () => {
     previewContext.identifier = 'x';
-    previewContext.maximumCharacters = 10;
-    previewContext.stripRawUrls = true;
+    previewContext.serializedCapability = resolvePlatformCapabilityV2({
+      identifier: 'x',
+      settings: {},
+      media: [],
+      now: '2026-08-21T10:00:00.000Z',
+      runtimeOverlay: {
+        observedAt: '2026-08-21T10:00:00.000Z',
+        textLimits: {
+          body: {
+            max: 10,
+            unit: 'weighted',
+            counter: 'x-weighted',
+            source: 'runtime',
+          },
+        },
+      },
+    });
 
     const preview = renderPreview('abcdefghijk https://example.com/path');
 
-    expect(preview.textContent).toBe('abcdefghijk');
-    expect(preview.querySelector('mark')?.textContent).toBe('k');
-    expect(preview.innerHTML).not.toContain('https://');
+    expect(preview.textContent).toBe('abcdefghijk https://example.com/path');
+    expect(preview.querySelector('mark')?.textContent).toBe(
+      'k https://example.com/path'
+    );
+    expect(preview.innerHTML).toContain('https://example.com/path');
   });
 
-  it('preserves mention decoration when effective content is cropped', () => {
+  it('preserves mention decoration when preserved-URL content is cropped', () => {
     previewContext.identifier = 'x';
-    previewContext.maximumCharacters = 10;
-    previewContext.stripRawUrls = true;
+    previewContext.serializedCapability = resolvePlatformCapabilityV2({
+      identifier: 'x',
+      settings: {},
+      media: [],
+      now: '2026-08-21T10:00:00.000Z',
+      runtimeOverlay: {
+        observedAt: '2026-08-21T10:00:00.000Z',
+        textLimits: {
+          body: {
+            max: 10,
+            unit: 'weighted',
+            counter: 'x-weighted',
+            source: 'runtime',
+          },
+        },
+      },
+    });
 
     const preview = renderPreview(
       '<p>abcdefghij<span data-mention-id="ada">@Ada</span> https://example.com/path</p>'
     );
 
-    expect(preview.textContent).toBe('abcdefghij@Ada');
+    expect(preview.textContent).toBe('abcdefghij@Ada https://example.com/path');
     expect(preview.querySelector('mark .font-bold')?.textContent).toBe('@Ada');
-    expect(preview.querySelector('mark')?.textContent).toBe('@Ada');
-    expect(preview.innerHTML).not.toContain('https://');
+    expect(preview.querySelector('mark')?.textContent).toBe(
+      '@Ada https://example.com/path'
+    );
+    expect(preview.innerHTML).toContain('https://example.com/path');
   });
 
   it.each(['telegram', 'max'])(

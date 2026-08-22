@@ -534,7 +534,7 @@ describe('PostActivity platform formatting', () => {
     expect(mentionFormat).not.toHaveBeenCalled();
   });
 
-  it('passes mention-normalized effective URL-stripped posts and comments to transport', async () => {
+  it('passes mention-normalized posts and comments preserving raw URLs to transport', async () => {
     vi.stubEnv('STRIPE_SECRET_KEY', '');
     const mentionFormat = vi.fn((idOrHandle: string) => `@${idOrHandle}`);
     const provider = {
@@ -597,7 +597,11 @@ describe('PostActivity platform formatting', () => {
     expect(provider.post).toHaveBeenCalledWith(
       'profile',
       'token',
-      [expect.objectContaining({ message: 'Hello @ada' })],
+      [
+        expect.objectContaining({
+          message: 'Hello @ada https://example.com/path',
+        }),
+      ],
       expect.objectContaining({ id: 'integration-1' })
     );
     expect(provider.comment).toHaveBeenCalledWith(
@@ -605,7 +609,11 @@ describe('PostActivity platform formatting', () => {
       'remote-post',
       'remote-last',
       'token',
-      [expect.objectContaining({ message: 'Hello @ada' })],
+      [
+        expect.objectContaining({
+          message: 'Hello @ada https://example.com/path',
+        }),
+      ],
       expect.objectContaining({ id: 'integration-1' })
     );
     expect(mentionFormat).toHaveBeenCalledTimes(2);
@@ -1055,10 +1063,74 @@ describe('PostActivity platform formatting', () => {
     }
   );
 
+  it('rejects with the media authorization error when a required title is also missing', async () => {
+    vi.stubEnv('STRIPE_SECRET_KEY', '');
+    const unsafePath = 'http://169.254.169.254/latest/meta-data/secondary.jpg';
+    const settings = { thumbnail: { path: unsafePath } };
+    const media = [
+      {
+        path: 'https://media.example.test/primary.mp4',
+        type: 'video' as const,
+      },
+    ];
+    const provider = {
+      post: vi.fn().mockResolvedValue([]),
+      comment: vi.fn().mockResolvedValue([]),
+      editor: 'normal' as const,
+      mentionFormat: undefined,
+      convertToJPEG: false,
+      maxLength: vi.fn().mockReturnValue(40_000),
+    };
+    const postService = {
+      updateTags: vi.fn().mockResolvedValue([
+        {
+          id: 'post-1',
+          content: '<p>safe</p>',
+          settings: JSON.stringify(settings),
+          image: JSON.stringify(media),
+        },
+      ]),
+      updateMedia: vi.fn().mockResolvedValue(media),
+    };
+    const integrationManager = new IntegrationManager();
+    vi.spyOn(integrationManager, 'getSocialIntegration').mockReturnValue(
+      provider as any
+    );
+    const activity = new PostActivity(
+      postService as any,
+      {} as any,
+      integrationManager,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any
+    );
+
+    await expect(
+      activity.postSocial(
+        {
+          id: 'integration-1',
+          internalId: 'profile',
+          token: 'token',
+          providerIdentifier: 'youtube',
+          organizationId: 'org-1',
+        } as any,
+        [{ id: 'post-1' } as any]
+      )
+    ).rejects.toThrow(/blocked remote media/i);
+    expect(provider.post).not.toHaveBeenCalled();
+    expect(provider.comment).not.toHaveBeenCalled();
+  });
+
   it.each([
     [
       'youtube',
-      { thumbnail: { path: 'https://app.example.test/uploads/thumb.jpg' } },
+      {
+        title: 'Safe title',
+        thumbnail: { path: 'https://app.example.test/uploads/thumb.jpg' },
+      },
       'https://app.example.test/uploads/thumb.jpg',
     ],
     [
@@ -1075,8 +1147,8 @@ describe('PostActivity platform formatting', () => {
       vi.mocked(authorizeMediaSource).mockClear();
       const media = [
         {
-          path: 'https://media.example.test/primary.jpg',
-          type: 'image' as const,
+          path: 'https://media.example.test/primary.mp4',
+          type: 'video' as const,
         },
       ];
       const provider = {
@@ -1259,7 +1331,7 @@ describe('PostActivity platform formatting', () => {
               { id: 'post-1' } as any,
             ]);
 
-      await expect(request).rejects.toThrow('Unable to prepare media safely.');
+      await expect(request).rejects.toThrow(/blocked remote media/i);
       expect(provider.post).not.toHaveBeenCalled();
       expect(provider.comment).not.toHaveBeenCalled();
     }

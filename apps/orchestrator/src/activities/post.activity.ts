@@ -294,6 +294,15 @@ export class PostActivity {
           return analysis;
         };
 
+        const sourcePaths = collectPublicationMediaSourcePaths({
+          providerIdentifier: integration.providerIdentifier,
+          settings,
+          media: normalizedMedia,
+        });
+        await Promise.all(
+          sourcePaths.map((path) => authorizeMediaSource(path))
+        );
+
         const analysis = await analyze(normalizedMedia);
         const media = provider.convertToJPEG
           ? ((await this._postService.updateMedia(
@@ -303,14 +312,6 @@ export class PostActivity {
             )) as MediaContent[])
           : normalizedMedia;
 
-        const sourcePaths = collectPublicationMediaSourcePaths({
-          providerIdentifier: integration.providerIdentifier,
-          settings,
-          media,
-        });
-        await Promise.all(
-          sourcePaths.map((path) => authorizeMediaSource(path))
-        );
         const fields = analysis.fields;
         return {
           id: post.id,
