@@ -451,6 +451,62 @@ describe('normalizePlatformFields', () => {
     expect(result.body.facets).toBeUndefined();
   });
 
+  it('anchors a duplicate-label facet to the linked occurrence, not an earlier match', () => {
+    const result = normalizePlatformFields({
+      canonicalHtml: '<p>this <a href="https://a.example">this</a></p>',
+      settings: {},
+      capability: blueskyCapability(),
+    });
+    expect(result.body.value).toBe('this this');
+    expect(result.body.facets).toEqual([
+      {
+        index: { byteStart: 5, byteEnd: 9 },
+        features: [
+          { '$type': 'app.bsky.richtext.facet#link', uri: 'https://a.example' },
+        ],
+      },
+    ]);
+  });
+
+  it('emits at most one facet when anchors nest in the source markup', () => {
+    const result = normalizePlatformFields({
+      canonicalHtml:
+        '<p><a href="https://outer.example"><a href="https://inner.example">link</a></a></p>',
+      settings: {},
+      capability: blueskyCapability(),
+    });
+    expect(result.body.value).toBe('link');
+    expect(result.body.facets).toEqual([
+      {
+        index: { byteStart: 0, byteEnd: 4 },
+        features: [
+          {
+            '$type': 'app.bsky.richtext.facet#link',
+            uri: 'https://inner.example',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('drops bare URLs that partially overlap an anchored facet range', () => {
+    const result = normalizePlatformFields({
+      canonicalHtml:
+        '<p><a href="https://go.example">see https://shor</a>t.example/path now</p>',
+      settings: {},
+      capability: blueskyCapability(),
+    });
+    expect(result.body.value).toBe('see https://short.example/path now');
+    expect(result.body.facets).toEqual([
+      {
+        index: { byteStart: 0, byteEnd: 16 },
+        features: [
+          { '$type': 'app.bsky.richtext.facet#link', uri: 'https://go.example' },
+        ],
+      },
+    ]);
+  });
+
   it('renders discord fields through the markdown path', () => {
     expect(
       normalizePlatformFields({

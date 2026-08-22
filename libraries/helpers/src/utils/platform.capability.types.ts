@@ -90,6 +90,7 @@ export interface PlatformCapabilityProfileV2 {
   aliasOf?: string;
   runtimeKeys?: readonly ('text-limit' | 'media-rule')[];
   runtimeMaxAgeSeconds?: number;
+  runtimeMaxCeiling?: number;
 }
 
 export interface CapabilityRuntimeOverlay {

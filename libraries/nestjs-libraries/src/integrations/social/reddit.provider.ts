@@ -43,20 +43,30 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     return 10000;
   }
 
-  private extractSubreddit(settings: unknown): string | undefined {
+  private extractSubreddits(settings: unknown): string[] {
     const list = (settings as any)?.subreddit;
-    const raw = Array.isArray(list) ? list[0] : list;
-    const value =
-      typeof raw === 'string'
-        ? raw
-        : typeof raw?.value === 'string'
-          ? raw.value
-          : raw?.value?.subreddit;
-    if (typeof value !== 'string') {
-      return undefined;
+    const rawList: unknown[] = Array.isArray(list)
+      ? list
+      : list === undefined || list === null
+        ? []
+        : [list];
+    const names = new Set<string>();
+    for (const raw of rawList) {
+      const value =
+        typeof raw === 'string'
+          ? raw
+          : typeof raw?.value === 'string'
+            ? raw.value
+            : raw?.value?.subreddit;
+      if (typeof value !== 'string') {
+        continue;
+      }
+      const name = value.split('/r/').pop()?.trim().toLowerCase();
+      if (name) {
+        names.add(name);
+      }
     }
-    const name = value.split('/r/').pop()?.trim().toLowerCase();
-    return name || undefined;
+    return [...names].slice(0, 10);
   }
 
   async fetchCapabilityRuntime(
@@ -64,38 +74,55 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     settings?: unknown
   ): Promise<CapabilityRuntimeOverlay | undefined> {
     try {
-      const subreddit = this.extractSubreddit(settings);
-      if (!subreddit) {
+      const subreddits = this.extractSubreddits(settings);
+      if (!subreddits.length) {
         return undefined;
       }
-      const { title_required_max: titleMax } = await (
-        await this.fetch(
-          `https://oauth.reddit.com/api/v1/${subreddit}/post_requirements`,
-          {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${integration.token}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-          },
-          'reddit',
-          0,
-          false
-        )
-      ).json();
 
-      if (
-        !Number.isInteger(titleMax) ||
-        titleMax <= 0 ||
-        titleMax >= 300
-      ) {
+      const titleMaxima = await Promise.all(
+        subreddits.map(async (subreddit) => {
+          try {
+            const { title_required_max: titleMax } = await (
+              await this.fetch(
+                `https://oauth.reddit.com/api/v1/${subreddit}/post_requirements`,
+                {
+                  method: 'GET',
+                  headers: {
+                    Authorization: `Bearer ${integration.token}`,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                  },
+                },
+                'reddit',
+                0,
+                false
+              )
+            ).json();
+            return Number.isInteger(titleMax) &&
+              titleMax > 0 &&
+              titleMax < 300
+              ? (titleMax as number)
+              : undefined;
+          } catch {
+            return undefined;
+          }
+        })
+      );
+
+      const validMaxima = titleMaxima.filter(
+        (titleMax): titleMax is number => typeof titleMax === 'number'
+      );
+      if (!validMaxima.length) {
         return undefined;
       }
 
       return {
         observedAt: new Date().toISOString(),
         textLimits: {
-          title: { max: titleMax, unit: 'utf16-code-units', source: 'runtime' },
+          title: {
+            max: Math.min(...validMaxima),
+            unit: 'utf16-code-units',
+            source: 'runtime',
+          },
         },
       };
     } catch {

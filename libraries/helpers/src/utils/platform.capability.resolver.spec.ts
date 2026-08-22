@@ -606,6 +606,51 @@ describe('Batch 0 platform capability resolution', () => {
     expect(capability.diagnostics).toHaveLength(0);
   });
 
+  it('clamps a forged x runtime overlay above the 4,000 ceiling', () => {
+    const capability = resolvePlatformCapabilityV2({
+      ...ctx('x'),
+      runtimeOverlay: {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          body: {
+            max: 10_000,
+            unit: 'weighted',
+            counter: 'x-weighted',
+            source: 'runtime',
+          },
+        },
+      },
+    });
+    expect(capability.fields[0].limit).toEqual({
+      max: 4_000,
+      unit: 'weighted',
+      counter: 'x-weighted',
+      source: 'runtime',
+    });
+    expect(capability.runtimeOverlay?.textLimits?.body).toMatchObject({
+      max: 4_000,
+    });
+    expect(capability.diagnostics).toHaveLength(0);
+  });
+
+  it('keeps a legitimate premium x overlay exactly at its ceiling', () => {
+    const capability = resolvePlatformCapabilityV2({
+      ...ctx('x'),
+      runtimeOverlay: {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          body: {
+            max: 3_999,
+            unit: 'weighted',
+            counter: 'x-weighted',
+            source: 'runtime',
+          },
+        },
+      },
+    });
+    expect(capability.fields[0].limit).toMatchObject({ max: 3_999 });
+  });
+
   it('resolves bluesky as a verified grapheme-limited profile', () => {
     const capability = resolvePlatformCapabilityV2(ctx('bluesky'));
     expect(capability).toMatchObject({
@@ -756,6 +801,40 @@ describe('Batch 0 platform capability resolution', () => {
       resolved.fields.find((field) => field.key === 'body')?.limit
     ).toMatchObject({ max: 10_000, source: 'application-safety' });
     expect(resolved.diagnostics).toEqual([]);
+  });
+
+  it('clamps a reddit title overlay above the 300 ceiling', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('reddit', [], {
+        runtimeOverlay: {
+          observedAt: new Date().toISOString(),
+          textLimits: {
+            title: { max: 500, unit: 'utf16-code-units', source: 'runtime' },
+          },
+        },
+      })
+    );
+    expect(
+      resolved.fields.find((field) => field.key === 'title')?.limit
+    ).toMatchObject({ max: 300, unit: 'utf16-code-units', source: 'runtime' });
+    expect(resolved.runtimeOverlay?.textLimits?.title).toMatchObject({
+      max: 300,
+    });
+  });
+
+  it('leaves mastodon runtime overlays unclamped without a declared ceiling', () => {
+    const resolved = resolvePlatformCapabilityV2(
+      ctx('mastodon', [], {
+        now: '2026-08-20T10:30:00.000Z',
+        runtimeOverlay: {
+          observedAt: '2026-08-20T10:00:00.000Z',
+          textLimits: {
+            body: { max: 5_000, unit: 'graphemes', source: 'runtime' },
+          },
+        },
+      })
+    );
+    expect(resolved.fields[0].limit).toMatchObject({ max: 5_000 });
   });
 
   it.each([

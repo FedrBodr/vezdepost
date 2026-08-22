@@ -266,4 +266,92 @@ describe('RedditProvider.fetchCapabilityRuntime', () => {
       false
     );
   });
+
+  it('applies the strictest title maximum across all configured subreddits', async () => {
+    const providerFetch = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementation(async (url) =>
+        ({
+          json: async () => ({
+            title_required_max: String(url).includes('/first/') ? 40 : 60,
+          }),
+        }) as Response
+      );
+
+    const overlay = await provider.fetchCapabilityRuntime(integration, {
+      subreddit: [
+        { value: { subreddit: '/r/second', type: 'self' } },
+        { value: { subreddit: '/r/first', type: 'self' } },
+      ],
+    });
+
+    expect(overlay?.textLimits?.title).toMatchObject({
+      max: 40,
+      unit: 'utf16-code-units',
+      source: 'runtime',
+    });
+    expect(providerFetch).toHaveBeenCalledTimes(2);
+    expect(providerFetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://oauth.reddit.com/api/v1/second/post_requirements',
+      'https://oauth.reddit.com/api/v1/first/post_requirements',
+    ]);
+  });
+
+  it('skips a failing subreddit instead of dropping the whole overlay', async () => {
+    const providerFetch = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementation(async (url) => {
+        if (String(url).includes('/broken/')) {
+          throw new Error('subreddit unavailable');
+        }
+        return {
+          json: async () => ({ title_required_max: 60 }),
+        } as Response;
+      });
+
+    const overlay = await provider.fetchCapabilityRuntime(integration, {
+      subreddit: [
+        { value: { subreddit: '/r/broken', type: 'self' } },
+        { value: { subreddit: '/r/healthy', type: 'self' } },
+      ],
+    });
+
+    expect(overlay?.textLimits?.title).toMatchObject({ max: 60 });
+    expect(providerFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns undefined when every configured subreddit fails', async () => {
+    vi.spyOn(provider, 'fetch').mockRejectedValue(new Error('network down'));
+
+    await expect(
+      provider.fetchCapabilityRuntime(integration, {
+        subreddit: [
+          { value: { subreddit: '/r/broken', type: 'self' } },
+          { value: { subreddit: '/r/also-broken', type: 'self' } },
+        ],
+      })
+    ).resolves.toBeUndefined();
+  });
+
+  it('bounds requirements queries to the first ten subreddits', async () => {
+    const providerFetch = vi
+      .spyOn(provider, 'fetch')
+      .mockResolvedValue({
+        json: async () => ({ title_required_max: 40 }),
+      } as Response);
+
+    const overlay = await provider.fetchCapabilityRuntime(integration, {
+      subreddit: Array.from({ length: 12 }, (_unused, index) => ({
+        value: { subreddit: `/r/sub${index}`, type: 'self' },
+      })),
+    });
+
+    expect(providerFetch).toHaveBeenCalledTimes(10);
+    expect(
+      providerFetch.mock.calls.filter(([url]) =>
+        String(url).includes('/sub10/')
+      )
+    ).toHaveLength(0);
+    expect(overlay?.textLimits?.title).toMatchObject({ max: 40 });
+  });
 });

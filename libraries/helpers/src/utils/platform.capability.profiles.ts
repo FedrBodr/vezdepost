@@ -619,6 +619,7 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       },
     },
     runtimeKeys: ['text-limit'],
+    runtimeMaxCeiling: 4_000,
   },
   reddit: {
     identifier: 'reddit',
@@ -641,6 +642,7 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       }),
     },
     runtimeKeys: ['text-limit'],
+    runtimeMaxCeiling: 300,
   },
   instagram: {
     identifier: 'instagram',

@@ -359,26 +359,37 @@ const collectAnchorFacetRanges = (
   const fragment = parseFragment(canonicalHtml) as unknown as HtmlNode;
   const ranges: FacetRange[] = [];
   let cursor = 0;
-  const visit = (node: HtmlNode): void => {
+  const visit = (node: HtmlNode, insideEmittedAnchor: boolean): void => {
     if (node.nodeName === '#text') {
+      cursor += node.value?.length ?? 0;
       return;
     }
-    if (node.tagName === 'a') {
+    const tagName = node.tagName;
+    if (tagName === 'a' && !insideEmittedAnchor) {
       const href = getAttribute(node, 'href');
       const uri = href ? normalizeGeneratedLinkHref(href) : undefined;
       const label = collectNodeText(node);
-      if (uri && label) {
-        const start = value.indexOf(label, cursor);
-        if (start >= 0) {
-          cursor = start + label.length;
-          ranges.push({ start, end: cursor, uri });
+      if (uri && label.trim()) {
+        let range: { start: number; end: number } | undefined;
+        if (value.startsWith(label, cursor)) {
+          range = { start: cursor, end: cursor + label.length };
+        } else {
+          const start = value.indexOf(label, cursor);
+          if (start >= 0) {
+            range = { start, end: start + label.length };
+          }
+        }
+        if (range) {
+          ranges.push({ ...range, uri });
+          getChildNodes(node).forEach((child) => visit(child, true));
+          cursor = range.end;
           return;
         }
       }
     }
-    getChildNodes(node).forEach(visit);
+    getChildNodes(node).forEach((child) => visit(child, insideEmittedAnchor));
   };
-  visit(fragment);
+  visit(fragment, false);
   return ranges;
 };
 
@@ -393,7 +404,8 @@ const buildLinkFacets = (
       .filter(
         (range) =>
           !anchorRanges.some(
-            (anchor) => range.start >= anchor.start && range.end <= anchor.end
+            (anchor) =>
+              range.start < anchor.end && range.end > anchor.start
           )
       )
       .map((range) => ({

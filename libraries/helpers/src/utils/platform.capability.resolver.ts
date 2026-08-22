@@ -260,11 +260,18 @@ const applyRuntimeOverlay = (
 
   const overlay = context.runtimeOverlay!;
   const runtimeKeys = profile.runtimeKeys ?? [];
+  const ceiling = profile.runtimeMaxCeiling;
   const textLimits = overlay.textLimits
     ? Object.fromEntries(
         Object.entries(overlay.textLimits).map(([key, limit]) => [
           key,
-          { ...limit, source: 'runtime' as const },
+          {
+            ...limit,
+            source: 'runtime' as const,
+            ...(ceiling !== undefined && limit.max > ceiling
+              ? { max: ceiling }
+              : {}),
+          },
         ])
       )
     : undefined;
