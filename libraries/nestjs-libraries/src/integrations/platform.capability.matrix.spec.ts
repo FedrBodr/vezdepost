@@ -81,9 +81,7 @@ describe('registered platform capability matrix', () => {
       'linkedin-page': 'linkedin',
       'instagram-standalone': 'instagram',
     };
-    const aliased = resolved.filter(
-      ({ identifier }) => identifier in ALIASES
-    );
+    const aliased = resolved.filter(({ identifier }) => identifier in ALIASES);
     expect(
       aliased.map(({ identifier, profileIdentifier }) => ({
         identifier,
@@ -107,9 +105,7 @@ describe('registered platform capability matrix', () => {
       variant: 'self',
     });
 
-    const bluesky = resolved.find(
-      ({ identifier }) => identifier === 'bluesky'
-    );
+    const bluesky = resolved.find(({ identifier }) => identifier === 'bluesky');
     expect(bluesky).toMatchObject({
       verification: 'verified',
       profileIdentifier: 'bluesky',
@@ -124,9 +120,7 @@ describe('registered platform capability matrix', () => {
       variant: 'feed',
     });
 
-    const threads = resolved.find(
-      ({ identifier }) => identifier === 'threads'
-    );
+    const threads = resolved.find(({ identifier }) => identifier === 'threads');
     expect(threads).toMatchObject({
       verification: 'verified',
       profileIdentifier: 'threads',

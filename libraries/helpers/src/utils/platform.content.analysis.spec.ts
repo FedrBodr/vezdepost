@@ -607,8 +607,7 @@ describe('analyzePlatformContentV2', () => {
         severity: 'error',
         destination: 'dribbble',
         variant: 'shot',
-        message:
-          'Attached media does not match the shot variant requirements.',
+        message: 'Attached media does not match the shot variant requirements.',
       },
     ]);
     expect(result.blocking).toBe(true);
@@ -642,8 +641,7 @@ describe('analyzePlatformContentV2', () => {
         severity: 'error',
         destination: 'dribbble',
         variant: 'shot',
-        message:
-          'Attached media does not match the shot variant requirements.',
+        message: 'Attached media does not match the shot variant requirements.',
       },
     ]);
     expect(result.blocking).toBe(true);

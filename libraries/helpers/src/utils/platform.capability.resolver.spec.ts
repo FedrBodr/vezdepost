@@ -156,12 +156,7 @@ describe('Batch 0 platform capability resolution', () => {
       [{ type: 'image' as const }],
       { variant: 'feed', diagnostics: [] },
     ],
-    [
-      'no media',
-      {},
-      [],
-      { variant: 'feed', diagnostics: [] },
-    ],
+    ['no media', {}, [], { variant: 'feed', diagnostics: [] }],
   ] as const)(
     'selects facebook variant for %s',
     (_name, settings, media, expected) => {
@@ -192,11 +187,7 @@ describe('Batch 0 platform capability resolution', () => {
 
   it('gives the facebook story variant no canonical-editor fields so analysis cannot block on text', () => {
     const resolved = resolvePlatformCapabilityV2(
-      ctx(
-        'facebook',
-        [{ type: 'image' }],
-        { settings: { post_type: 'story' } }
-      )
+      ctx('facebook', [{ type: 'image' }], { settings: { post_type: 'story' } })
     );
     expect(resolved.variant).toBe('story');
     expect(resolved.fields).toEqual([]);
@@ -227,7 +218,6 @@ describe('Batch 0 platform capability resolution', () => {
       videos: { min: 1, max: 1 },
     });
   });
-
 
   it.each([
     ['linkedin-page', [], { profileIdentifier: 'linkedin', variant: 'feed' }],
@@ -608,11 +598,19 @@ describe('Batch 0 platform capability resolution', () => {
       runtimeOverlay: {
         observedAt: new Date().toISOString(),
         textLimits: {
-          body: { max: 4000, unit: 'weighted', counter: 'x-weighted', source: 'runtime' },
+          body: {
+            max: 4000,
+            unit: 'weighted',
+            counter: 'x-weighted',
+            source: 'runtime',
+          },
         },
       },
     });
-    expect(capability.fields[0].limit).toMatchObject({ max: 4000, source: 'runtime' });
+    expect(capability.fields[0].limit).toMatchObject({
+      max: 4000,
+      source: 'runtime',
+    });
     expect(capability.diagnostics).toHaveLength(0);
   });
 
@@ -746,7 +744,10 @@ describe('Batch 0 platform capability resolution', () => {
       unit: 'utf8-bytes',
       source: 'platform',
     });
-    expect(capability.media).toEqual({ type: 'required', videos: { min: 1, max: 1 } });
+    expect(capability.media).toEqual({
+      type: 'required',
+      videos: { min: 1, max: 1 },
+    });
   });
 
   it('selects reddit variants from url and media signals', () => {
@@ -874,21 +875,29 @@ describe('Batch 0 platform capability resolution', () => {
 
   it.each([
     ['link', { url: 'https://example.test' }, [], { type: 'none' }],
-    ['image', {}, [{ type: 'image' as const }], {
-      type: 'required',
-      images: { min: 1, max: 1 },
-    }],
+    [
+      'image',
+      {},
+      [{ type: 'image' as const }],
+      {
+        type: 'required',
+        images: { min: 1, max: 1 },
+      },
+    ],
     [
       'video',
       {},
       [{ type: 'video' as const }],
       { type: 'required', videos: { min: 1, max: 1, coverRequired: true } },
     ],
-  ] as const)('models reddit %s media as %j', (variant, settings, media, expected) => {
-    expect(
-      resolvePlatformCapabilityV2(ctx('reddit', media, { settings })).media
-    ).toEqual(expected);
-  });
+  ] as const)(
+    'models reddit %s media as %j',
+    (variant, settings, media, expected) => {
+      expect(
+        resolvePlatformCapabilityV2(ctx('reddit', media, { settings })).media
+      ).toEqual(expected);
+    }
+  );
 
   it('resolves discord as a verified message profile with a 1980-unit application-safety body', () => {
     const capability = resolvePlatformCapabilityV2(ctx('discord'));
@@ -914,22 +923,25 @@ describe('Batch 0 platform capability resolution', () => {
       [{ key: 'messageType', label: 'Message type', required: false }],
     ],
     ['kick', []],
-  ] as const)('resolves %s as a verified chat profile', (identifier, structuredFields) => {
-    const capability = resolvePlatformCapabilityV2(ctx(identifier));
-    expect(capability).toMatchObject({
-      verification: 'verified',
-      profileIdentifier: identifier,
-      variant: 'chat',
-    });
-    expect(capability.fields[0].limit).toEqual({
-      max: 500,
-      unit: 'utf16-code-units',
-      source: 'platform',
-    });
-    expect(capability.fields[0].dialect).toBe('plain');
-    expect(capability.media).toEqual({ type: 'none' });
-    expect(capability.structuredFields).toEqual(structuredFields);
-  });
+  ] as const)(
+    'resolves %s as a verified chat profile',
+    (identifier, structuredFields) => {
+      const capability = resolvePlatformCapabilityV2(ctx(identifier));
+      expect(capability).toMatchObject({
+        verification: 'verified',
+        profileIdentifier: identifier,
+        variant: 'chat',
+      });
+      expect(capability.fields[0].limit).toEqual({
+        max: 500,
+        unit: 'utf16-code-units',
+        source: 'platform',
+      });
+      expect(capability.fields[0].dialect).toBe('plain');
+      expect(capability.media).toEqual({ type: 'none' });
+      expect(capability.structuredFields).toEqual(structuredFields);
+    }
+  );
 
   it('resolves lemmy as a verified markdown post profile with an unlimited title', () => {
     const capability = resolvePlatformCapabilityV2(ctx('lemmy'));
@@ -1020,9 +1032,9 @@ describe('Batch 0 platform capability resolution', () => {
       unit: 'utf16-code-units',
       source: 'application-safety',
     });
-    expect(
-      capability.fields.some((field) => field.key === 'title')
-    ).toBe(false);
+    expect(capability.fields.some((field) => field.key === 'title')).toBe(
+      false
+    );
     expect(capability.media).toEqual({ type: 'none' });
     expect(capability.structuredFields[0]).toEqual({
       key: 'title',
@@ -1201,7 +1213,11 @@ describe('Batch 0 platform capability resolution', () => {
               required: false,
               source: 'canonical-editor',
               dialect: 'plain',
-              limit: { max: 2_000, unit: 'utf16-code-units', source: 'platform' },
+              limit: {
+                max: 2_000,
+                unit: 'utf16-code-units',
+                source: 'platform',
+              },
               formatting: {
                 bold: 'unicode',
                 underline: 'unicode',
@@ -1286,20 +1302,24 @@ describe('Batch 0 platform capability resolution', () => {
     ['EVENT topic type', { topicType: 'EVENT' }, 'event'],
     ['OFFER topic type', { topicType: 'OFFER' }, 'offer'],
   ] as const)('selects the gmb variant for %s', (_name, settings, variant) => {
-    expect(resolvePlatformCapabilityV2(ctx('gmb', [], { settings }))).toMatchObject(
-      {
-        identifier: 'gmb',
-        profileIdentifier: 'gmb',
-        verification: 'verified',
-        variant,
-      }
-    );
+    expect(
+      resolvePlatformCapabilityV2(ctx('gmb', [], { settings }))
+    ).toMatchObject({
+      identifier: 'gmb',
+      profileIdentifier: 'gmb',
+      verification: 'verified',
+      variant,
+    });
   });
 
   it('models gmb standard posts with optional call-to-action settings', () => {
     const resolved = resolvePlatformCapabilityV2(ctx('gmb'));
     expect(resolved.structuredFields).toEqual([
-      { key: 'callToActionType', label: 'Call to action type', required: false },
+      {
+        key: 'callToActionType',
+        label: 'Call to action type',
+        required: false,
+      },
       { key: 'callToActionUrl', label: 'Call to action URL', required: false },
     ]);
   });
@@ -1309,7 +1329,11 @@ describe('Batch 0 platform capability resolution', () => {
       ctx('gmb', [], { settings: { topicType: 'EVENT' } })
     );
     expect(resolved.structuredFields).toEqual([
-      { key: 'callToActionType', label: 'Call to action type', required: false },
+      {
+        key: 'callToActionType',
+        label: 'Call to action type',
+        required: false,
+      },
       { key: 'callToActionUrl', label: 'Call to action URL', required: false },
       { key: 'eventTitle', label: 'Event title', required: true },
       { key: 'eventStartDate', label: 'Event start date', required: false },
@@ -1324,7 +1348,11 @@ describe('Batch 0 platform capability resolution', () => {
       ctx('gmb', [], { settings: { topicType: 'OFFER' } })
     );
     expect(resolved.structuredFields).toEqual([
-      { key: 'callToActionType', label: 'Call to action type', required: false },
+      {
+        key: 'callToActionType',
+        label: 'Call to action type',
+        required: false,
+      },
       { key: 'callToActionUrl', label: 'Call to action URL', required: false },
       { key: 'offerCouponCode', label: 'Offer coupon code', required: false },
       { key: 'offerRedeemUrl', label: 'Offer redeem URL', required: false },

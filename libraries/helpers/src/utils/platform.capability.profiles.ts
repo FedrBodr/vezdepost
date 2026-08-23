@@ -740,9 +740,7 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       feed: {
         key: 'feed',
         fields: [facebookBody()],
-        structuredFields: [
-          { key: 'link', label: 'Link', required: false },
-        ],
+        structuredFields: [{ key: 'link', label: 'Link', required: false }],
         media: {
           type: 'optional',
           images: { min: 1, max: 10 },
@@ -996,20 +994,26 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
     evidenceDate: '2026-08-21',
     defaultVariant: 'post',
     variants: {
-      post: simpleVariant('post', 300, 'bluesky-facets', {
-        bold: 'unsupported',
-        underline: 'unsupported',
-        links: 'native',
-        lists: 'plain',
-        headings: 'plain',
-      }, {
-        type: 'exclusive',
-        optional: true,
-        alternatives: [
-          { kind: 'images', min: 1, max: 4 },
-          { kind: 'video', min: 1, max: 1 },
-        ],
-      }),
+      post: simpleVariant(
+        'post',
+        300,
+        'bluesky-facets',
+        {
+          bold: 'unsupported',
+          underline: 'unsupported',
+          links: 'native',
+          lists: 'plain',
+          headings: 'plain',
+        },
+        {
+          type: 'exclusive',
+          optional: true,
+          alternatives: [
+            { kind: 'images', min: 1, max: 4 },
+            { kind: 'video', min: 1, max: 1 },
+          ],
+        }
+      ),
     },
   },
   gmb: {
