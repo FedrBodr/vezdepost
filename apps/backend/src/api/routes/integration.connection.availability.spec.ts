@@ -131,4 +131,28 @@ describe('connection availability route boundaries', () => {
     expect(generateAuthUrl).not.toHaveBeenCalled();
     expect(ioRedis.set).not.toHaveBeenCalled();
   });
+
+  it('preserves legacy enterprise handling for downstream forbidden errors', async () => {
+    vi.spyOn(AuthService, 'verifyJWT').mockReturnValue({
+      redirectUrl: 'https://customer.example/return',
+      apiKey: 'api-key-fixture',
+      provider: 'telegram',
+      webhookUrl: 'https://customer.example/webhook',
+    } as never);
+    vi.spyOn(
+      manager.getSocialIntegration('telegram'),
+      'generateAuthUrl'
+    ).mockRejectedValue(new ForbiddenException('Downstream forbidden'));
+    const controller = new EnterpriseController(
+      manager,
+      { getOrgByApiKey: vi.fn().mockResolvedValue(org) } as never,
+      {} as never,
+      {} as never
+    );
+
+    await expect(
+      controller.redirectParams('signed-params-fixture')
+    ).resolves.toBeUndefined();
+    expect(ioRedis.set).not.toHaveBeenCalled();
+  });
 });

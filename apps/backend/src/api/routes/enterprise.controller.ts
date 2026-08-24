@@ -51,8 +51,21 @@ export class EnterpriseController {
 
   @Post('/url')
   async redirectParams(@Body('params') params: string) {
+    let load:
+      | {
+          redirectUrl: string;
+          apiKey: string;
+          refreshId?: string;
+          provider: string;
+          webhookUrl: string;
+        }
+      | undefined;
+    let org:
+      | Awaited<ReturnType<OrganizationService['getOrgByApiKey']>>
+      | undefined;
+
     try {
-      const load = AuthService.verifyJWT(params) as {
+      load = AuthService.verifyJWT(params) as {
         redirectUrl: string;
         apiKey: string;
         refreshId?: string;
@@ -64,20 +77,24 @@ export class EnterpriseController {
         return;
       }
 
-      const org = await this._organizationService.getOrgByApiKey(load.apiKey);
+      org = await this._organizationService.getOrgByApiKey(load.apiKey);
 
       if (!org) {
         throw new Error('Organization not found');
       }
+    } catch {
+      return;
+    }
 
-      if (
-        !this._integrationManager
-          .getAllowedSocialsIntegrations()
-          .includes(load.provider)
-      ) {
-        throw new ForbiddenException('Integration not available');
-      }
+    if (
+      !this._integrationManager
+        .getAllowedSocialsIntegrations()
+        .includes(load.provider)
+    ) {
+      throw new ForbiddenException('Integration not available');
+    }
 
+    try {
       const integrationProvider = this._integrationManager.getSocialIntegration(
         load.provider
       );
@@ -95,11 +112,7 @@ export class EnterpriseController {
       await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
 
       return url;
-    } catch (err) {
-      if (err instanceof ForbiddenException) {
-        throw err;
-      }
-    }
+    } catch {}
   }
 
   @Post('/delete-channel')
