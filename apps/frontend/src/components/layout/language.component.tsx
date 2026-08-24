@@ -97,7 +97,7 @@ export const ChangeLanguageComponent = () => {
               aria-label={languageName}
               aria-pressed={language === currentLanguage}
               className={clsx(
-                'min-h-[88px] flex items-center justify-center flex-col rounded-[8px] bg-newTableHeader hover:bg-newTableBorder p-[12px] cursor-pointer gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-textColor',
+                'min-h-[88px] flex items-center justify-center flex-col rounded-[8px] bg-newTableHeader hover:bg-newTableBorder p-[12px] cursor-pointer gap-2 focus-visible:ring-2 focus-visible:ring-textColor focus-visible:ring-offset-2 focus-visible:ring-offset-newBgColorInner disabled:cursor-not-allowed disabled:opacity-60',
                 language === currentLanguage
                   ? 'border border-textColor'
                   : 'border border-transparent'
@@ -141,7 +141,7 @@ export const LanguageComponent = () => {
       onClick={openModal}
       aria-label={t('change_language', 'Change Language')}
       aria-haspopup="dialog"
-      className="rounded-full overflow-hidden h-[44px] w-[44px] relative cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-textColor"
+      className="rounded-full overflow-hidden h-[44px] w-[44px] relative cursor-pointer focus-visible:ring-2 focus-visible:ring-textColor focus-visible:ring-offset-2 focus-visible:ring-offset-newBgColorInner disabled:cursor-not-allowed disabled:opacity-60"
     >
       <span aria-hidden="true">
         <ReactCountryFlag

@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import i18next from '@gitroom/react/translation/i18next';
+import { languages } from '@gitroom/react/translation/i18n.config';
 import { ModalManager } from './new-modal';
 import {
   ChangeLanguageComponent,
@@ -21,6 +22,7 @@ const source = readFileSync(
   'apps/frontend/src/components/layout/language.component.tsx',
   'utf8'
 );
+const globalStyles = readFileSync('apps/frontend/src/app/global.scss', 'utf8');
 
 afterEach(cleanup);
 
@@ -74,6 +76,40 @@ describe('language selector', () => {
     expect(english?.getAttribute('aria-pressed')).toBe('true');
     expect(grid?.className).toContain('grid-cols-2');
     expect(grid?.className).toContain('sm:grid-cols-4');
+  });
+
+  it('uses theme focus rings that remain visible despite the global outline reset', () => {
+    const { container } = render(
+      <ModalManager>
+        <LanguageComponent />
+        <ChangeLanguageComponent />
+      </ModalManager>
+    );
+    const trigger = screen.getByRole('button', { name: 'Change Language' });
+    const options = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('button[data-language]')
+    );
+
+    expect(globalStyles).toMatch(
+      /body\s+\*\s*{[^}]*outline:\s*none\s*!important;/
+    );
+    expect(options).toHaveLength(languages.length);
+
+    for (const button of [trigger, ...options]) {
+      expect(button.className).toContain('focus-visible:ring-2');
+      expect(button.className).toContain('focus-visible:ring-textColor');
+      expect(button.className).toContain('focus-visible:ring-offset-2');
+      expect(button.className).toContain(
+        'focus-visible:ring-offset-newBgColorInner'
+      );
+      expect(button.className).not.toContain('focus-visible:outline');
+      expect(button.className).toContain('disabled:opacity-60');
+    }
+
+    const selected = options.find(
+      (button) => button.getAttribute('aria-pressed') === 'true'
+    );
+    expect(selected?.className).toContain('border-textColor');
   });
 
   it('persists Arabic, updates root locale state, and closes the dialog', async () => {
