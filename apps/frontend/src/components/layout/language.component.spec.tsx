@@ -50,7 +50,12 @@ describe('language selector', () => {
       name: 'Change Language',
     });
     expect(source).toContain("size: 'min(600px, calc(100vw - 24px))'");
-    expect(screen.getByRole('button', { name: 'Close' })).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Change Language' })
+      ).toBeNull()
+    );
   });
 
   it('renders native responsive options with selected state', () => {
@@ -71,13 +76,17 @@ describe('language selector', () => {
     expect(grid?.className).toContain('sm:grid-cols-4');
   });
 
-  it('persists Arabic and updates i18next, lang, and RTL direction', async () => {
-    const { container } = render(
+  it('persists Arabic, updates root locale state, and closes the dialog', async () => {
+    render(
       <ModalManager>
-        <ChangeLanguageComponent />
+        <LanguageComponent />
       </ModalManager>
     );
-    const arabic = container.querySelector<HTMLButtonElement>(
+    fireEvent.click(screen.getByRole('button', { name: 'Change Language' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Change Language',
+    });
+    const arabic = dialog.querySelector<HTMLButtonElement>(
       'button[data-language="ar"]'
     );
     expect(arabic).not.toBeNull();
@@ -87,5 +96,10 @@ describe('language selector', () => {
     expect(document.cookie).toContain('i18next=ar');
     expect(document.documentElement.lang).toBe('ar');
     expect(document.documentElement.dir).toBe('rtl');
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Change Language' })
+      ).toBeNull()
+    );
   });
 });
