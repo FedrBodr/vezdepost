@@ -7,6 +7,28 @@ Server: 201.51.7.50 (`~/postiz-app`, branch `prod`).
 - `wait-temporal.js` (repo root) — gates app startup until temporal accepts connections.
 - Temporal UI: `ssh -L 8080:127.0.0.1:8080 root@201.51.7.50` → http://localhost:8080
 
+## Hosted channel availability
+
+The hosted Vezdepost connection allowlist is tracked in
+`docker-compose.override.yaml` as:
+
+`telegram,max,vk,vk-group,x,linkedin,tumblr`
+
+The application still shows other registered adapters as request-only. Pinterest remains request-only until Standard access and public readiness are verified.
+Adding a hosted provider requires both an end-to-end production connection check
+and an explicit update to this tracked list and `deploy/production-config.spec.ts`.
+
+Before recreating `postiz`, validate required credentials and interpolation
+without printing their values:
+
+```bash
+rtk docker compose config --quiet
+```
+
+Because X is in the hosted allowlist, the production override requires both
+`X_API_KEY` and `X_API_SECRET`; Compose stops before recreation when either is
+unset or empty. Real credentials remain only in the untracked server `.env`.
+
 ## LinkedIn personal profiles
 
 Create an application in the LinkedIn Developer Portal and enable
