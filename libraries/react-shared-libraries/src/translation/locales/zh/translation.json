@@ -695,5 +695,11 @@
   "watch_tutorial_description": "观看这个简短的视频，学习如何最大程度地利用Postiz",
   "back": "返回",
   "get_started": "开始使用",
-  "kick_select_channel": "选择频道"
+  "kick_select_channel": "选择频道",
+  "missing_platform_prompt": "找不到您需要的平台吗？",
+  "missing_platform_email": "给我们发邮件——我们会尝试添加。",
+  "request_platform": "申请",
+  "platform_requested": "已申请",
+  "request_new_platform_email_subject": "申请在 Vezdepost 中添加新平台",
+  "provider_connection_help_email_subject": "无法在 Vezdepost 中连接 {{platform}}"
 }

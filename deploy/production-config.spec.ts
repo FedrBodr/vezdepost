@@ -6,13 +6,13 @@ const readRootFile = (path: string) =>
   readFileSync(join(process.cwd(), path), 'utf8');
 
 describe('production configuration', () => {
-  it('forwards optional X and PostHog values and documents their setup', () => {
+  it('requires X credentials and forwards optional PostHog values', () => {
     const override = readRootFile('docker-compose.override.yaml');
     const example = readRootFile('.env.example');
     const readme = readRootFile('deploy/README.md');
 
-    expect(override).toContain("X_API_KEY: '${X_API_KEY:-}'");
-    expect(override).toContain("X_API_SECRET: '${X_API_SECRET:-}'");
+    expect(override).toContain("X_API_KEY: '${X_API_KEY:?set in .env}'");
+    expect(override).toContain("X_API_SECRET: '${X_API_SECRET:?set in .env}'");
     expect(override).toContain(
       "NEXT_PUBLIC_POSTHOG_KEY: '${NEXT_PUBLIC_POSTHOG_KEY:-}'"
     );
@@ -26,6 +26,39 @@ describe('production configuration', () => {
     expect(readme).toContain('https://app.vezdepost.ru/integrations/social/x');
     expect(readme).toContain('OAuth 1.0a');
     expect(readme).toContain('Read and write');
+  });
+
+  it('preserves self-host defaults and tracks the exact Vezdepost allowlist', () => {
+    const base = readRootFile('docker-compose.yaml');
+    const override = readRootFile('docker-compose.override.yaml');
+    const example = readRootFile('.env.example');
+    const readme = readRootFile('deploy/README.md');
+    const productionAllowlist =
+      "ENABLED_SOCIAL_INTEGRATIONS: 'telegram,max,vk,vk-group,x,linkedin,tumblr'";
+
+    expect(base).toContain(
+      "ENABLED_SOCIAL_INTEGRATIONS: '${ENABLED_SOCIAL_INTEGRATIONS:-}'"
+    );
+    const configuredValue = override.match(
+      /^\s*ENABLED_SOCIAL_INTEGRATIONS: '([^']+)'$/m
+    )?.[1];
+
+    expect(override).toContain(productionAllowlist);
+    expect(configuredValue).toBe('telegram,max,vk,vk-group,x,linkedin,tumblr');
+    expect(configuredValue?.split(',')).not.toContain('pinterest');
+    expect(example).toContain('ENABLED_SOCIAL_INTEGRATIONS=""');
+    expect(example).toContain(
+      'Blank or unset keeps every registered provider connectable.'
+    );
+    expect(readme).toContain('telegram,max,vk,vk-group,x,linkedin,tumblr');
+    expect(readme).toContain('Pinterest remains request-only');
+    expect(readme).toContain('rtk docker compose config --quiet');
+    expect(readme).toContain(
+      'Unknown identifiers are ignored while valid identifiers remain enabled; a configured list containing only unknown identifiers fails closed and allows no new connections.'
+    );
+    expect(readme).toContain(
+      'After changing ENABLED_SOCIAL_INTEGRATIONS, restart or recreate the postiz service/container for the updated environment to take effect.'
+    );
   });
 
   it('requires personal LinkedIn credentials and documents the OAuth setup', () => {

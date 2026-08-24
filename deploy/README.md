@@ -7,6 +7,31 @@ Server: 201.51.7.50 (`~/postiz-app`, branch `prod`).
 - `wait-temporal.js` (repo root) — gates app startup until temporal accepts connections.
 - Temporal UI: `ssh -L 8080:127.0.0.1:8080 root@201.51.7.50` → http://localhost:8080
 
+## Hosted channel availability
+
+The hosted Vezdepost connection allowlist is tracked in
+`docker-compose.override.yaml` as:
+
+`telegram,max,vk,vk-group,x,linkedin,tumblr`
+
+The application still shows other registered adapters as request-only. Pinterest remains request-only until Standard access and public readiness are verified.
+Unknown identifiers are ignored while valid identifiers remain enabled; a configured list containing only unknown identifiers fails closed and allows no new connections.
+Adding a hosted provider requires both an end-to-end production connection check
+and an explicit update to this tracked list and `deploy/production-config.spec.ts`.
+
+After changing ENABLED_SOCIAL_INTEGRATIONS, restart or recreate the postiz service/container for the updated environment to take effect.
+
+Before recreating `postiz`, validate required credentials and interpolation
+without printing their values:
+
+```bash
+rtk docker compose config --quiet
+```
+
+Because X is in the hosted allowlist, the production override requires both
+`X_API_KEY` and `X_API_SECRET`; Compose stops before recreation when either is
+unset or empty. Real credentials remain only in the untracked server `.env`.
+
 ## LinkedIn personal profiles
 
 Create an application in the LinkedIn Developer Portal and enable
@@ -51,6 +76,46 @@ without printing the token, validates Compose, and recreates only `postiz`
 without rebuilding the image. Copying first is required: piping the script into
 `ssh` would occupy standard input and prevent the hidden remote prompt from
 receiving the token.
+
+### Unavailable-channel demand
+
+Create a PostHog dashboard named `Unavailable channel demand`. Create the
+saved Trends insight `Unavailable channel demand — all-time unique users`, add
+it to that dashboard, and configure it with:
+
+- event `platform_request_clicked`;
+- event-property filter `source = unavailable_channel`;
+- aggregation `Unique users`;
+- event-property breakdown `platform`;
+- date range `All time`.
+
+This breakdown is the demand dashboard only. Do not attach one alert to the
+breakdown and assume it tracks each platform independently: PostHog keeps one
+alert state for the insight and can report only the first breaching breakdown.
+
+For each platform selected for monitoring, create an explicit
+platform-filtered non-time-series Trends aggregate using the same event,
+`source = unavailable_channel`, `aggregation = Unique users`, and `All time`
+date range. Add an event-property filter named `platform` and select the exact
+stable identifier displayed for that provider in the saved breakdown dashboard.
+Use a Bold number or another non-time-series aggregate; a time-series alert
+evaluates an interval rather than lifetime cumulative demand.
+
+Attach one absolute `has value` alert to each explicit platform aggregate:
+
+1. set the upper bound to `9` because PostHog uses strict `>` comparison and
+   must fire when the value becomes 10;
+2. select the desired hourly or daily check cadence;
+3. subscribe the Vezdepost owner's existing PostHog user so the owner receives
+   email and in-app notification;
+4. when the first threshold email arrives, disable the alert immediately,
+   because a cumulative breached insight re-notifies on each scheduled check;
+5. use the breakdown dashboard to assign the freed slot to the next candidate.
+
+The free tier permits five alerts per organization, not per project. Alert
+checks are asynchronous and do not fire synchronously on the tenth click.
+Exact automatic one-shot notification for every platform requires external
+state or automation and is intentionally not part of this deployment.
 
 ## Tumblr
 

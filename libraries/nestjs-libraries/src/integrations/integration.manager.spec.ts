@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { IntegrationManager } from './integration.manager';
+import {
+  IntegrationManager,
+  socialIntegrationList,
+} from './integration.manager';
 import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
 
 afterEach(() => {
@@ -144,9 +147,7 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
 
     const integration = {
       id: 'stored-reddit-integration',
-      additionalSettings: JSON.stringify([
-        { title: 'Unrelated', value: true },
-      ]),
+      additionalSettings: JSON.stringify([{ title: 'Unrelated', value: true }]),
     } as never;
     const postSettings = {
       subreddit: [{ value: { subreddit: '/r/testing', type: 'self' } }],
@@ -321,6 +322,48 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
     expect(resolved.fields[0].limit?.max).toBe(280);
     expect(resolved.diagnostics).toContainEqual(
       expect.objectContaining({ code: 'runtime-data-missing' })
+    );
+  });
+});
+
+describe('IntegrationManager deployment availability', () => {
+  it('keeps every provider allowed when the environment value is blank', async () => {
+    vi.stubEnv('ENABLED_SOCIAL_INTEGRATIONS', '   ');
+    const manager = new IntegrationManager();
+    const catalogue = await manager.getAllIntegrations();
+
+    expect(manager.getAllowedSocialsIntegrations()).toEqual(
+      socialIntegrationList.map(({ identifier }) => identifier)
+    );
+    expect(catalogue.social).toHaveLength(socialIntegrationList.length);
+    expect(catalogue.social.every(({ canConnect }) => canConnect)).toBe(true);
+  });
+
+  it('adds canConnect without filtering or reordering the catalogue', async () => {
+    vi.stubEnv(
+      'ENABLED_SOCIAL_INTEGRATIONS',
+      ' telegram, X,telegram,unknown-provider '
+    );
+    const warning = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    const manager = new IntegrationManager();
+    const catalogue = await manager.getAllIntegrations();
+
+    expect(manager.getAllowedSocialsIntegrations()).toEqual(['x', 'telegram']);
+    expect(manager.isSocialIntegrationAllowed('x')).toBe(true);
+    expect(manager.isSocialIntegrationAllowed('reddit')).toBe(false);
+    expect(catalogue.social.map(({ identifier }) => identifier)).toEqual(
+      socialIntegrationList.map(({ identifier }) => identifier)
+    );
+    expect(
+      catalogue.social.find(({ identifier }) => identifier === 'x')
+    ).toMatchObject({ canConnect: true });
+    expect(
+      catalogue.social.find(({ identifier }) => identifier === 'reddit')
+    ).toMatchObject({ canConnect: false });
+    expect(warning).toHaveBeenCalledExactlyOnceWith(
+      '[integrations] Ignoring unknown ENABLED_SOCIAL_INTEGRATIONS identifiers: unknown-provider'
     );
   });
 });

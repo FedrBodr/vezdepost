@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
   HttpStatus,
@@ -53,7 +54,7 @@ export class NoAuthIntegrationsController {
         .getAllowedSocialsIntegrations()
         .includes(integration)
     ) {
-      throw new Error('Integration not allowed');
+      throw new ForbiddenException('Integration not available');
     }
 
     const integrationProvider =
@@ -361,6 +362,17 @@ export class NoAuthIntegrationsController {
     );
     if (!integration || integration.internalId !== internalId) {
       throw new HttpException('Integration not found', 404);
+    }
+
+    if (
+      !this._integrationManager.isSocialIntegrationAllowed(
+        integration.providerIdentifier
+      )
+    ) {
+      throw new HttpException(
+        'Integration not available',
+        HttpStatus.FORBIDDEN
+      );
     }
 
     const integrationProvider =

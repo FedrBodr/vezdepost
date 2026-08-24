@@ -304,6 +304,17 @@ export class IntegrationService {
       throw new HttpException('Integration not found', HttpStatus.NOT_FOUND);
     }
 
+    if (
+      !this._integrationManager.isSocialIntegrationAllowed(
+        getIntegration.providerIdentifier
+      )
+    ) {
+      throw new HttpException(
+        'Integration not available',
+        HttpStatus.FORBIDDEN
+      );
+    }
+
     const provider = this._integrationManager.getSocialIntegration(
       getIntegration.providerIdentifier
     );

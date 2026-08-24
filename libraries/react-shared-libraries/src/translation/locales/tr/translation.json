@@ -695,5 +695,11 @@
   "watch_tutorial_description": "Postiz'den en iyi şekilde yararlanmayı öğrenmek için bu kısa videoyu izleyin",
   "back": "Geri",
   "get_started": "Başlayın",
-  "kick_select_channel": "Kanal Seç"
+  "kick_select_channel": "Kanal Seç",
+  "missing_platform_prompt": "İhtiyacınız olan platformu bulamadınız mı?",
+  "missing_platform_email": "Bize e-posta gönderin — eklemeye çalışalım.",
+  "request_platform": "Talep et",
+  "platform_requested": "Talep edildi",
+  "request_new_platform_email_subject": "Vezdepost'a yeni platform talebi",
+  "provider_connection_help_email_subject": "{{platform}} Vezdepost'a bağlanamıyor"
 }

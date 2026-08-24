@@ -45,6 +45,7 @@ import type {
   ResolvedPlatformCapabilityV2,
 } from '@gitroom/helpers/utils/platform.capability.types';
 import type { Integration } from '@prisma/client';
+import { parseEnabledSocialIntegrations } from '@gitroom/nestjs-libraries/integrations/enabled.social.integrations';
 
 export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new XProvider(),
@@ -88,12 +89,28 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
 
 @Injectable()
 export class IntegrationManager {
+  private readonly socialIntegrationAllowlist = parseEnabledSocialIntegrations(
+    process.env.ENABLED_SOCIAL_INTEGRATIONS,
+    socialIntegrationList.map(({ identifier }) => identifier)
+  );
+
+  constructor() {
+    if (this.socialIntegrationAllowlist.unknown.length) {
+      console.warn(
+        `[integrations] Ignoring unknown ENABLED_SOCIAL_INTEGRATIONS identifiers: ${this.socialIntegrationAllowlist.unknown.join(
+          ', '
+        )}`
+      );
+    }
+  }
+
   async getAllIntegrations() {
     return {
       social: await Promise.all(
         socialIntegrationList.map(async (p) => ({
           name: p.name,
           identifier: p.identifier,
+          canConnect: this.isSocialIntegrationAllowed(p.identifier),
           toolTip: p.toolTip,
           editor: p.editor,
           capabilitiesV2: await this.resolveCapabilitiesV2({
@@ -187,7 +204,11 @@ export class IntegrationManager {
   }
 
   getAllowedSocialsIntegrations() {
-    return socialIntegrationList.map((p) => p.identifier);
+    return [...this.socialIntegrationAllowlist.allowed];
+  }
+
+  isSocialIntegrationAllowed(identifier: string) {
+    return this.socialIntegrationAllowlist.allowed.includes(identifier);
   }
 
   async resolveCapabilitiesV2({

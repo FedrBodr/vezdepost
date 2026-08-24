@@ -2,6 +2,7 @@ import { HttpException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { NoAuthIntegrationsController } from './no.auth.integrations.controller';
 
 vi.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
@@ -18,13 +19,20 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
   let provider: {
     isBetweenSteps: boolean;
     refreshCron: boolean;
+    isChromeExtension: boolean;
     authenticate: ReturnType<typeof vi.fn>;
     pages: ReturnType<typeof vi.fn>;
   };
   let integrationService: {
     checkPreviousConnections: ReturnType<typeof vi.fn>;
     createOrUpdateIntegration: ReturnType<typeof vi.fn>;
+    getIntegrationById: ReturnType<typeof vi.fn>;
     saveProviderPage: ReturnType<typeof vi.fn>;
+  };
+  let integrationManager: {
+    getAllowedSocialsIntegrations: ReturnType<typeof vi.fn>;
+    getSocialIntegration: ReturnType<typeof vi.fn>;
+    isSocialIntegrationAllowed: ReturnType<typeof vi.fn>;
   };
   let refreshIntegrationService: {
     startRefreshWorkflow: ReturnType<typeof vi.fn>;
@@ -33,6 +41,9 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(AuthService, 'signJWT').mockReturnValue(
+      'signed-extension-token-fixture'
+    );
     vi.mocked(ioRedis.get).mockImplementation(async (key) => {
       const normalizedKey = String(key);
       if (normalizedKey === 'login:oauth-state') return 'pkce-verifier';
@@ -43,6 +54,7 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
     provider = {
       isBetweenSteps: true,
       refreshCron: true,
+      isChromeExtension: true,
       authenticate: vi.fn().mockResolvedValue({
         id: 'vk-group-oauth:42',
         name: 'VK administrator fixture',
@@ -62,14 +74,20 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
         token: 'stored-access-token-fixture',
         refreshToken: 'stored-refresh-token-fixture',
       }),
+      getIntegrationById: vi.fn().mockResolvedValue({
+        id: integrationId,
+        internalId: 'extension-account-fixture',
+        providerIdentifier: 'skool',
+      }),
       saveProviderPage: vi.fn(),
     };
     refreshIntegrationService = {
       startRefreshWorkflow: vi.fn().mockResolvedValue(undefined),
     };
-    const integrationManager = {
+    integrationManager = {
       getAllowedSocialsIntegrations: vi.fn().mockReturnValue(['vk-group']),
       getSocialIntegration: vi.fn().mockReturnValue(provider),
+      isSocialIntegrationAllowed: vi.fn().mockReturnValue(true),
     };
     const organizationService = {
       getOrgById: vi.fn().mockResolvedValue({
@@ -85,6 +103,32 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
       refreshIntegrationService as never,
       organizationService as never
     );
+  });
+
+  it('blocks unavailable extension refresh before provider authentication', async () => {
+    vi.spyOn(AuthService, 'verifyJWT').mockReturnValue({
+      integrationId,
+      organizationId,
+      internalId: 'extension-account-fixture',
+      provider: 'skool',
+    } as never);
+    integrationManager.isSocialIntegrationAllowed.mockReturnValue(false);
+
+    let thrown: unknown;
+    try {
+      await controller.extensionRefreshCookies({
+        jwt: 'signed-extension-token-fixture',
+        cookies: 'encoded-cookie-fixture',
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(HttpException);
+    expect((thrown as HttpException).getStatus()).toBe(403);
+    expect((thrown as Error).message).toBe('Integration not available');
+    expect(provider.authenticate).not.toHaveBeenCalled();
+    expect(integrationService.createOrUpdateIntegration).not.toHaveBeenCalled();
   });
 
   const connect = () =>
