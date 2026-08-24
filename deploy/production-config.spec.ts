@@ -6,13 +6,13 @@ const readRootFile = (path: string) =>
   readFileSync(join(process.cwd(), path), 'utf8');
 
 describe('production configuration', () => {
-  it('requires X credentials and forwards optional PostHog values', () => {
+  it('keeps request-only X credentials optional and forwards optional PostHog values', () => {
     const override = readRootFile('docker-compose.override.yaml');
     const example = readRootFile('.env.example');
     const readme = readRootFile('deploy/README.md');
 
-    expect(override).toContain("X_API_KEY: '${X_API_KEY:?set in .env}'");
-    expect(override).toContain("X_API_SECRET: '${X_API_SECRET:?set in .env}'");
+    expect(override).toContain("X_API_KEY: '${X_API_KEY:-}'");
+    expect(override).toContain("X_API_SECRET: '${X_API_SECRET:-}'");
     expect(override).toContain(
       "NEXT_PUBLIC_POSTHOG_KEY: '${NEXT_PUBLIC_POSTHOG_KEY:-}'"
     );
@@ -34,7 +34,7 @@ describe('production configuration', () => {
     const example = readRootFile('.env.example');
     const readme = readRootFile('deploy/README.md');
     const productionAllowlist =
-      "ENABLED_SOCIAL_INTEGRATIONS: 'telegram,max,vk,vk-group,x,linkedin,tumblr'";
+      "ENABLED_SOCIAL_INTEGRATIONS: 'telegram,max,vk,vk-group,linkedin,tumblr'";
 
     expect(base).toContain(
       "ENABLED_SOCIAL_INTEGRATIONS: '${ENABLED_SOCIAL_INTEGRATIONS:-}'"
@@ -44,13 +44,15 @@ describe('production configuration', () => {
     )?.[1];
 
     expect(override).toContain(productionAllowlist);
-    expect(configuredValue).toBe('telegram,max,vk,vk-group,x,linkedin,tumblr');
+    expect(configuredValue).toBe('telegram,max,vk,vk-group,linkedin,tumblr');
+    expect(configuredValue?.split(',')).not.toContain('x');
     expect(configuredValue?.split(',')).not.toContain('pinterest');
     expect(example).toContain('ENABLED_SOCIAL_INTEGRATIONS=""');
     expect(example).toContain(
       'Blank or unset keeps every registered provider connectable.'
     );
-    expect(readme).toContain('telegram,max,vk,vk-group,x,linkedin,tumblr');
+    expect(readme).toContain('telegram,max,vk,vk-group,linkedin,tumblr');
+    expect(readme).toMatch(/X remains\s+request-only/);
     expect(readme).toContain('Pinterest remains request-only');
     expect(readme).toContain('rtk docker compose config --quiet');
     expect(readme).toContain(
