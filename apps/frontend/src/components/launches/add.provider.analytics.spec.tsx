@@ -50,7 +50,6 @@ describe('provider connection analytics', () => {
       isExternal: false,
       isWeb3: false,
       isChromeExtension: false,
-      customFields: undefined,
     };
     expect(isProviderVisibleInPicker(unavailable, false)).toBe(true);
     expect(isProviderVisibleInPicker(unavailable, true)).toBe(false);
