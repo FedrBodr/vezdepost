@@ -115,7 +115,7 @@ export const ChannelPickerCard = ({
             event.stopPropagation();
             request();
           }}
-          className="max-w-full whitespace-normal break-words rounded-[6px] border border-tableBorder px-[8px] py-[4px] text-[11px] leading-[14px] text-textColor disabled:cursor-default"
+          className="max-w-full whitespace-normal break-words rounded-[6px] border border-tableBorder px-[8px] py-[4px] text-[11px] leading-[14px] text-textColor focus-visible:ring-2 focus-visible:ring-textColor focus-visible:ring-offset-2 focus-visible:ring-offset-newTableHeader disabled:cursor-default disabled:opacity-60"
         >
           {requested ? requestedLabel : requestLabel}
         </button>

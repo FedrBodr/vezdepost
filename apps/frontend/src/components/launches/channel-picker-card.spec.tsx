@@ -107,6 +107,25 @@ describe('ChannelPickerCard', () => {
     ).toBe(true);
   });
 
+  it('keeps the request action keyboard-focusable with a visible theme ring', () => {
+    render(
+      <ChannelPickerCard
+        {...baseProps}
+        canConnect={false}
+        onConnect={vi.fn()}
+        onRequest={vi.fn()}
+      />
+    );
+
+    const request = screen.getByRole('button', { name: 'Request Pinterest' });
+    request.focus();
+
+    expect(document.activeElement).toBe(request);
+    expect(request.className).toContain('focus-visible:ring-2');
+    expect(request.className).toContain('focus-visible:ring-textColor');
+    expect(request.className).toContain('disabled:opacity-60');
+  });
+
   it('suppresses duplicate request events for one mounted card', () => {
     const onRequest = vi.fn();
     render(
