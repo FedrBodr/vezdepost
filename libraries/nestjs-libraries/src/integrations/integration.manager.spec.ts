@@ -147,9 +147,7 @@ describe('IntegrationManager trusted V2 capability resolution', () => {
 
     const integration = {
       id: 'stored-reddit-integration',
-      additionalSettings: JSON.stringify([
-        { title: 'Unrelated', value: true },
-      ]),
+      additionalSettings: JSON.stringify([{ title: 'Unrelated', value: true }]),
     } as never;
     const postSettings = {
       subreddit: [{ value: { subreddit: '/r/testing', type: 'self' } }],

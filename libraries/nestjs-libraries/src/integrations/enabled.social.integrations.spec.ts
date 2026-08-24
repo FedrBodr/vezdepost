@@ -39,12 +39,12 @@ describe('parseEnabledSocialIntegrations', () => {
   });
 
   it('ignores empty comma-separated entries without treating the value as unconfigured', () => {
-    expect(parseEnabledSocialIntegrations(' , telegram, , ', registered)).toEqual(
-      {
-        configured: true,
-        allowed: ['telegram'],
-        unknown: [],
-      }
-    );
+    expect(
+      parseEnabledSocialIntegrations(' , telegram, , ', registered)
+    ).toEqual({
+      configured: true,
+      allowed: ['telegram'],
+      unknown: [],
+    });
   });
 });

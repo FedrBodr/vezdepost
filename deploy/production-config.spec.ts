@@ -11,12 +11,8 @@ describe('production configuration', () => {
     const example = readRootFile('.env.example');
     const readme = readRootFile('deploy/README.md');
 
-    expect(override).toContain(
-      "X_API_KEY: '${X_API_KEY:?set in .env}'"
-    );
-    expect(override).toContain(
-      "X_API_SECRET: '${X_API_SECRET:?set in .env}'"
-    );
+    expect(override).toContain("X_API_KEY: '${X_API_KEY:?set in .env}'");
+    expect(override).toContain("X_API_SECRET: '${X_API_SECRET:?set in .env}'");
     expect(override).toContain(
       "NEXT_PUBLIC_POSTHOG_KEY: '${NEXT_PUBLIC_POSTHOG_KEY:-}'"
     );
@@ -48,17 +44,13 @@ describe('production configuration', () => {
     )?.[1];
 
     expect(override).toContain(productionAllowlist);
-    expect(configuredValue).toBe(
-      'telegram,max,vk,vk-group,x,linkedin,tumblr'
-    );
+    expect(configuredValue).toBe('telegram,max,vk,vk-group,x,linkedin,tumblr');
     expect(configuredValue?.split(',')).not.toContain('pinterest');
     expect(example).toContain('ENABLED_SOCIAL_INTEGRATIONS=""');
     expect(example).toContain(
       'Blank or unset keeps every registered provider connectable.'
     );
-    expect(readme).toContain(
-      'telegram,max,vk,vk-group,x,linkedin,tumblr'
-    );
+    expect(readme).toContain('telegram,max,vk,vk-group,x,linkedin,tumblr');
     expect(readme).toContain('Pinterest remains request-only');
     expect(readme).toContain('rtk docker compose config --quiet');
     expect(readme).toContain(
