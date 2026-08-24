@@ -104,4 +104,22 @@ describe('useChannelConnectAnalytics', () => {
       onboarding: false,
     });
   });
+
+  it('tracks a stable unavailable-provider request without consuming the terminal guard', () => {
+    const { result } = renderHook(() => useChannelConnectAnalytics());
+
+    act(() => {
+      result.current.requestClicked('pinterest', 'unavailable_channel');
+      result.current.completed('pinterest');
+    });
+
+    expect(fireEvents).toHaveBeenNthCalledWith(1, 'platform_request_clicked', {
+      platform: 'pinterest',
+      source: 'unavailable_channel',
+    });
+    expect(fireEvents).toHaveBeenNthCalledWith(2, 'channel_connect_completed', {
+      platform: 'pinterest',
+      onboarding: false,
+    });
+  });
 });

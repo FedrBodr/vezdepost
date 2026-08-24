@@ -18,7 +18,10 @@ type ConnectionContext = {
   mobile?: boolean;
 };
 
-type RequestSource = 'channel_picker' | 'connection_error';
+export type RequestSource =
+  | 'channel_picker'
+  | 'connection_error'
+  | 'unavailable_channel';
 
 export const useChannelConnectAnalytics = () => {
   const fireEvents = useFireEvents();
