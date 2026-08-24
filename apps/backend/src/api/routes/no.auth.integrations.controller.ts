@@ -363,6 +363,17 @@ export class NoAuthIntegrationsController {
       throw new HttpException('Integration not found', 404);
     }
 
+    if (
+      !this._integrationManager.isSocialIntegrationAllowed(
+        integration.providerIdentifier
+      )
+    ) {
+      throw new HttpException(
+        'Integration not available',
+        HttpStatus.FORBIDDEN
+      );
+    }
+
     const integrationProvider =
       this._integrationManager.getSocialIntegration(provider);
     if (!integrationProvider?.isChromeExtension) {
