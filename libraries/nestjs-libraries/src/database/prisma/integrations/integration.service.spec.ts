@@ -47,6 +47,10 @@ describe('IntegrationService VK Group persistence', () => {
     fetchPageInformation: ReturnType<typeof vi.fn>;
     refreshToken: ReturnType<typeof vi.fn>;
   };
+  let integrationManager: {
+    getSocialIntegration: ReturnType<typeof vi.fn>;
+    isSocialIntegrationAllowed: ReturnType<typeof vi.fn>;
+  };
   let refreshIntegrationService: {
     startRefreshWorkflow: ReturnType<typeof vi.fn>;
   };
@@ -70,8 +74,9 @@ describe('IntegrationService VK Group persistence', () => {
       fetchPageInformation: vi.fn().mockResolvedValue(selectedGroup),
       refreshToken: vi.fn(),
     };
-    const integrationManager = {
+    integrationManager = {
       getSocialIntegration: vi.fn().mockReturnValue(provider),
+      isSocialIntegrationAllowed: vi.fn().mockReturnValue(true),
     };
     refreshIntegrationService = {
       startRefreshWorkflow: vi.fn().mockResolvedValue(undefined),
@@ -85,6 +90,28 @@ describe('IntegrationService VK Group persistence', () => {
       refreshIntegrationService as never,
       {} as never
     );
+  });
+
+  it('blocks unavailable two-step completion before provider calls or persistence', async () => {
+    integrationManager.isSocialIntegrationAllowed.mockReturnValue(false);
+
+    let thrown: unknown;
+    try {
+      await service.saveProviderPage(organizationId, temporaryIntegrationId, {
+        page: '123',
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(HttpException);
+    expect((thrown as HttpException).getStatus()).toBe(403);
+    expect((thrown as Error).message).toBe('Integration not available');
+    expect(provider.fetchPageInformation).not.toHaveBeenCalled();
+    expect(repository.updateIntegration).not.toHaveBeenCalled();
+    expect(
+      refreshIntegrationService.startRefreshWorkflow
+    ).not.toHaveBeenCalled();
   });
 
   it('finalizes a temporary VK Group integration without changing its tokens', async () => {
@@ -242,6 +269,38 @@ describe('IntegrationService VK Group persistence', () => {
     expect(repository.updateIntegration).not.toHaveBeenCalled();
     expect(
       refreshIntegrationService.startRefreshWorkflow
+    ).not.toHaveBeenCalled();
+  });
+
+  it('keeps automatic token refresh active outside the connection allowlist', async () => {
+    integrationManager.isSocialIntegrationAllowed.mockReturnValue(false);
+    repository.needsToBeRefreshed.mockResolvedValue([
+      {
+        ...temporaryVkGroupIntegration(),
+        id: 'selected-group-integration-fixture',
+        internalId: '-123',
+        name: selectedGroup.name,
+        picture: selectedGroup.picture,
+        profile: selectedGroup.username,
+        inBetweenSteps: false,
+      },
+    ]);
+    provider.refreshToken.mockResolvedValue({
+      id: '42',
+      name: 'Refreshed VK administrator fixture',
+      picture: 'https://images.example/refreshed-administrator-fixture.jpg',
+      username: 'refreshed_administrator_fixture',
+      accessToken: 'rotated-access-token-fixture',
+      refreshToken: 'rotated-refresh-token-fixture',
+      expiresIn: 7200,
+    });
+
+    await service.refreshTokens();
+
+    expect(provider.refreshToken).toHaveBeenCalledOnce();
+    expect(repository.createOrUpdateIntegration).toHaveBeenCalledOnce();
+    expect(
+      integrationManager.isSocialIntegrationAllowed
     ).not.toHaveBeenCalled();
   });
 
