@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   getConnectionType,
+  isProviderVisibleInPicker,
   isUsableStartUrl,
   runAnalyticsSafely,
   submitCustomFieldConnection,
@@ -41,6 +42,39 @@ describe('provider connection analytics', () => {
     });
     expect(() => runAnalyticsSafely(capture)).not.toThrow();
     expect(capture).toHaveBeenCalledOnce();
+  });
+
+  it('omits unavailable providers only in invite mode', () => {
+    const unavailable = {
+      canConnect: false,
+      isExternal: false,
+      isWeb3: false,
+      isChromeExtension: false,
+      customFields: undefined,
+    };
+    expect(isProviderVisibleInPicker(unavailable, false)).toBe(true);
+    expect(isProviderVisibleInPicker(unavailable, true)).toBe(false);
+  });
+
+  it('retains eligible enabled providers in invite mode', () => {
+    expect(
+      isProviderVisibleInPicker(
+        {
+          canConnect: true,
+          isExternal: false,
+          isWeb3: false,
+          isChromeExtension: false,
+          customFields: undefined,
+        },
+        true
+      )
+    ).toBe(true);
+  });
+
+  it('wires unavailable requests to the provider identifier without connection work', () => {
+    expect(source).toContain("analytics.requestClicked(item.identifier, 'unavailable_channel')");
+    expect(source).toContain('canConnect?: boolean;');
+    expect(source).toContain('<ChannelPickerCard');
   });
 
   it('tracks provider clicks, successful starts, and safe start failures', () => {
