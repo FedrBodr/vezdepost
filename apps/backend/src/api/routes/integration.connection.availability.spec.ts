@@ -139,10 +139,9 @@ describe('connection availability route boundaries', () => {
       provider: 'telegram',
       webhookUrl: 'https://customer.example/webhook',
     } as never);
-    vi.spyOn(
-      manager.getSocialIntegration('telegram'),
-      'generateAuthUrl'
-    ).mockRejectedValue(new ForbiddenException('Downstream forbidden'));
+    const downstreamGenerateAuthUrl = vi
+      .spyOn(manager.getSocialIntegration('telegram'), 'generateAuthUrl')
+      .mockRejectedValue(new ForbiddenException('Downstream forbidden'));
     const controller = new EnterpriseController(
       manager,
       { getOrgByApiKey: vi.fn().mockResolvedValue(org) } as never,
@@ -153,6 +152,7 @@ describe('connection availability route boundaries', () => {
     await expect(
       controller.redirectParams('signed-params-fixture')
     ).resolves.toBeUndefined();
+    expect(downstreamGenerateAuthUrl).toHaveBeenCalledOnce();
     expect(ioRedis.set).not.toHaveBeenCalled();
   });
 });
