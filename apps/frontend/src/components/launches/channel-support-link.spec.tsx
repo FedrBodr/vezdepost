@@ -10,6 +10,21 @@ vi.mock('./channel-connect.analytics', () => ({
   useChannelConnectAnalytics: () => ({ requestClicked }),
 }));
 
+vi.mock('@gitroom/react/translation/get.transation.service.client', () => ({
+  useT:
+    () =>
+    (
+      _key: string,
+      fallback: string | { defaultValue: string; platform?: string }
+    ) => {
+      if (typeof fallback === 'string') return fallback;
+      return fallback.defaultValue.replace(
+        '{{platform}}',
+        fallback.platform ?? ''
+      );
+    },
+}));
+
 describe('ChannelSupportLink', () => {
   beforeEach(() => {
     requestClicked.mockReset();
@@ -23,7 +38,9 @@ describe('ChannelSupportLink', () => {
     );
     const link = screen.getByRole('link', { name: 'Contact support' });
     expect(link.getAttribute('href')).toBe(
-      'mailto:fedrbodr@gmail.com?subject=%D0%9D%D0%B5%20%D0%BF%D0%BE%D0%B4%D0%BA%D0%BB%D1%8E%D1%87%D0%B0%D0%B5%D1%82%D1%81%D1%8F%20X%20%D0%B2%20%D0%92%D0%B5%D0%B7%D0%B4%D0%B5%D0%BF%D0%BE%D1%81%D1%82%D0%B5'
+      `mailto:fedrbodr@gmail.com?subject=${encodeURIComponent(
+        "Can't connect X in Vezdepost"
+      )}`
     );
     link.addEventListener('click', (event) => event.preventDefault());
     fireEvent.click(link);
@@ -40,7 +57,7 @@ describe('ChannelSupportLink', () => {
     expect(link.classList.contains('underline')).toBe(true);
     expect(link.getAttribute('href')).toBe(
       `mailto:fedrbodr@gmail.com?subject=${encodeURIComponent(
-        'Нужна новая платформа в Вездепосте'
+        'Request a new platform in Vezdepost'
       )}`
     );
     link.addEventListener('click', (event) => event.preventDefault());

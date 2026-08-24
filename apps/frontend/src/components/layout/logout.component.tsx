@@ -6,10 +6,13 @@ import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { setCookie } from '@gitroom/frontend/components/layout/layout.context';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { usePostHog } from 'posthog-js/react';
+import { resetPostHogBeforeRedirect } from '@gitroom/helpers/utils/posthog.identity';
 export const LogoutComponent: FC<{ isIcon?: boolean }> = ({ isIcon }) => {
   const fetch = useFetch();
   const { isGeneral, isSecured } = useVariables();
   const t = useT();
+  const posthog = usePostHog();
 
   const logout = useCallback(async () => {
     if (
@@ -28,9 +31,14 @@ export const LogoutComponent: FC<{ isIcon?: boolean }> = ({ isIcon }) => {
           method: 'POST',
         });
       }
-      window.location.href = '/';
+      resetPostHogBeforeRedirect(
+        () => posthog.reset(),
+        () => {
+          window.location.href = '/';
+        }
+      );
     }
-  }, []);
+  }, [fetch, isSecured, posthog, t]);
   return (
     <>
       <div className="cursor-pointer" onClick={logout}>

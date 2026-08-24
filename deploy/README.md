@@ -77,6 +77,46 @@ without rebuilding the image. Copying first is required: piping the script into
 `ssh` would occupy standard input and prevent the hidden remote prompt from
 receiving the token.
 
+### Unavailable-channel demand
+
+Create a PostHog dashboard named `Unavailable channel demand`. Create the
+saved Trends insight `Unavailable channel demand — all-time unique users`, add
+it to that dashboard, and configure it with:
+
+- event `platform_request_clicked`;
+- event-property filter `source = unavailable_channel`;
+- aggregation `Unique users`;
+- event-property breakdown `platform`;
+- date range `All time`.
+
+This breakdown is the demand dashboard only. Do not attach one alert to the
+breakdown and assume it tracks each platform independently: PostHog keeps one
+alert state for the insight and can report only the first breaching breakdown.
+
+For each platform selected for monitoring, create an explicit
+platform-filtered non-time-series Trends aggregate using the same event,
+`source = unavailable_channel`, `aggregation = Unique users`, and `All time`
+date range. Add an event-property filter named `platform` and select the exact
+stable identifier displayed for that provider in the saved breakdown dashboard.
+Use a Bold number or another non-time-series aggregate; a time-series alert
+evaluates an interval rather than lifetime cumulative demand.
+
+Attach one absolute `has value` alert to each explicit platform aggregate:
+
+1. set the upper bound to `9` because PostHog uses strict `>` comparison and
+   must fire when the value becomes 10;
+2. select the desired hourly or daily check cadence;
+3. subscribe the Vezdepost owner's existing PostHog user so the owner receives
+   email and in-app notification;
+4. when the first threshold email arrives, disable the alert immediately,
+   because a cumulative breached insight re-notifies on each scheduled check;
+5. use the breakdown dashboard to assign the freed slot to the next candidate.
+
+The free tier permits five alerts per organization, not per project. Alert
+checks are asynchronous and do not fire synchronously on the tenth click.
+Exact automatic one-shot notification for every platform requires external
+state or automation and is intentionally not part of this deployment.
+
 ## Tumblr
 
 Register the Tumblr application with this exact OAuth callback URL:
