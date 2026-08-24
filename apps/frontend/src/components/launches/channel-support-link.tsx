@@ -1,4 +1,5 @@
 import React, { type ReactNode } from 'react';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useChannelConnectAnalytics } from './channel-connect.analytics';
 
 type ChannelSupportLinkProps = {
@@ -14,11 +15,19 @@ export const ChannelSupportLink = ({
   className,
   children,
 }: ChannelSupportLinkProps) => {
+  const t = useT();
   const { requestClicked } = useChannelConnectAnalytics();
   const analyticsPlatform = platform ?? 'unspecified';
+  const displayPlatform = platform === 'x' ? 'X' : platform;
   const subject = platform
-    ? `Не подключается ${platform === 'x' ? 'X' : platform} в Вездепосте`
-    : 'Нужна новая платформа в Вездепосте';
+    ? t('provider_connection_help_email_subject', {
+        defaultValue: "Can't connect {{platform}} in Vezdepost",
+        platform: displayPlatform,
+      })
+    : t(
+        'request_new_platform_email_subject',
+        'Request a new platform in Vezdepost'
+      );
 
   return (
     <a

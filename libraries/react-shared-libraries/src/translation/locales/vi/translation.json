@@ -695,5 +695,11 @@
   "watch_tutorial_description": "Xem video ngắn này để biết cách tận dụng tối đa Postiz",
   "back": "Quay lại",
   "get_started": "Bắt đầu",
-  "kick_select_channel": "Chọn kênh"
+  "kick_select_channel": "Chọn kênh",
+  "missing_platform_prompt": "Không tìm thấy nền tảng bạn cần?",
+  "missing_platform_email": "Hãy gửi email cho chúng tôi — chúng tôi sẽ cố gắng bổ sung.",
+  "request_platform": "Yêu cầu",
+  "platform_requested": "Đã yêu cầu",
+  "request_new_platform_email_subject": "Yêu cầu nền tảng mới trong Vezdepost",
+  "provider_connection_help_email_subject": "Không thể kết nối {{platform}} trong Vezdepost"
 }

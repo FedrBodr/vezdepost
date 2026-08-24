@@ -732,5 +732,11 @@
   "vk_group_video_unsupported": "VK Group не поддерживает публикации с видео.",
   "vk_group_no_managed_communities": "Не найдено сообществ VK, которыми вы управляете.",
   "vk_group_admin_required": "Войдите в аккаунт VK, который является администратором хотя бы одного сообщества.",
-  "vk_group_legacy_reconnect": "Ранее подключали VK Group с помощью ключа сообщества? Удалите эту интеграцию и подключите её заново через авторизацию VK."
+  "vk_group_legacy_reconnect": "Ранее подключали VK Group с помощью ключа сообщества? Удалите эту интеграцию и подключите её заново через авторизацию VK.",
+  "missing_platform_prompt": "Не нашли нужную платформу?",
+  "missing_platform_email": "Напишите нам — постараемся добавить.",
+  "request_platform": "Запросить",
+  "platform_requested": "Запрошено",
+  "request_new_platform_email_subject": "Нужна новая платформа в Вездепосте",
+  "provider_connection_help_email_subject": "Не подключается {{platform}} в Вездепосте"
 }

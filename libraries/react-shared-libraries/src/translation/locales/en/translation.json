@@ -734,5 +734,11 @@
   "vk_group_video_unsupported": "VK Group does not support video posts.",
   "vk_group_no_managed_communities": "No managed VK communities were found.",
   "vk_group_admin_required": "Sign in with a VK account that is an administrator of at least one community.",
-  "vk_group_legacy_reconnect": "Already connected VK Group with a community key? Delete that integration and reconnect through VK authorization."
+  "vk_group_legacy_reconnect": "Already connected VK Group with a community key? Delete that integration and reconnect through VK authorization.",
+  "missing_platform_prompt": "Can't find the platform you need?",
+  "missing_platform_email": "Email us — we'll try to add it.",
+  "request_platform": "Request",
+  "platform_requested": "Requested",
+  "request_new_platform_email_subject": "Request a new platform in Vezdepost",
+  "provider_connection_help_email_subject": "Can't connect {{platform}} in Vezdepost"
 }

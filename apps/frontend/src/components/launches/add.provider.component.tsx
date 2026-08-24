@@ -981,12 +981,9 @@ export const AddProviderComponent: FC<{
             ))}
         </div>
         <p className="mt-[14px] text-[13px] text-textColor/70 text-center">
-          {t('missing_platform_prompt', 'Не нашли нужную платформу?')}{' '}
+          {t('missing_platform_prompt', "Can't find the platform you need?")}{' '}
           <ChannelSupportLink source="channel_picker" className="underline">
-            {t(
-              'missing_platform_email',
-              'Напишите нам — постараемся добавить.'
-            )}
+            {t('missing_platform_email', "Email us — we'll try to add it.")}
           </ChannelSupportLink>
         </p>
       </div>
