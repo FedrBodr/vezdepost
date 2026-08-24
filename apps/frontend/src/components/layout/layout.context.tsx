@@ -5,6 +5,8 @@ import { FetchWrapperComponent } from '@gitroom/helpers/utils/custom.fetch';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { useReturnUrl } from '@gitroom/frontend/app/(app)/auth/return.url.component';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
+import { usePostHog } from 'posthog-js/react';
+import { resetPostHogBeforeRedirect } from '@gitroom/helpers/utils/posthog.identity';
 export default function LayoutContext(params: { children: ReactNode }) {
   if (params?.children) {
     // eslint-disable-next-line react/no-children-prop
@@ -24,6 +26,7 @@ export function setCookie(cname: string, cvalue: string, exdays: number) {
 function LayoutContextInner(params: { children: ReactNode }) {
   const returnUrl = useReturnUrl();
   const { backendUrl, isGeneral, isSecured } = useVariables();
+  const posthog = usePostHog();
   const afterRequest = useCallback(
     async (url: string, options: RequestInit, response: Response) => {
       if (
@@ -55,7 +58,12 @@ function LayoutContextInner(params: { children: ReactNode }) {
         setCookie('auth', '', -10);
         setCookie('showorg', '', -10);
         setCookie('impersonate', '', -10);
-        window.location.href = '/';
+        resetPostHogBeforeRedirect(
+          () => posthog.reset(),
+          () => {
+            window.location.href = '/';
+          }
+        );
         return true;
       }
       const reloadOrOnboarding =
@@ -86,7 +94,12 @@ function LayoutContextInner(params: { children: ReactNode }) {
           setCookie('showorg', '', -10);
           setCookie('impersonate', '', -10);
         }
-        window.location.href = '/';
+        resetPostHogBeforeRedirect(
+          () => posthog.reset(),
+          () => {
+            window.location.href = '/';
+          }
+        );
       }
       if (response.status === 406) {
         if (
@@ -120,7 +133,7 @@ function LayoutContextInner(params: { children: ReactNode }) {
       }
       return true;
     },
-    []
+    [isGeneral, isSecured, posthog, returnUrl]
   );
   return (
     <FetchWrapperComponent baseUrl={backendUrl} afterRequest={afterRequest}>
