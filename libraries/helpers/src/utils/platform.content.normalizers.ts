@@ -319,16 +319,20 @@ const normalizePlain = (
 const normalizeHtml = (
   canonicalHtml: string,
   capability: ResolvedPlatformCapabilityV2,
-  convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction']
+  convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction'],
+  field?: TextFieldCapability
 ): string => {
   if (
     capability.profileIdentifier === 'telegram' ||
     capability.profileIdentifier === 'max'
   ) {
+    const boldIsNative = field?.formatting.bold === 'native';
+    const headingsAreNative = field?.formatting.headings === 'native';
     return normalizeVerifiedHtml(
       canonicalHtml,
       capability.profileIdentifier,
-      convertMentionFunction
+      convertMentionFunction,
+      boldIsNative && !headingsAreNative
     ).normalized;
   }
   if (!/<\/?[a-z][\s\S]*>/i.test(canonicalHtml)) {
@@ -369,10 +373,7 @@ const collectAnchorFacetRanges = (
     const mentionId =
       tagName === 'span' ? getAttribute(node, 'data-mention-id') : undefined;
     if (mentionId !== undefined && convertMentionFunction) {
-      cursor += convertMentionFunction(
-        mentionId,
-        collectNodeText(node)
-      ).length;
+      cursor += convertMentionFunction(mentionId, collectNodeText(node)).length;
       return;
     }
     if (tagName === 'a' && !insideEmittedAnchor) {
@@ -419,8 +420,7 @@ const buildLinkFacets = (
       .filter(
         (range) =>
           !anchorRanges.some(
-            (anchor) =>
-              range.start < anchor.end && range.end > anchor.start
+            (anchor) => range.start < anchor.end && range.end > anchor.start
           )
       )
       .map((range) => ({
@@ -445,6 +445,11 @@ const buildLinkFacets = (
   }));
 };
 
+const LINKEDIN_BLANK_LINE_SPACER = '⠀';
+
+const protectBlankLinesForLinkedIn = (value: string): string =>
+  value.replace(/\n\n/g, `\n${LINKEDIN_BLANK_LINE_SPACER}\n`);
+
 const normalizeCanonicalField = (
   canonicalHtml: string,
   field: TextFieldCapability,
@@ -454,7 +459,12 @@ const normalizeCanonicalField = (
   switch (field.dialect) {
     case 'html':
       return {
-        value: normalizeHtml(canonicalHtml, capability, convertMentionFunction),
+        value: normalizeHtml(
+          canonicalHtml,
+          capability,
+          convertMentionFunction,
+          field
+        ),
       };
     case 'markdown':
     case 'discord-markdown':
@@ -480,17 +490,23 @@ const normalizeCanonicalField = (
         field.formatting.bold === 'unicode' ||
           field.formatting.underline === 'unicode'
       );
-      return { value, facets: buildLinkFacets(canonicalHtml, value, convertMentionFunction) };
-    }
-    case 'plain':
       return {
-        value: normalizePlain(
-          canonicalHtml,
-          convertMentionFunction,
-          field.formatting.bold === 'unicode' ||
-            field.formatting.underline === 'unicode'
-        ),
+        value,
+        facets: buildLinkFacets(canonicalHtml, value, convertMentionFunction),
       };
+    }
+    case 'plain': {
+      let value = normalizePlain(
+        canonicalHtml,
+        convertMentionFunction,
+        field.formatting.bold === 'unicode' ||
+          field.formatting.underline === 'unicode'
+      );
+      if (capability.profileIdentifier === 'linkedin') {
+        value = protectBlankLinesForLinkedIn(value);
+      }
+      return { value };
+    }
   }
 };
 

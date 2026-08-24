@@ -286,7 +286,7 @@ describe('normalizePlatformFields', () => {
         settings: {},
         capability: capability('linkedin'),
       }).body.value
-    ).toBe('Heading\nIntro\ncontinued\n- One\n- 𝗧𝘄𝗼\nhttps://x.test');
+    ).toBe('Heading\n⠀\nIntro\ncontinued\n⠀\n- One\n- 𝗧𝘄𝗼\n⠀\nhttps://x.test');
   });
 
   it('retains tagless special characters exactly', () => {
@@ -377,7 +377,7 @@ describe('normalizePlatformFields', () => {
         settings: {},
         capability: stripping,
       }).body.value
-    ).toBe('https://exa\nmple.com');
+    ).toBe('https://exa\n\nmple.com');
   });
 
   it('strips Markdown visible URLs before escaping while retaining link metadata', () => {
@@ -417,7 +417,13 @@ describe('normalizePlatformFields', () => {
         required: false,
         source: 'canonical-editor',
         dialect: 'bluesky-facets',
-        formatting: { bold: 'unsupported', underline: 'unsupported', links: 'native', lists: 'plain', headings: 'plain' },
+        formatting: {
+          bold: 'unsupported',
+          underline: 'unsupported',
+          links: 'native',
+          lists: 'plain',
+          headings: 'plain',
+        },
       },
     ],
     structuredFields: [],
@@ -437,7 +443,9 @@ describe('normalizePlatformFields', () => {
     expect(result.body.facets).toEqual([
       {
         index: { byteStart: 4, byteEnd: 8 },
-        features: [{ '$type': 'app.bsky.richtext.facet#link', uri: 'https://example.com' }],
+        features: [
+          { $type: 'app.bsky.richtext.facet#link', uri: 'https://example.com' },
+        ],
       },
     ]);
   });
@@ -462,7 +470,7 @@ describe('normalizePlatformFields', () => {
       {
         index: { byteStart: 5, byteEnd: 9 },
         features: [
-          { '$type': 'app.bsky.richtext.facet#link', uri: 'https://a.example' },
+          { $type: 'app.bsky.richtext.facet#link', uri: 'https://a.example' },
         ],
       },
     ]);
@@ -481,7 +489,7 @@ describe('normalizePlatformFields', () => {
         index: { byteStart: 0, byteEnd: 4 },
         features: [
           {
-            '$type': 'app.bsky.richtext.facet#link',
+            $type: 'app.bsky.richtext.facet#link',
             uri: 'https://inner.example',
           },
         ],
@@ -501,7 +509,7 @@ describe('normalizePlatformFields', () => {
       {
         index: { byteStart: 0, byteEnd: 16 },
         features: [
-          { '$type': 'app.bsky.richtext.facet#link', uri: 'https://go.example' },
+          { $type: 'app.bsky.richtext.facet#link', uri: 'https://go.example' },
         ],
       },
     ]);
@@ -521,7 +529,7 @@ describe('normalizePlatformFields', () => {
         index: { byteStart: 9, byteEnd: 13 },
         features: [
           {
-            '$type': 'app.bsky.richtext.facet#link',
+            $type: 'app.bsky.richtext.facet#link',
             uri: 'https://example.com',
           },
         ],
@@ -543,7 +551,7 @@ describe('normalizePlatformFields', () => {
         index: { byteStart: 0, byteEnd: 3 },
         features: [
           {
-            '$type': 'app.bsky.richtext.facet#link',
+            $type: 'app.bsky.richtext.facet#link',
             uri: 'https://one.example',
           },
         ],
@@ -552,7 +560,7 @@ describe('normalizePlatformFields', () => {
         index: { byteStart: 9, byteEnd: 12 },
         features: [
           {
-            '$type': 'app.bsky.richtext.facet#link',
+            $type: 'app.bsky.richtext.facet#link',
             uri: 'https://two.example',
           },
         ],
@@ -595,6 +603,65 @@ describe('normalizePlatformFields', () => {
         }).body.value
       ).toBe('Hello **world**');
     }
+  });
+
+  describe('paragraph spacing', () => {
+    const blockCanonical =
+      '<h2>Heading</h2><p>Intro</p><p>Second</p>' +
+      '<ul><li>One</li><li>Two</li></ul><p>After</p>';
+    const spaced = 'Heading\n\nIntro\n\nSecond\n\n- One\n- Two\n\nAfter';
+
+    it('keeps blank lines between paragraphs and tight list items on plain platforms', () => {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: blockCanonical,
+          settings: {},
+          capability: capability('tumblr'),
+        }).body.value
+      ).toBe(spaced);
+    });
+
+    it('protects LinkedIn blank lines with an invisible spacer character', () => {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: blockCanonical,
+          settings: {},
+          capability: capability('linkedin'),
+        }).body.value
+      ).toBe(spaced.replaceAll('\n\n', '\n⠀\n'));
+    });
+
+    it('separates Telegram paragraphs with blank lines and degrades headings to bold', () => {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: blockCanonical,
+          settings: {},
+          capability: capability('telegram'),
+        }).body.value
+      ).toBe('<b>Heading</b>\n\nIntro\n\nSecond\n\n- One\n- Two\n\nAfter');
+    });
+
+    it('degrades Max headings to strong', () => {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: blockCanonical,
+          settings: {},
+          capability: capability('max'),
+        }).body.value
+      ).toBe(
+        '<strong>Heading</strong>\n\nIntro\n\nSecond\n\n- One\n- Two\n\nAfter'
+      );
+    });
+
+    it('keeps single newlines between paragraphs when the source used line breaks only', () => {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: '<p>One<br>Two</p>',
+          settings: {},
+          capability: capability('tumblr'),
+        }).body.value
+      ).toBe('One\nTwo');
+    });
   });
 
   it('converts mentions without rewriting the canonical source', () => {

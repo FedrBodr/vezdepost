@@ -58,10 +58,12 @@ const isAllowedInlineTag = (platform: VerifiedHtmlPlatform, tagName: string) =>
 const normalizeTree = (
   parent: HtmlNode,
   platform: VerifiedHtmlPlatform,
-  convertMentionFunction?: (idOrHandle: string, name: string) => string
+  convertMentionFunction?: (idOrHandle: string, name: string) => string,
+  degradeHeadingsToBold = false
 ): void => {
   const childContainer = getChildContainer(parent);
   const normalizedChildren: HtmlNode[] = [];
+  const headingBoldTag = platform === 'telegram' ? 'b' : 'strong';
 
   for (const child of getChildNodes(parent)) {
     if (child.nodeName === '#text') {
@@ -87,7 +89,25 @@ const normalizeTree = (
       continue;
     }
 
-    normalizeTree(child, platform, convertMentionFunction);
+    normalizeTree(
+      child,
+      platform,
+      convertMentionFunction,
+      degradeHeadingsToBold
+    );
+    if (
+      degradeHeadingsToBold &&
+      /^h[1-6]$/.test(child.tagName) &&
+      getChildNodes(child).length
+    ) {
+      normalizedChildren.push({
+        nodeName: headingBoldTag,
+        tagName: headingBoldTag,
+        attrs: [],
+        childNodes: getChildNodes(child),
+      });
+      continue;
+    }
     if (isAllowedInlineTag(platform, child.tagName)) {
       if (platform === 'telegram' && child.tagName === 'strong') {
         child.nodeName = 'b';
@@ -189,13 +209,17 @@ const removeListParagraphWrappers = (tokens: VisibleToken[]) => {
 };
 
 const STRUCTURAL_BOUNDARY = Symbol('structural-boundary');
+const ITEM_BOUNDARY = Symbol('item-boundary');
 const INLINE_BOUNDARY = Symbol('inline-boundary');
 
 const collectVisibleText = (node: HtmlNode): string => {
   const rawTokens: VisibleToken[] = [];
   collectVisibleTokens(node, rawTokens);
   const parts: Array<
-    string | typeof STRUCTURAL_BOUNDARY | typeof INLINE_BOUNDARY
+    | string
+    | typeof STRUCTURAL_BOUNDARY
+    | typeof ITEM_BOUNDARY
+    | typeof INLINE_BOUNDARY
   > = [];
 
   for (const token of removeListParagraphWrappers(rawTokens)) {
@@ -211,56 +235,77 @@ const collectVisibleText = (node: HtmlNode): string => {
       parts.push('\n');
       continue;
     }
-    if (parts.at(-1) !== STRUCTURAL_BOUNDARY) {
-      parts.push(STRUCTURAL_BOUNDARY);
-    }
-    if (token.tagName === 'li' && !token.closing) {
-      parts.push('- ');
-    }
-  }
-
-  const leadingBoundary = parts.findIndex(
-    (part) =>
-      part === STRUCTURAL_BOUNDARY ||
-      part === INLINE_BOUNDARY ||
-      /\S/.test(part as string)
-  );
-  if (parts[leadingBoundary] === STRUCTURAL_BOUNDARY) {
-    parts.splice(leadingBoundary, 1);
-  }
-
-  let trailingBoundary = parts.length - 1;
-  while (
-    trailingBoundary >= 0 &&
-    parts[trailingBoundary] !== STRUCTURAL_BOUNDARY &&
-    parts[trailingBoundary] !== INLINE_BOUNDARY &&
-    !/\S/.test(parts[trailingBoundary] as string)
-  ) {
-    trailingBoundary -= 1;
-  }
-  if (parts[trailingBoundary] === STRUCTURAL_BOUNDARY) {
-    parts.splice(trailingBoundary, 1);
-  }
-
-  return parts
-    .map((part) => {
-      if (part === STRUCTURAL_BOUNDARY) {
-        return '\n';
+    if (token.tagName === 'li') {
+      parts.push(ITEM_BOUNDARY);
+      if (!token.closing) {
+        parts.push('- ');
       }
-      return part === INLINE_BOUNDARY ? '' : part;
-    })
-    .join('');
+      continue;
+    }
+    parts.push(STRUCTURAL_BOUNDARY);
+  }
+
+  while (
+    parts.length &&
+    (parts[0] === STRUCTURAL_BOUNDARY || parts[0] === ITEM_BOUNDARY)
+  ) {
+    parts.shift();
+  }
+
+  let trailingText = '';
+  while (parts.length) {
+    const last = parts.at(-1);
+    if (last === STRUCTURAL_BOUNDARY || last === ITEM_BOUNDARY) {
+      parts.pop();
+      continue;
+    }
+    if (typeof last === 'string' && !/\S/.test(last)) {
+      trailingText = last + trailingText;
+      parts.pop();
+      continue;
+    }
+    break;
+  }
+
+  let result = '';
+  let index = 0;
+  while (index < parts.length) {
+    const part = parts[index];
+    if (part === STRUCTURAL_BOUNDARY || part === ITEM_BOUNDARY) {
+      let paragraphBreak = false;
+      while (
+        index < parts.length &&
+        (parts[index] === STRUCTURAL_BOUNDARY || parts[index] === ITEM_BOUNDARY)
+      ) {
+        if (parts[index] === STRUCTURAL_BOUNDARY) {
+          paragraphBreak = true;
+        }
+        index += 1;
+      }
+      result += paragraphBreak ? '\n\n' : '\n';
+      continue;
+    }
+    result += part === INLINE_BOUNDARY ? '' : (part as string);
+    index += 1;
+  }
+  return result + trailingText;
 };
 
 export const normalizeVerifiedHtml = (
   value: string,
   platform: VerifiedHtmlPlatform,
-  convertMentionFunction?: (idOrHandle: string, name: string) => string
+  convertMentionFunction?: (idOrHandle: string, name: string) => string,
+  degradeHeadingsToBold = false
 ): VerifiedHtmlNormalization => {
   const parsedFragment = parseFragment(value);
   const fragment = parsedFragment as unknown as HtmlNode;
 
-  normalizeTree(fragment, platform, convertMentionFunction);
+  normalizeTree(
+    fragment,
+    platform,
+    convertMentionFunction,
+    degradeHeadingsToBold
+  );
   const normalized = convertHtmlStructureToText(
     serialize(parsedFragment).replace(/&nbsp;/g, '&#160;')
   );

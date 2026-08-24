@@ -125,13 +125,13 @@ describe('PostActivity platform formatting', () => {
       'chat-id',
       [
         expect.objectContaining({
-          message: 'Title\n<b>Body</b> Link',
+          message: '<b>Title</b>\n\n<b>Body</b> Link',
           fields: expect.objectContaining({
             body: expect.objectContaining({
-              value: 'Title\n<b>Body</b> Link',
+              value: '<b>Title</b>\n\n<b>Body</b> Link',
             }),
             caption: expect.objectContaining({
-              value: 'Title\n<b>Body</b> Link',
+              value: '<b>Title</b>\n\n<b>Body</b> Link',
             }),
           }),
         }),

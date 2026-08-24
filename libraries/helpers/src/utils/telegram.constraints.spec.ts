@@ -20,7 +20,7 @@ describe('Telegram HTML caption length', () => {
       normalizeTelegramHtml(
         '<h2>Title\ncontinued</h2><p>First <a href="https://example.com">label\ncontinued</a></p><p>Last\nline</p>'
       )
-    ).toBe('Title\ncontinued\nFirst label\ncontinued\nLast\nline');
+    ).toBe('Title\ncontinued\n\nFirst label\ncontinued\n\nLast\nline');
   });
 
   it('preserves a raw trailing newline', () => {
@@ -36,7 +36,7 @@ describe('Telegram HTML caption length', () => {
   it('retains paragraph separators and remains idempotent with intentional trailing text', () => {
     const once = normalizeTelegramHtml('<p>First</p><p>Second\n</p>');
 
-    expect(once).toBe('First\nSecond\n');
+    expect(once).toBe('First\n\nSecond\n');
     expect(normalizeTelegramHtml(once)).toBe(once);
   });
 
@@ -46,7 +46,7 @@ describe('Telegram HTML caption length', () => {
     );
 
     expect(once).toBe(
-      'Heading\n<b>Intro</b>\ncontinued\n- One\n- <u>Two</u>\nLast'
+      'Heading\n\n<b>Intro</b>\ncontinued\n\n- One\n- <u>Two</u>\n\nLast'
     );
     expect(normalizeTelegramHtml(once)).toBe(once);
   });
