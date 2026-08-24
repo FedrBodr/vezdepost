@@ -15,8 +15,11 @@ The hosted Vezdepost connection allowlist is tracked in
 `telegram,max,vk,vk-group,x,linkedin,tumblr`
 
 The application still shows other registered adapters as request-only. Pinterest remains request-only until Standard access and public readiness are verified.
+Unknown identifiers are ignored while valid identifiers remain enabled; a configured list containing only unknown identifiers fails closed and allows no new connections.
 Adding a hosted provider requires both an end-to-end production connection check
 and an explicit update to this tracked list and `deploy/production-config.spec.ts`.
+
+After changing ENABLED_SOCIAL_INTEGRATIONS, restart or recreate the postiz service/container for the updated environment to take effect.
 
 Before recreating `postiz`, validate required credentials and interpolation
 without printing their values:

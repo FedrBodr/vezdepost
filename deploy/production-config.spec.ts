@@ -61,6 +61,12 @@ describe('production configuration', () => {
     );
     expect(readme).toContain('Pinterest remains request-only');
     expect(readme).toContain('rtk docker compose config --quiet');
+    expect(readme).toContain(
+      'Unknown identifiers are ignored while valid identifiers remain enabled; a configured list containing only unknown identifiers fails closed and allows no new connections.'
+    );
+    expect(readme).toContain(
+      'After changing ENABLED_SOCIAL_INTEGRATIONS, restart or recreate the postiz service/container for the updated environment to take effect.'
+    );
   });
 
   it('requires personal LinkedIn credentials and documents the OAuth setup', () => {
