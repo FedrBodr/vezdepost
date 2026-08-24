@@ -9,6 +9,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
 } from 'react';
@@ -121,8 +122,8 @@ export const Component: FC<{
     }
 
     return () => {
-      if (isLastRef.current) {
-        previouslyFocusedElement.current?.focus();
+      if (isLastRef.current && previouslyFocusedElement.current?.isConnected) {
+        previouslyFocusedElement.current.focus();
       }
     };
   }, []);
@@ -339,6 +340,26 @@ export const ModalManagerInner: FC = () => {
       modalManager: state.modalManager,
     }))
   );
+  const focusOrigin = useRef<HTMLElement | null>(null);
+  const hadOpenModals = useRef(false);
+
+  useLayoutEffect(() => {
+    const hasOpenModals = modalManager.length > 0;
+
+    if (hasOpenModals && !hadOpenModals.current) {
+      focusOrigin.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+    } else if (!hasOpenModals && hadOpenModals.current) {
+      if (focusOrigin.current?.isConnected) {
+        focusOrigin.current.focus();
+      }
+      focusOrigin.current = null;
+    }
+
+    hadOpenModals.current = hasOpenModals;
+  }, [modalManager.length]);
 
   useEffect(() => {
     if (modalManager.length > 0) {

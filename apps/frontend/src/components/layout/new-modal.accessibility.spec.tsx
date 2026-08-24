@@ -52,12 +52,22 @@ const OpenStackedDialog = () => {
             <>
               <button type="button">Second first</button>
               <button type="button">Second last</button>
+              <CloseAllDialogs />
             </>
           ),
         })
       }
     >
       Open second dialog
+    </button>
+  );
+};
+
+const CloseAllDialogs = () => {
+  const modal = useModals();
+  return (
+    <button type="button" onClick={modal.closeAll}>
+      Close all dialogs
     </button>
   );
 };
@@ -117,10 +127,48 @@ describe('new modal accessibility', () => {
         name: 'Open second dialog',
       })
     );
-    await screen.findByRole('dialog', { name: 'Second Dialog' });
+    const secondDialog = await screen.findByRole('dialog', {
+      name: 'Second Dialog',
+    });
 
     const backgroundButtons = within(firstDialog).getAllByRole('button');
     backgroundButtons[backgroundButtons.length - 1].focus();
     expect(fireEvent.keyDown(firstDialog, { key: 'Tab' })).toBe(true);
+
+    fireEvent.click(
+      within(secondDialog).getByRole('button', { name: 'Close all dialogs' })
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('restores the external trigger when stacked dialogs close together', async () => {
+    render(
+      <ModalManager>
+        <Harness />
+      </ModalManager>
+    );
+    const trigger = screen.getByRole('button', {
+      name: 'Open language dialog',
+    });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const firstDialog = await screen.findByRole('dialog', {
+      name: 'Change Language',
+    });
+    fireEvent.click(
+      within(firstDialog).getByRole('button', {
+        name: 'Open second dialog',
+      })
+    );
+    const secondDialog = await screen.findByRole('dialog', {
+      name: 'Second Dialog',
+    });
+
+    fireEvent.click(
+      within(secondDialog).getByRole('button', { name: 'Close all dialogs' })
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(trigger);
   });
 });
