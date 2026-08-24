@@ -10,6 +10,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
 } from 'react';
 import { Button } from '@gitroom/react/form/button';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -18,6 +19,8 @@ import { EventEmitter } from 'events';
 
 interface OpenModalInterface {
   title?: any;
+  ariaLabel?: string;
+  closeButtonAriaLabel?: string;
   closeOnClickOutside?: boolean;
   removeLayout?: boolean;
   fullScreen?: boolean;
@@ -102,6 +105,28 @@ export const Component: FC<{
   modal: { id: string } & OpenModalInterface;
 }> = memo(({ isLast, modal, closeModal, zIndex }) => {
   const decision = useDecisionModal();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedElement = useRef<HTMLElement | null>(null);
+  const isLastRef = useRef(isLast);
+  const titleId = `modal-${modal.id}-title`;
+  isLastRef.current = isLast;
+
+  useEffect(() => {
+    previouslyFocusedElement.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    if (isLastRef.current) {
+      dialogRef.current?.focus();
+    }
+
+    return () => {
+      if (isLastRef.current) {
+        previouslyFocusedElement.current?.focus();
+      }
+    };
+  }, []);
+
   const closeModalFunction = useCallback(async () => {
     if (modal.askClose) {
       const open = await decision.open();
@@ -118,6 +143,46 @@ export const Component: FC<{
       ? modal.children(closeModalFunction)
       : modal.children;
   }, [modal, closeModalFunction]);
+
+  const containKeyboardFocus = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!isLast || event.key !== 'Tab' || !dialogRef.current) {
+        return;
+      }
+
+      const focusableElements = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => element.getAttribute('aria-hidden') !== 'true');
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (
+        event.shiftKey &&
+        (activeElement === firstFocusable ||
+          activeElement === dialogRef.current)
+      ) {
+        event.preventDefault();
+        lastFocusable.focus();
+        return;
+      }
+
+      if (!event.shiftKey && activeElement === lastFocusable) {
+        event.preventDefault();
+        firstFocusable.focus();
+      }
+    },
+    [isLast]
+  );
 
   useHotkeys(
     'Escape',
@@ -195,6 +260,13 @@ export const Component: FC<{
             )}
           >
             <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={modal.title ? titleId : undefined}
+              aria-label={modal.title ? undefined : modal.ariaLabel || 'Dialog'}
+              tabIndex={-1}
+              onKeyDown={containKeyboardFocus}
               className={clsx(
                 !modal.removeLayout && 'gap-[40px] p-[32px]',
                 'bg-newBgColorInner mx-auto flex flex-col w-fit rounded-[24px] relative',
@@ -211,13 +283,17 @@ export const Component: FC<{
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center">
-                <div className="text-[24px] font-[600] flex-1">
+                <div
+                  id={modal.title ? titleId : undefined}
+                  className="text-[24px] font-[600] flex-1"
+                >
                   {modal.title}
                 </div>
                 {typeof modal.withCloseButton === 'undefined' ||
                 modal.withCloseButton ? (
                   <div className="cursor-pointer">
                     <button
+                      aria-label={modal.closeButtonAriaLabel || 'Close dialog'}
                       className="outline-none absolute end-[20px] top-[20px] mantine-UnstyledButton-root mantine-ActionIcon-root hover:bg-tableBorder cursor-pointer mantine-Modal-close mantine-1dcetaa"
                       type="button"
                       onClick={closeModalFunction}
