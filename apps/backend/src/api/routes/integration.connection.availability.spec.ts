@@ -6,6 +6,7 @@ import { IntegrationsController } from './integrations.controller';
 import { NoAuthIntegrationsController } from './no.auth.integrations.controller';
 import { EnterpriseController } from './enterprise.controller';
 import { PublicIntegrationsController } from '@gitroom/backend/public-api/routes/v1/public.integrations.controller';
+import { ForbiddenException } from '@nestjs/common';
 
 vi.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
   ioRedis: {
@@ -20,6 +21,19 @@ vi.mock('@sentry/nestjs', () => ({
 }));
 
 const org = { id: 'organization-fixture' } as never;
+
+const expectIntegrationNotAvailable = async (action: Promise<unknown>) => {
+  let thrown: unknown;
+  try {
+    await action;
+  } catch (error) {
+    thrown = error;
+  }
+
+  expect(thrown).toBeInstanceOf(ForbiddenException);
+  expect((thrown as ForbiddenException).getStatus()).toBe(403);
+  expect((thrown as Error).message).toBe('Integration not available');
+};
 
 describe('connection availability route boundaries', () => {
   let manager: IntegrationManager;
@@ -51,9 +65,9 @@ describe('connection availability route boundaries', () => {
       {} as never
     );
 
-    await expect(
+    await expectIntegrationNotAvailable(
       controller.getIntegrationUrl('reddit', '', '', '', '', org)
-    ).rejects.toThrow('Integration not allowed');
+    );
     expect(generateAuthUrl).not.toHaveBeenCalled();
     expect(ioRedis.set).not.toHaveBeenCalled();
   });
@@ -69,13 +83,13 @@ describe('connection availability route boundaries', () => {
       {} as never
     );
 
-    await expect(
+    await expectIntegrationNotAvailable(
       controller.connectSocialMedia('reddit', {
         state: 'state-fixture',
         code: 'authorization-code-fixture',
         timezone: '180',
       } as never)
-    ).rejects.toThrow('Integration not allowed');
+    );
     expect(authenticate).not.toHaveBeenCalled();
     expect(integrationService.createOrUpdateIntegration).not.toHaveBeenCalled();
   });
@@ -90,9 +104,9 @@ describe('connection availability route boundaries', () => {
       {} as never
     );
 
-    await expect(
+    await expectIntegrationNotAvailable(
       controller.getIntegrationUrl('reddit', '', org)
-    ).rejects.toMatchObject({ status: 400 });
+    );
     expect(generateAuthUrl).not.toHaveBeenCalled();
     expect(ioRedis.set).not.toHaveBeenCalled();
   });
@@ -111,9 +125,9 @@ describe('connection availability route boundaries', () => {
       {} as never
     );
 
-    await expect(
+    await expectIntegrationNotAvailable(
       controller.redirectParams('signed-params-fixture')
-    ).resolves.toBeUndefined();
+    );
     expect(generateAuthUrl).not.toHaveBeenCalled();
     expect(ioRedis.set).not.toHaveBeenCalled();
   });

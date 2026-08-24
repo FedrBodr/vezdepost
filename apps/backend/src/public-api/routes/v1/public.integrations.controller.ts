@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpException,
   Param,
@@ -309,7 +310,7 @@ export class PublicIntegrationsController {
         .getAllowedSocialsIntegrations()
         .includes(integration)
     ) {
-      throw new HttpException({ msg: 'Integration not allowed' }, 400);
+      throw new ForbiddenException('Integration not available');
     }
 
     const integrationProvider =

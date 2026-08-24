@@ -1,4 +1,11 @@
-import { Body, Controller, Param, Post, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Param,
+  Post,
+  Res,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
@@ -68,7 +75,7 @@ export class EnterpriseController {
           .getAllowedSocialsIntegrations()
           .includes(load.provider)
       ) {
-        throw new Error('Integration not allowed');
+        throw new ForbiddenException('Integration not available');
       }
 
       const integrationProvider = this._integrationManager.getSocialIntegration(
@@ -88,7 +95,11 @@ export class EnterpriseController {
       await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
 
       return url;
-    } catch (err) {}
+    } catch (err) {
+      if (err instanceof ForbiddenException) {
+        throw err;
+      }
+    }
   }
 
   @Post('/delete-channel')
