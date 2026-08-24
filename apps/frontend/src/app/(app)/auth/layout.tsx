@@ -6,10 +6,19 @@ import { LogoTextComponent } from '@gitroom/frontend/components/ui/logo-text.com
 import { LanguageComponent } from '@gitroom/frontend/components/layout/language.component';
 import { MantineWrapper } from '@gitroom/react/helpers/mantine.wrapper';
 import { AuthSocialProof } from '@gitroom/frontend/components/auth/auth.social-proof';
+import { getRequestLanguage } from '@gitroom/react/translation/get.request.language';
+import { getT } from '@gitroom/react/translation/get.translation.service.backend';
 
 const ReturnUrlComponent = loadDynamic(() => import('./return.url.component'));
 
-export default function AuthLayout({ children }: { children: ReactNode }) {
+export default async function AuthLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const language = await getRequestLanguage();
+  const t = await getT();
+
   return (
     <MantineWrapper>
       <div className="bg-[#0E0E0E] flex flex-1 p-[12px] gap-[12px] min-h-screen w-screen text-white">
@@ -24,7 +33,21 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="text-[36px] flex-1 pt-[88px] hidden lg:flex flex-col items-center">
-          <AuthSocialProof />
+          <AuthSocialProof
+            initialLanguage={language}
+            initialTranslations={{
+              joinOver: t('billing_join_over', 'Join Over'),
+              entrepreneursCount: t(
+                'billing_entrepreneurs_count',
+                '20,000+ Entrepreneurs'
+              ),
+              whoUse: t('billing_who_use', 'who use'),
+              postizGrowSocial: t(
+                'billing_postiz_grow_social',
+                'Postiz To Grow Their Social Presence'
+              ),
+            }}
+          />
           <TestimonialComponent />
         </div>
       </div>

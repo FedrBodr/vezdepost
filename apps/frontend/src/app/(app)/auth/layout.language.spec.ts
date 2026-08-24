@@ -13,9 +13,12 @@ describe('auth language layout', () => {
     );
   });
 
-  it('uses the translated client social proof and removes server-global auth translation', () => {
-    expect(source).toContain('<AuthSocialProof />');
-    expect(source).not.toContain('getT');
+  it('seeds translated client social proof from the request-fixed locale', () => {
+    expect(source).toContain('getRequestLanguage');
+    expect(source).toContain('getT');
+    expect(source).toContain('const language = await getRequestLanguage();');
+    expect(source).toContain('initialLanguage={language}');
+    expect(source).toContain('initialTranslations={{');
     expect(source).not.toContain('Entrepreneurs use');
   });
 });

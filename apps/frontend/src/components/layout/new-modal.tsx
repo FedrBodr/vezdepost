@@ -197,37 +197,48 @@ export const Component: FC<{
 
   if (modal.removeLayout) {
     return (
-      <div
-        style={{ zIndex }}
-        className={clsx(
-          !modal.fullScreen
-            ? 'pb-[50px] min-w-full min-h-full'
-            : 'w-full h-full',
-          'fixed flex left-0 top-0 bg-popup transition-all animate-fadeIn overflow-y-auto text-newTextColor',
-          !isLast && '!overflow-hidden'
-        )}
-      >
-        <div className={clsx(modal.fullScreen && 'flex', 'relative flex-1')}>
-          <div
-            className={clsx(
-              modal.fullScreen
-                ? 'flex flex-1'
-                : 'absolute top-0 left-0 min-w-full min-h-full'
-            )}
-          >
+      <CurrentModalContext.Provider value={{ id: modal.id }}>
+        <div
+          style={{ zIndex }}
+          className={clsx(
+            !modal.fullScreen
+              ? 'pb-[50px] min-w-full min-h-full'
+              : 'w-full h-full',
+            'fixed flex left-0 top-0 bg-popup transition-all animate-fadeIn overflow-y-auto text-newTextColor',
+            !isLast && '!overflow-hidden'
+          )}
+        >
+          <div className={clsx(modal.fullScreen && 'flex', 'relative flex-1')}>
             <div
               className={clsx(
-                modal.fullScreen ? 'w-full h-full flex-1' : 'mx-auto py-[48px]'
+                modal.fullScreen
+                  ? 'flex flex-1'
+                  : 'absolute top-0 left-0 min-w-full min-h-full'
               )}
-              {...(modal.size && { style: { width: modal.size } })}
             >
-              {typeof modal.children === 'function'
-                ? modal.children(closeModalFunction)
-                : modal.children}
+              <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={
+                  modal.ariaLabel ||
+                  (typeof modal.title === 'string' ? modal.title : 'Dialog')
+                }
+                tabIndex={-1}
+                onKeyDown={containKeyboardFocus}
+                className={clsx(
+                  modal.fullScreen
+                    ? 'w-full h-full flex-1'
+                    : 'mx-auto py-[48px]'
+                )}
+                {...(modal.size && { style: { width: modal.size } })}
+              >
+                {RenderComponent}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </CurrentModalContext.Provider>
     );
   }
 
