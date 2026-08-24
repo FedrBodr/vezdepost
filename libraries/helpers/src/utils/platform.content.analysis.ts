@@ -199,6 +199,7 @@ export const analyzePlatformContentV2 = ({
     canonicalHtml,
     settings,
     capability,
+    media,
     convertMentionFunction,
   });
   const diagnostics: CapabilityDiagnostic[] = [...capability.diagnostics];

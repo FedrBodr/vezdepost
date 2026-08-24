@@ -28,12 +28,11 @@ exports[`pinterest formatting matrix > normalizes deterministically and stays un
 `;
 
 exports[`telegram formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
-"<b>Launch</b>
+"<h1>Launch</h1>
 
-<b>Bold</b> and <u>underlined</u>
+<p><b>Bold</b> and <u>underlined</u></p>
 
-- One
-- Two"
+<ul><li>One</li><li>Two</li></ul>"
 `;
 
 exports[`tumblr formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `

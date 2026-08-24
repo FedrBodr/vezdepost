@@ -8,6 +8,7 @@ export type WeightedCounter = 'x-weighted';
 export type FormattingDialect =
   | 'plain'
   | 'html'
+  | 'telegram-rich-html'
   | 'markdown'
   | 'slack-mrkdwn'
   | 'discord-markdown'

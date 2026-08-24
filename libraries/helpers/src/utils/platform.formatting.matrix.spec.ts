@@ -44,7 +44,7 @@ describe.each(active)('%s formatting matrix', (identifier) => {
 });
 
 it.each([
-  ['telegram', 4096],
+  ['telegram', 32_768],
   ['max', 4000],
   ['linkedin', 3000],
   ['tumblr', 32768],

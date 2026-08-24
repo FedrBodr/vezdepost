@@ -47,7 +47,7 @@ const analyze = ({
 describe('analyzePlatformContentV2', () => {
   it('emits a complete hard-limit diagnostic', () => {
     const result = analyze({
-      canonicalHtml: `<p>${'a'.repeat(4_097)}</p>`,
+      canonicalHtml: `<p>${'a'.repeat(32_769)}</p>`,
       resolved: capability('telegram'),
     });
 
@@ -58,10 +58,10 @@ describe('analyzePlatformContentV2', () => {
         destination: 'telegram',
         variant: 'text',
         field: 'body',
-        measured: 4_097,
-        limit: 4_096,
+        measured: 32_769,
+        limit: 32_768,
         unit: 'utf16-code-units',
-        message: 'Body exceeds the 4096-UTF-16-code-unit limit.',
+        message: 'Body exceeds the 32768-UTF-16-code-unit limit.',
       },
     ]);
     expect(result.blocking).toBe(true);
@@ -397,15 +397,15 @@ describe('analyzePlatformContentV2', () => {
     const result = analyze({
       canonicalHtml:
         '<p>Read <a href="https://example.com/path">the article</a>.</p>',
-      resolved: capability('telegram'),
+      resolved: capability('linkedin'),
     });
 
     expect(result.diagnostics).toEqual([
       {
         code: 'formatting-loss',
         severity: 'warning',
-        destination: 'telegram',
-        variant: 'text',
+        destination: 'linkedin',
+        variant: 'feed',
         field: 'body',
         message: 'Some formatting in Body will be converted or removed.',
       },
@@ -422,7 +422,7 @@ describe('analyzePlatformContentV2', () => {
     });
 
     expect(result.fields).toEqual({
-      body: { value: 'a'.repeat(1_025), facets: undefined },
+      body: { value: `<p>${'a'.repeat(1_025)}</p>`, facets: undefined },
       caption: { value: 'a'.repeat(1_025), facets: undefined },
     });
     expect(result.diagnostics).toEqual([
@@ -473,7 +473,7 @@ describe('analyzePlatformContentV2', () => {
       resolved: capability('telegram', media),
     });
     const overBodyLimit = analyze({
-      canonicalHtml: `<p>${'😀'.repeat(2_049)}</p>`,
+      canonicalHtml: `<p>${'😀'.repeat(16_385)}</p>`,
       media,
       resolved: capability('telegram', media),
     });
@@ -493,8 +493,8 @@ describe('analyzePlatformContentV2', () => {
       expect.objectContaining({
         code: 'text-too-long',
         field: 'body',
-        measured: 4_098,
-        limit: 4_096,
+        measured: 32_770,
+        limit: 32_768,
         unit: 'utf16-code-units',
       })
     );
@@ -503,7 +503,7 @@ describe('analyzePlatformContentV2', () => {
   it('still blocks Telegram body overflow in split-after-media delivery', () => {
     const media = [{ type: 'image' as const }];
     const result = analyze({
-      canonicalHtml: `<p>${'a'.repeat(4_097)}</p>`,
+      canonicalHtml: `<p>${'a'.repeat(32_769)}</p>`,
       media,
       resolved: capability('telegram', media),
     });
@@ -512,8 +512,8 @@ describe('analyzePlatformContentV2', () => {
       expect.objectContaining({
         code: 'text-too-long',
         field: 'body',
-        measured: 4_097,
-        limit: 4_096,
+        measured: 32_769,
+        limit: 32_768,
       })
     );
     expect(result.diagnostics).not.toContainEqual(

@@ -7,6 +7,11 @@ import { convertHtmlStructureToText } from './html.structure';
 import { getHttpUrlRanges, stripLinks, type HttpUrlRange } from './strip.links';
 import { convertMention, stripHtmlValidation } from './strip.html.validation';
 import { normalizeVerifiedHtml } from './verified.html.normalization';
+import {
+  renderTelegramRichHtml,
+  telegramRichMeasurementValue,
+  type TelegramRichMedia,
+} from './telegram.rich.normalization';
 
 type HtmlAttribute = {
   name: string;
@@ -41,6 +46,7 @@ export type NormalizePlatformFieldsInput = {
   canonicalHtml: string;
   settings: Readonly<Record<string, unknown>>;
   capability: ResolvedPlatformCapabilityV2;
+  media?: ReadonlyArray<TelegramRichMedia>;
   convertMentionFunction?: (idOrHandle: string, name: string) => string;
 };
 
@@ -454,7 +460,8 @@ const normalizeCanonicalField = (
   canonicalHtml: string,
   field: TextFieldCapability,
   capability: ResolvedPlatformCapabilityV2,
-  convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction']
+  convertMentionFunction?: NormalizePlatformFieldsInput['convertMentionFunction'],
+  media?: ReadonlyArray<TelegramRichMedia>
 ): NormalizedPlatformField => {
   switch (field.dialect) {
     case 'html':
@@ -464,6 +471,14 @@ const normalizeCanonicalField = (
           capability,
           convertMentionFunction,
           field
+        ),
+      };
+    case 'telegram-rich-html':
+      return {
+        value: renderTelegramRichHtml(
+          canonicalHtml,
+          media,
+          convertMentionFunction
         ),
       };
     case 'markdown':
@@ -704,6 +719,7 @@ export const normalizePlatformFields = ({
   canonicalHtml,
   settings,
   capability,
+  media,
   convertMentionFunction,
 }: NormalizePlatformFieldsInput): Readonly<
   Record<string, NormalizedPlatformField>
@@ -725,7 +741,8 @@ export const normalizePlatformFields = ({
           effectiveCanonicalHtml,
           field,
           capability,
-          convertMentionFunction
+          convertMentionFunction,
+          field.dialect === 'telegram-rich-html' ? media : undefined
         );
       })();
       return [field.key, entry];
@@ -736,6 +753,9 @@ export const normalizedFieldMeasurementValue = (
   value: string,
   field: TextFieldCapability
 ): string => {
+  if (field.dialect === 'telegram-rich-html') {
+    return telegramRichMeasurementValue(value);
+  }
   if (field.dialect !== 'html') {
     return value;
   }

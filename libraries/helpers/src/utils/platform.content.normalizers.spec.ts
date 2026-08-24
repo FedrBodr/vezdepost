@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolvePlatformCapabilityV2 } from './platform.capability.resolver';
-import { normalizePlatformFields } from './platform.content.normalizers';
+import {
+  normalizePlatformFields,
+  normalizedFieldMeasurementValue,
+} from './platform.content.normalizers';
 
 const capability = (
   identifier: string,
@@ -19,7 +22,7 @@ const capability = (
   });
 
 describe('normalizePlatformFields', () => {
-  it('normalizes Telegram fields to its verified HTML subset', () => {
+  it('normalizes Telegram fields to its verified rich HTML subset', () => {
     expect(
       normalizePlatformFields({
         canonicalHtml: '<p>Hello <strong>world</strong></p>',
@@ -27,7 +30,7 @@ describe('normalizePlatformFields', () => {
         capability: capability('telegram'),
       })
     ).toEqual({
-      body: { value: 'Hello <b>world</b>', facets: undefined },
+      body: { value: '<p>Hello <b>world</b></p>', facets: undefined },
     });
   });
 
@@ -67,7 +70,7 @@ describe('normalizePlatformFields', () => {
         capability: capability('telegram', [{ type: 'image' }]),
       })
     ).toEqual({
-      body: { value: 'Hello <b>world</b>', facets: undefined },
+      body: { value: '<p>Hello <b>world</b></p>', facets: undefined },
       caption: { value: 'Hello <b>world</b>', facets: undefined },
     });
     expect(canonicalHtml).toBe('<p>Hello <strong>world</strong></p>');
@@ -77,8 +80,9 @@ describe('normalizePlatformFields', () => {
   it.each([
     [
       'telegram',
-      '<b>real</b> label plain &lt;strong&gt;literal&lt;/strong&gt; ' +
-        '&lt;custom&gt;custom&lt;/custom&gt; &amp; ©',
+      '<p><b>real</b> <a href="https://example.com">label</a> <i>plain</i> ' +
+        '&lt;strong&gt;literal&lt;/strong&gt; ' +
+        '&lt;custom&gt;custom&lt;/custom&gt; &amp; ©</p>',
     ],
     [
       'max',
@@ -631,14 +635,16 @@ describe('normalizePlatformFields', () => {
       ).toBe(spaced.replaceAll('\n\n', '\n⠀\n'));
     });
 
-    it('separates Telegram paragraphs with blank lines and degrades headings to bold', () => {
+    it('separates Telegram paragraphs with blank lines and keeps native rich blocks', () => {
       expect(
         normalizePlatformFields({
           canonicalHtml: blockCanonical,
           settings: {},
           capability: capability('telegram'),
         }).body.value
-      ).toBe('<b>Heading</b>\n\nIntro\n\nSecond\n\n- One\n- Two\n\nAfter');
+      ).toBe(
+        '<h2>Heading</h2>\n\n<p>Intro</p>\n\n<p>Second</p>\n\n<ul><li>One</li><li>Two</li></ul>\n\n<p>After</p>'
+      );
     });
 
     it('degrades Max headings to strong', () => {
@@ -661,6 +667,68 @@ describe('normalizePlatformFields', () => {
           capability: capability('tumblr'),
         }).body.value
       ).toBe('One\nTwo');
+    });
+  });
+
+  describe('telegram rich html', () => {
+    const richCapability = capability('telegram');
+
+    it('keeps headings, lists, italic, and strikethrough as rich tags', () => {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml:
+            '<h1>Title</h1><p>Intro</p><p>Second</p>' +
+            '<ul><li>One</li><li>Two</li></ul>' +
+            '<p><em>soft</em> <s>gone</s> <strong>bold</strong> ' +
+            '<u>under</u> <a href="https://x.test">link</a></p>',
+          settings: {},
+          capability: richCapability,
+        }).body.value
+      ).toBe(
+        '<h1>Title</h1>\n\n<p>Intro</p>\n\n<p>Second</p>\n\n' +
+          '<ul><li>One</li><li>Two</li></ul>\n\n' +
+          '<p><i>soft</i> <s>gone</s> <b>bold</b> <u>under</u> ' +
+          '<a href="https://x.test">link</a></p>'
+      );
+    });
+
+    it('prepends image media as public img blocks', () => {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: '<p>Hello</p>',
+          settings: {},
+          media: [
+            {
+              type: 'image' as const,
+              path: 'https://app.vezdepost.ru/uploads/2026/08/15/x.jpg',
+            },
+          ],
+          capability: richCapability,
+        }).body.value
+      ).toBe(
+        '<img src="https://app.vezdepost.ru/uploads/2026/08/15/x.jpg"/>\n\n<p>Hello</p>'
+      );
+    });
+
+    it('escapes literal html characters and decodes entities in text', () => {
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: '<p>AT&amp;T &lt;launch&gt; tag</p>',
+          settings: {},
+          capability: richCapability,
+        }).body.value
+      ).toBe('<p>AT&amp;T &lt;launch&gt; tag</p>');
+    });
+
+    it('measures rich values without counting tags', () => {
+      const value = normalizePlatformFields({
+        canonicalHtml: `<h1>Title</h1><p>${'x'.repeat(50)}</p>`,
+        settings: {},
+        capability: richCapability,
+      }).body.value;
+      expect(
+        normalizedFieldMeasurementValue(value, richCapability.fields[0])
+      ).toBe(`Title\n\n${'x'.repeat(50)}`);
     });
   });
 

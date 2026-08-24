@@ -265,7 +265,9 @@ describe('Batch 0 platform capability resolution', () => {
       fields: [
         expect.objectContaining({
           key: 'body',
-          limit: expect.objectContaining({ max: 4_096 }),
+          dialect: 'telegram-rich-html',
+          formatting: expect.objectContaining({ headings: 'native' }),
+          limit: expect.objectContaining({ max: 32_768 }),
         }),
       ],
     });
@@ -276,7 +278,9 @@ describe('Batch 0 platform capability resolution', () => {
       fields: [
         expect.objectContaining({
           key: 'body',
-          limit: expect.objectContaining({ max: 4_096 }),
+          dialect: 'telegram-rich-html',
+          formatting: expect.objectContaining({ headings: 'native' }),
+          limit: expect.objectContaining({ max: 32_768 }),
         }),
         expect.objectContaining({
           key: 'caption',
