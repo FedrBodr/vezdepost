@@ -6,9 +6,9 @@ import type {
   TextFieldCapability,
 } from './platform.capability.types';
 import {
-  TELEGRAM_BODY_LIMIT,
   TELEGRAM_MEDIA_CAPTION_LIMIT,
   TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
+  TELEGRAM_RICH_LIMIT,
 } from './telegram.constraints';
 
 const plainFormatting: TextFieldCapability['formatting'] = {
@@ -22,9 +22,9 @@ const plainFormatting: TextFieldCapability['formatting'] = {
 const telegramFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'native',
-  links: 'unsupported',
-  lists: 'plain',
-  headings: 'plain',
+  links: 'native',
+  lists: 'native',
+  headings: 'native',
 };
 
 const maxFormatting: TextFieldCapability['formatting'] = {
@@ -106,8 +106,8 @@ const caption = (): TextFieldCapability => ({
 });
 
 const telegramBody = (): TextFieldCapability => ({
-  ...body(4_096, 'html', telegramFormatting),
-  limit: { ...TELEGRAM_BODY_LIMIT },
+  ...body(32_768, 'telegram-rich-html', telegramFormatting),
+  limit: { ...TELEGRAM_RICH_LIMIT },
 });
 
 const telegramText: PostVariantCapability = {

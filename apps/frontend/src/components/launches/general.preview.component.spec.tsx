@@ -401,7 +401,7 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
     'crops %s mention labels with special characters exactly once',
     (identifier) => {
       previewContext.identifier = identifier;
-      const maximumCharacters = identifier === 'telegram' ? 4_096 : 4_000;
+      const maximumCharacters = identifier === 'telegram' ? 32_768 : 4_000;
       previewContext.maximumCharacters = maximumCharacters;
 
       const preview = renderPreview(
@@ -423,11 +423,11 @@ describe('GeneralPreviewComponent visible-length cropping', () => {
 
   it('crops Telegram astral emoji using the transport UTF-16 body limit', () => {
     previewContext.identifier = 'telegram';
-    previewContext.maximumCharacters = 4_096;
+    previewContext.maximumCharacters = 32_768;
 
-    const preview = renderPreview(`<p>${'😀'.repeat(2_049)}</p>`);
+    const preview = renderPreview(`<p>${'😀'.repeat(16_385)}</p>`);
 
     expect(preview.querySelector('mark')?.textContent).toBe('😀');
-    expect(preview.textContent).toBe('😀'.repeat(2_049));
+    expect(preview.textContent).toBe('😀'.repeat(16_385));
   });
 });

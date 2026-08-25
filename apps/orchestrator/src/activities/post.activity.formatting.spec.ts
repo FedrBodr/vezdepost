@@ -125,13 +125,15 @@ describe('PostActivity platform formatting', () => {
       'chat-id',
       [
         expect.objectContaining({
-          message: 'Title\n<b>Body</b> Link',
+          message:
+            '<h1>Title</h1>\n\n<p><b>Body</b> <a href="https://x.test">Link</a></p>',
           fields: expect.objectContaining({
             body: expect.objectContaining({
-              value: 'Title\n<b>Body</b> Link',
+              value:
+                '<h1>Title</h1>\n\n<p><b>Body</b> <a href="https://x.test">Link</a></p>',
             }),
             caption: expect.objectContaining({
-              value: 'Title\n<b>Body</b> Link',
+              value: 'Title\n\n<b>Body</b> Link',
             }),
           }),
         }),
@@ -143,8 +145,8 @@ describe('PostActivity platform formatting', () => {
   it.each([
     [
       'telegram',
-      '<b>real</b> &lt;b&gt;literal&lt;/b&gt; ' +
-        '&lt;script&gt;alert&lt;/script&gt; &amp; ©',
+      '<p><b>real</b> &lt;b&gt;literal&lt;/b&gt; ' +
+        '&lt;script&gt;alert&lt;/script&gt; &amp; ©</p>',
     ],
     [
       'max',

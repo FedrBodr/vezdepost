@@ -2,49 +2,62 @@
 
 exports[`linkedin formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
+⠀
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
+⠀
 - One
 - Two"
 `;
 
 exports[`max formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
-"Launch
+"<strong>Launch</strong>
+
 <strong>Bold</strong> and <u>underlined</u>
+
 - One
 - Two"
 `;
 
 exports[`pinterest formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
+
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
+
 - One
 - Two"
 `;
 
 exports[`telegram formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
-"Launch
-<b>Bold</b> and <u>underlined</u>
-- One
-- Two"
+"<h1>Launch</h1>
+
+<p><b>Bold</b> and <u>underlined</u></p>
+
+<ul><li>One</li><li>Two</li></ul>"
 `;
 
 exports[`tumblr formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
+
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
+
 - One
 - Two"
 `;
 
 exports[`vk formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
+
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
+
 - One
 - Two"
 `;
 
 exports[`vk-group formatting matrix > normalizes deterministically and stays under its configured limit 1`] = `
 "Launch
+
 𝗕𝗼𝗹𝗱 and u̲n̲d̲e̲r̲l̲i̲n̲e̲d̲
+
 - One
 - Two"
 `;

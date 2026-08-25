@@ -89,6 +89,107 @@ const makeBot = () => {
 describe('TelegramProvider media captions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    vi.stubEnv('TELEGRAM_TOKEN', 'test-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('rich transport unavailable');
+      })
+    );
+  });
+
+  describe('rich messages', () => {
+    const richResponse = (messageId = 77) =>
+      ({
+        ok: true,
+        json: async () => ({
+          ok: true,
+          result: { message_id: messageId },
+        }),
+      } as any);
+
+    it('sends the main post through sendRichMessage and skips legacy transports', async () => {
+      const fetchMock = vi.fn(async () => richResponse());
+      vi.stubGlobal('fetch', fetchMock);
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      const result = await provider.post(
+        'channel',
+        '-1001',
+        details('<p>Hello <b>world</b></p>', [])
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(
+        'https://api.telegram.org/bottest-token/sendRichMessage'
+      );
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({
+        chat_id: '-1001',
+        rich_message: JSON.stringify({ html: '<p>Hello <b>world</b></p>' }),
+      });
+      expect(bot.sendMessage).not.toHaveBeenCalled();
+      expect(bot.sendPhoto).not.toHaveBeenCalled();
+      expect(result[0].postId).toBe('77');
+    });
+
+    it('falls back to the legacy transport when the rich call fails', async () => {
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      const result = await provider.post(
+        'channel',
+        '-1001',
+        details('<h1>Title</h1>\n\n<p><b>Body</b></p>', [])
+      );
+
+      expect(bot.sendMessage).toHaveBeenCalledTimes(1);
+      expect(bot.sendMessage).toHaveBeenCalledWith(
+        '-1001',
+        'Title\n\n<b>Body</b>',
+        { parse_mode: 'HTML' }
+      );
+      expect(result[0].postId).toBe('42');
+    });
+
+    it('falls back to the legacy transport for local-file media', async () => {
+      const fetchMock = vi.fn(async () => richResponse());
+      vi.stubGlobal('fetch', fetchMock);
+      const { calls, bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.post(
+        'channel',
+        '-1001',
+        details('caption', [
+          { id: 'media', path: '/var/postiz/uploads/2026/08/21/photo.jpg' },
+        ])
+      );
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(calls).toEqual(['photo:caption']);
+      expect(bot.sendPhoto).toHaveBeenCalled();
+    });
+
+    it('keeps the legacy transport for comments', async () => {
+      const fetchMock = vi.fn(async () => richResponse());
+      vi.stubGlobal('fetch', fetchMock);
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.comment(
+        'channel',
+        '1',
+        undefined,
+        '-1001',
+        details('reply', []),
+        {} as any
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   it('sends a 4096-character text-only post as one complete message', async () => {

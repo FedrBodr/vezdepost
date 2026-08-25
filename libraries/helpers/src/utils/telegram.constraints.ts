@@ -12,6 +12,11 @@ export const TELEGRAM_MEDIA_CAPTION_LIMIT = {
   unit: 'utf16-code-units',
   source: 'platform',
 } as const satisfies ContentLimit;
+export const TELEGRAM_RICH_LIMIT = {
+  max: 32_768,
+  unit: 'utf16-code-units',
+  source: 'platform',
+} as const satisfies ContentLimit;
 export const TELEGRAM_MEDIA_CAPTION_MAX_LENGTH =
   TELEGRAM_MEDIA_CAPTION_LIMIT.max;
 export const TELEGRAM_MEDIA_GROUP_MAX_ITEMS = 10;

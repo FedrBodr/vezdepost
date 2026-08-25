@@ -101,8 +101,15 @@ describe('platform editor capabilities v2', () => {
     expect(result.destinations[0].activeField?.formatting).toMatchObject({
       bold: 'native',
       underline: 'native',
+      headings: 'native',
     });
-    expect(getFormattingControls(result)).toEqual(['bold', 'underline']);
+    expect(getFormattingControls(result)).toEqual([
+      'bold',
+      'underline',
+      'link',
+      'list',
+      'heading',
+    ]);
   });
 
   it('keeps Telegram media caption overflow nonblocking and points the counter at the caption', () => {
@@ -264,7 +271,7 @@ describe('platform editor capabilities v2', () => {
     expect(result.formatting).toMatchObject({
       bold: 'unicode',
       underline: 'unicode',
-      links: 'unsupported',
+      links: 'plain',
     });
     expect(getFormattingControls(result)).toEqual(['bold', 'underline']);
     expect(
