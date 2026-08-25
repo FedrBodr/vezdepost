@@ -13,13 +13,17 @@ export const AuthenticatedAppOpened: FC = () => {
     if (!user?.id || capturedUserId.current === user.id) {
       return;
     }
-    capturedUserId.current = user.id;
-    try {
-      posthog.identify(user.id, { email: user.email, name: user.name });
-      posthog.capture('authenticated_app_opened');
-    } catch {
-      // Analytics must never interrupt the authenticated application.
-    }
+    const timeout = window.setTimeout(() => {
+      capturedUserId.current = user.id;
+      try {
+        posthog.identify(user.id, { email: user.email, name: user.name });
+        posthog.capture('authenticated_app_opened');
+      } catch {
+        // Analytics must never interrupt the authenticated application.
+      }
+    });
+
+    return () => window.clearTimeout(timeout);
   }, [posthog, user?.email, user?.id, user?.name]);
 
   return null;

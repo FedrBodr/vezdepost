@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticatedAppOpened } from './authenticated.app.opened';
 
 const mocked = vi.hoisted(() => ({
@@ -21,13 +21,17 @@ vi.mock('@gitroom/frontend/components/layout/user.context', () => ({
 
 describe('AuthenticatedAppOpened', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     mocked.capture.mockReset();
     mocked.identify.mockReset();
     mocked.user = undefined;
   });
 
+  afterEach(() => vi.useRealTimers());
+
   it('does not capture without an authenticated user', () => {
     render(<AuthenticatedAppOpened />);
+    act(() => vi.runAllTimers());
     expect(mocked.identify).not.toHaveBeenCalled();
     expect(mocked.capture).not.toHaveBeenCalled();
   });
@@ -35,6 +39,8 @@ describe('AuthenticatedAppOpened', () => {
   it('identifies the user before capturing the authenticated app open', () => {
     mocked.user = { id: 'user-1', email: 'a@example.com', name: 'A' };
     render(<AuthenticatedAppOpened />);
+    expect(mocked.identify).not.toHaveBeenCalled();
+    act(() => vi.runAllTimers());
     expect(mocked.identify).toHaveBeenCalledWith('user-1', {
       email: 'a@example.com',
       name: 'A',
@@ -48,8 +54,10 @@ describe('AuthenticatedAppOpened', () => {
   it('captures only once for the same user during one mount', () => {
     mocked.user = { id: 'user-1', email: 'a@example.com', name: 'A' };
     const view = render(<AuthenticatedAppOpened />);
+    act(() => vi.runAllTimers());
     mocked.user = { id: 'user-1', email: 'a@example.com', name: 'Renamed' };
     view.rerender(<AuthenticatedAppOpened />);
+    act(() => vi.runAllTimers());
     expect(mocked.capture).toHaveBeenCalledTimes(1);
   });
 
@@ -58,7 +66,8 @@ describe('AuthenticatedAppOpened', () => {
     mocked.identify.mockImplementation(() => {
       throw new Error('analytics unavailable');
     });
-    expect(() => render(<AuthenticatedAppOpened />)).not.toThrow();
+    render(<AuthenticatedAppOpened />);
+    expect(() => act(() => vi.runAllTimers())).not.toThrow();
     expect(mocked.capture).not.toHaveBeenCalled();
   });
 });
