@@ -424,8 +424,11 @@ describe('normalizePlatformFields', () => {
         formatting: {
           bold: 'unsupported',
           underline: 'unsupported',
+          italic: 'unsupported',
+          strike: 'unsupported',
           links: 'native',
           lists: 'plain',
+          orderedLists: 'plain',
           headings: 'plain',
         },
       },

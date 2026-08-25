@@ -1216,8 +1216,11 @@ describe('Batch 0 platform capability resolution', () => {
               formatting: {
                 bold: 'unicode',
                 underline: 'unicode',
+                italic: 'plain',
+                strike: 'plain',
                 links: 'plain',
                 lists: 'plain',
+                orderedLists: 'plain',
                 headings: 'plain',
               },
             },
@@ -1235,8 +1238,11 @@ describe('Batch 0 platform capability resolution', () => {
               formatting: {
                 bold: 'unicode',
                 underline: 'unicode',
+                italic: 'plain',
+                strike: 'plain',
                 links: 'plain',
                 lists: 'plain',
+                orderedLists: 'plain',
                 headings: 'plain',
               },
             },
