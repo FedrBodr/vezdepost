@@ -31,7 +31,14 @@ export interface TextFieldCapability {
   dialect: FormattingDialect;
   limit?: ContentLimit;
   formatting: Record<
-    'bold' | 'underline' | 'links' | 'lists' | 'headings',
+    | 'bold'
+    | 'underline'
+    | 'italic'
+    | 'strike'
+    | 'links'
+    | 'lists'
+    | 'orderedLists'
+    | 'headings',
     FormattingSupport
   >;
 }

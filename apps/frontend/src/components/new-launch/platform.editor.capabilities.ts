@@ -18,8 +18,11 @@ import type {
 export type FormattingControl =
   | 'bold'
   | 'underline'
+  | 'italic'
+  | 'strike'
   | 'link'
   | 'list'
+  | 'ordered-list'
   | 'heading';
 
 export type EditorMediaV2 = {
@@ -64,8 +67,11 @@ export interface EditorCapabilityV2 {
 const defaultFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'native',
+  italic: 'native',
+  strike: 'native',
   links: 'native',
   lists: 'native',
+  orderedLists: 'native',
   headings: 'native',
 };
 
@@ -91,8 +97,13 @@ const intersectFormatting = (
     underline: weakestSupport(
       fields.map(({ formatting }) => formatting.underline)
     ),
+    italic: weakestSupport(fields.map(({ formatting }) => formatting.italic)),
+    strike: weakestSupport(fields.map(({ formatting }) => formatting.strike)),
     links: weakestSupport(fields.map(({ formatting }) => formatting.links)),
     lists: weakestSupport(fields.map(({ formatting }) => formatting.lists)),
+    orderedLists: weakestSupport(
+      fields.map(({ formatting }) => formatting.orderedLists)
+    ),
     headings: weakestSupport(
       fields.map(({ formatting }) => formatting.headings)
     ),
@@ -305,8 +316,11 @@ export const getFormattingControls = (
   return [
     policy.bold && 'bold',
     policy.underline && 'underline',
+    policy.italic && 'italic',
+    policy.strike && 'strike',
     policy.link && 'link',
     policy.list && 'list',
+    policy.orderedList && 'ordered-list',
     policy.heading && 'heading',
   ].filter(Boolean) as FormattingControl[];
 };

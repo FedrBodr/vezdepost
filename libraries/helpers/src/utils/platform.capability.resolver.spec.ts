@@ -266,7 +266,12 @@ describe('Batch 0 platform capability resolution', () => {
         expect.objectContaining({
           key: 'body',
           dialect: 'telegram-rich-html',
-          formatting: expect.objectContaining({ headings: 'native' }),
+          formatting: expect.objectContaining({
+            headings: 'native',
+            italic: 'native',
+            strike: 'native',
+            orderedLists: 'native',
+          }),
           limit: expect.objectContaining({ max: 32_768 }),
         }),
       ],
@@ -279,7 +284,12 @@ describe('Batch 0 platform capability resolution', () => {
         expect.objectContaining({
           key: 'body',
           dialect: 'telegram-rich-html',
-          formatting: expect.objectContaining({ headings: 'native' }),
+          formatting: expect.objectContaining({
+            headings: 'native',
+            italic: 'native',
+            strike: 'native',
+            orderedLists: 'native',
+          }),
           limit: expect.objectContaining({ max: 32_768 }),
         }),
         expect.objectContaining({
@@ -1385,8 +1395,11 @@ describe('Batch 0 platform capability resolution', () => {
       expect(resolved.fields[0].formatting).toEqual({
         bold: 'unicode',
         underline: 'unicode',
+        italic: 'plain',
+        strike: 'plain',
         links: 'plain',
         lists: 'plain',
+        orderedLists: 'plain',
         headings: 'plain',
       });
       expect(resolved.media).toEqual({
@@ -1417,8 +1430,11 @@ describe('Batch 0 platform capability resolution', () => {
     expect(resolved.fields[0].formatting).toEqual({
       bold: 'unsupported',
       underline: 'unsupported',
+      italic: 'unsupported',
+      strike: 'unsupported',
       links: 'plain',
       lists: 'unsupported',
+      orderedLists: 'unsupported',
       headings: 'unsupported',
     });
     expect(resolved.media).toEqual({
@@ -1447,6 +1463,11 @@ describe('Batch 0 platform capability resolution', () => {
         expect.objectContaining({
           key: 'body',
           dialect: 'html',
+          formatting: expect.objectContaining({
+            italic: 'native',
+            strike: 'native',
+            orderedLists: 'native',
+          }),
           limit: {
             max: 321,
             unit: 'utf16-code-units',
@@ -1455,6 +1476,30 @@ describe('Batch 0 platform capability resolution', () => {
         }),
       ],
       delivery: { stripRawUrls: true },
+    });
+  });
+
+  it('degrades new formatting capabilities conservatively for plain and disabled adapters', () => {
+    const plain = createUnverifiedAdapterProfile(
+      ctx('plain-adapter', [], {
+        adapter: { editor: 'normal', maximum: 321, stripRawUrls: false },
+      })
+    );
+    const disabled = createUnverifiedAdapterProfile(
+      ctx('disabled-adapter', [], {
+        adapter: { editor: 'none', maximum: 321, stripRawUrls: false },
+      })
+    );
+
+    expect(plain.variants.adapter.fields[0].formatting).toMatchObject({
+      italic: 'plain',
+      strike: 'plain',
+      orderedLists: 'plain',
+    });
+    expect(disabled.variants.adapter.fields[0].formatting).toMatchObject({
+      italic: 'unsupported',
+      strike: 'unsupported',
+      orderedLists: 'unsupported',
     });
   });
 });

@@ -14,48 +14,66 @@ import {
 const plainFormatting: TextFieldCapability['formatting'] = {
   bold: 'unicode',
   underline: 'unicode',
+  italic: 'plain',
+  strike: 'plain',
   links: 'plain',
   lists: 'plain',
+  orderedLists: 'plain',
   headings: 'plain',
 };
 
 const telegramFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'native',
+  italic: 'native',
+  strike: 'native',
   links: 'native',
   lists: 'native',
+  orderedLists: 'native',
   headings: 'native',
 };
 
 const maxFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'native',
+  italic: 'native',
+  strike: 'native',
   links: 'native',
   lists: 'plain',
+  orderedLists: 'plain',
   headings: 'plain',
 };
 
 const slackFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'unsupported',
+  italic: 'native',
+  strike: 'native',
   links: 'native',
   lists: 'plain',
+  orderedLists: 'plain',
   headings: 'plain',
 };
 
 const discordFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'native',
+  italic: 'native',
+  strike: 'native',
   links: 'native',
   lists: 'native',
+  orderedLists: 'native',
   headings: 'native',
 };
 
 const chatFormatting: TextFieldCapability['formatting'] = {
   bold: 'unsupported',
   underline: 'unsupported',
+  italic: 'unsupported',
+  strike: 'unsupported',
   links: 'plain',
   lists: 'plain',
+  orderedLists: 'plain',
   headings: 'plain',
 };
 
@@ -78,7 +96,14 @@ const body = (
   max: number,
   dialect: TextFieldCapability['dialect'],
   formatting: Record<
-    'bold' | 'underline' | 'links' | 'lists' | 'headings',
+    | 'bold'
+    | 'underline'
+    | 'italic'
+    | 'strike'
+    | 'links'
+    | 'lists'
+    | 'orderedLists'
+    | 'headings',
     FormattingSupport
   >,
   source: 'platform' | 'application-safety' = 'platform',
@@ -172,8 +197,11 @@ const threadsBody = (): TextFieldCapability => ({
 const markdownFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'native',
+  italic: 'native',
+  strike: 'native',
   links: 'native',
   lists: 'plain',
+  orderedLists: 'plain',
   headings: 'plain',
 };
 
@@ -323,8 +351,11 @@ const gmbCallToActionFields: PostVariantCapability['structuredFields'] = [
 const dribbbleFormatting: TextFieldCapability['formatting'] = {
   bold: 'unsupported',
   underline: 'unsupported',
+  italic: 'unsupported',
+  strike: 'unsupported',
   links: 'plain',
   lists: 'unsupported',
+  orderedLists: 'unsupported',
   headings: 'unsupported',
 };
 
@@ -1001,8 +1032,11 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
         {
           bold: 'unsupported',
           underline: 'unsupported',
+          italic: 'unsupported',
+          strike: 'unsupported',
           links: 'native',
           lists: 'plain',
+          orderedLists: 'plain',
           headings: 'plain',
         },
         {

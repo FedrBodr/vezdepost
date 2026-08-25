@@ -15,8 +15,11 @@ const capability = (
   formatting: {
     bold: inlineSupport,
     underline: inlineSupport,
+    italic: 'plain',
+    strike: 'plain',
     links: 'unsupported',
     lists: 'unsupported',
+    orderedLists: 'unsupported',
     headings: 'unsupported',
   },
 });
@@ -35,6 +38,9 @@ describe('semantic editor creation policy', () => {
       expect(getEditorCreationPolicy(semanticCapability)).toMatchObject({
         bold: enabled,
         underline: enabled,
+        italic: false,
+        strike: false,
+        orderedList: false,
       });
       expect(getFormattingControls(semanticCapability)).toEqual(
         enabled ? ['bold', 'underline'] : []

@@ -13,6 +13,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import type { TextFieldCapability } from '@gitroom/helpers/utils/platform.capability.types';
 
+vi.stubGlobal('React', React);
+
 const { launchStoreState } = vi.hoisted(() => ({
   launchStoreState: {
     current: 'global',
@@ -80,10 +82,7 @@ vi.mock('@gitroom/frontend/components/signature', async () => {
   };
 });
 vi.mock('@gitroom/frontend/components/media/media.component', () => ({
-  MultiMediaComponent: ({ toolBar }: { toolBar?: any }) => {
-    const children = toolBar?.props?.children;
-    return Array.isArray(children) ? children[0] : children || null;
-  },
+  MultiMediaComponent: ({ toolBar }: { toolBar?: any }) => toolBar || null,
 }));
 vi.mock('@gitroom/frontend/components/launches/up.down.arrow', () => ({
   UpDownArrow: (): null => null,
@@ -166,13 +165,103 @@ const renderPlainEditor = (value = '<p></p>') =>
   renderEditor(resolvedField('linkedin'), value);
 
 describe('canonical editor schema and creation policy', () => {
+  it('shows the new formatting controls only for a natively capable destination', async () => {
+    const telegram = resolveEditorCapabilityV2(
+      'telegram-account',
+      [
+        {
+          integration: {
+            id: 'telegram-account',
+            identifier: 'telegram',
+            name: 'Telegram',
+            capabilitiesV2: resolvedCapability('telegram'),
+          },
+          settings: {},
+        } as any,
+      ],
+      [],
+      '<p>Text</p>',
+      []
+    );
+    const rich = render(
+      <Editor
+        identifier="telegram-account"
+        editorCapability={telegram}
+        comments={true}
+        selectedIntegration={[]}
+        onChange={() => undefined}
+        setImages={() => undefined}
+        value="<p>Text</p>"
+        totalPosts={1}
+        dummy={false}
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        rich.container.querySelector('[data-tooltip-content="Italic"]')
+      ).toBeTruthy()
+    );
+    expect(
+      rich.container.querySelector('[data-tooltip-content="Strikethrough"]')
+    ).toBeTruthy();
+    expect(
+      rich.container.querySelector('[data-tooltip-content="Numbered list"]')
+    ).toBeTruthy();
+
+    rich.unmount();
+    const plainCapability = resolveEditorCapabilityV2(
+      'linkedin-account',
+      [
+        {
+          integration: {
+            id: 'linkedin-account',
+            identifier: 'linkedin',
+            name: 'LinkedIn',
+            capabilitiesV2: resolvedCapability('linkedin'),
+          },
+          settings: {},
+        } as any,
+      ],
+      [],
+      '<p>Text</p>',
+      []
+    );
+    const plain = render(
+      <Editor
+        identifier="linkedin-account"
+        editorCapability={plainCapability}
+        comments={true}
+        selectedIntegration={[]}
+        onChange={() => undefined}
+        setImages={() => undefined}
+        value="<p>Text</p>"
+        totalPosts={1}
+        dummy={false}
+      />
+    );
+
+    expect(
+      plain.container.querySelector('[data-tooltip-content="Italic"]')
+    ).toBeNull();
+    expect(
+      plain.container.querySelector('[data-tooltip-content="Strikethrough"]')
+    ).toBeNull();
+    expect(
+      plain.container.querySelector('[data-tooltip-content="Numbered list"]')
+    ).toBeNull();
+  });
+
   it('blocks direct commands and shortcuts for plain inline formatting', async () => {
     const capabilities: Pick<TextFieldCapability, 'formatting'> = {
       formatting: {
         bold: 'plain',
         underline: 'plain',
+        italic: 'plain',
+        strike: 'plain',
         links: 'plain',
         lists: 'plain',
+        orderedLists: 'plain',
         headings: 'plain',
       },
     };
@@ -410,10 +499,12 @@ describe('canonical editor schema and creation policy', () => {
     );
   });
 
-  it('preserves canonical link, heading, and list markup while editing a plain profile', async () => {
+  it('preserves canonical inline, link, heading, and list markup while editing a plain profile', async () => {
     const { editor } = await renderPlainEditor(
       '<h2>Title <a href="https://example.com">linked</a></h2>' +
-        '<ul><li><p>First item</p></li></ul><p>Tail</p>'
+        '<p><em>soft</em> <s>gone</s></p>' +
+        '<ul><li><p>First item</p></li></ul>' +
+        '<ol><li><p>First numbered item</p></li></ol><p>Tail</p>'
     );
 
     act(() => {
@@ -423,7 +514,25 @@ describe('canonical editor schema and creation policy', () => {
 
     expect(editor.getHTML()).toBe(
       '<h2>Title <a target="_blank" rel="noopener noreferrer nofollow" href="https://example.com">linked</a></h2>' +
-        '<ul><li><p>First item</p></li></ul><p>Tail edited</p>'
+        '<p><em>soft</em> <s>gone</s></p>' +
+        '<ul><li><p>First item</p></li></ul>' +
+        '<ol><li><p>First numbered item</p></li></ol><p>Tail edited</p>'
+    );
+  });
+
+  it('round-trips pasted italic, strike, and ordered-list markup', async () => {
+    const { editor } = await renderPlainEditor();
+
+    act(() => {
+      editor.commands.insertContent(
+        '<p><em>soft</em> <s>gone</s></p>' +
+          '<ol><li><p>First</p></li><li><p>Second</p></li></ol>'
+      );
+    });
+
+    expect(editor.getHTML()).toBe(
+      '<p><em>soft</em> <s>gone</s></p>' +
+        '<ol><li><p>First</p></li><li><p>Second</p></li></ol>'
     );
   });
 
@@ -454,11 +563,16 @@ describe('canonical editor schema and creation policy', () => {
     ['toggleBold', undefined],
     ['setUnderline', undefined],
     ['toggleUnderline', undefined],
+    ['setItalic', undefined],
+    ['toggleItalic', undefined],
+    ['setStrike', undefined],
+    ['toggleStrike', undefined],
     ['setLink', { href: 'https://example.com' }],
     ['toggleLink', { href: 'https://example.com' }],
     ['setHeading', { level: 1 }],
     ['toggleHeading', { level: 1 }],
     ['toggleBulletList', undefined],
+    ['toggleOrderedList', undefined],
   ] as const)(
     'returns false without mutation for hidden %s commands',
     async (command, attributes) => {
@@ -482,6 +596,8 @@ describe('canonical editor schema and creation policy', () => {
   it.each([
     ['unsetBold', '<p><strong>Text</strong></p>'],
     ['unsetUnderline', '<p><u>Text</u></p>'],
+    ['unsetItalic', '<p><em>Text</em></p>'],
+    ['unsetStrike', '<p><s>Text</s></p>'],
     ['unsetLink', '<p><a href="https://example.com">Text</a></p>'],
   ] as const)(
     'returns false without changing parsed canonical markup for hidden %s commands',
@@ -519,8 +635,11 @@ describe('canonical editor schema and creation policy', () => {
 
   it.each([
     ['setLink', { href: 'https://example.com' }, '<a'],
+    ['setItalic', undefined, '<em>'],
+    ['setStrike', undefined, '<s>'],
     ['setHeading', { level: 2 }, '<h2>'],
     ['toggleBulletList', undefined, '<ul>'],
+    ['toggleOrderedList', undefined, '<ol>'],
   ] as const)(
     'keeps allowed native %s commands available',
     async (command, attributes, expectedMarkup) => {
@@ -570,6 +689,28 @@ describe('canonical editor schema and creation policy', () => {
     });
     expect(listEditor.getHTML()).toBe('<ul><li><p></p></li></ul>');
 
+    const orderedListEditor = (await renderEditor(capabilities)).editor;
+    act(() => {
+      orderedListEditor.commands.keyboardShortcut('Mod-Shift-7');
+    });
+    expect(orderedListEditor.getHTML()).toBe('<ol><li><p></p></li></ol>');
+
+    const italicEditor = (await renderEditor(capabilities, '<p>Text</p>'))
+      .editor;
+    act(() => {
+      italicEditor.commands.setTextSelection({ from: 1, to: 5 });
+      italicEditor.commands.keyboardShortcut('Mod-i');
+    });
+    expect(italicEditor.getHTML()).toBe('<p><em>Text</em></p>');
+
+    const strikeEditor = (await renderEditor(capabilities, '<p>Text</p>'))
+      .editor;
+    act(() => {
+      strikeEditor.commands.setTextSelection({ from: 1, to: 5 });
+      strikeEditor.commands.keyboardShortcut('Mod-Shift-s');
+    });
+    expect(strikeEditor.getHTML()).toBe('<p><s>Text</s></p>');
+
     const linkEditor = (await renderEditor(capabilities)).editor;
     act(() => {
       linkEditor.commands.insertContent('https://example.com ');
@@ -577,7 +718,7 @@ describe('canonical editor schema and creation policy', () => {
     expect(linkEditor.getHTML()).toContain('<a');
   });
 
-  it.each(['b', 'u'])(
+  it.each(['b', 'u', 'i'])(
     'consumes native Mod-%s when the inline mark is unsupported',
     async (key) => {
       const capabilities = resolvedField('unsupported-profile', 'none');

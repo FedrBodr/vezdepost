@@ -1,8 +1,10 @@
 import { Extension, type Extensions } from '@tiptap/core';
 import Bold from '@tiptap/extension-bold';
 import Heading from '@tiptap/extension-heading';
+import Italic from '@tiptap/extension-italic';
 import Link from '@tiptap/extension-link';
-import { BulletList, ListItem } from '@tiptap/extension-list';
+import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list';
+import Strike from '@tiptap/extension-strike';
 import Underline from '@tiptap/extension-underline';
 import {
   getEditorSemanticPolicy,
@@ -155,6 +157,54 @@ export const createCanonicalEditorExtensions = (
       return policy.bold ? this.parent?.() || [] : [];
     },
   });
+  const CapabilityAwareItalic = Italic.extend({
+    addCommands() {
+      const parentCommands = this.parent?.() || {};
+      return policy.italic
+        ? parentCommands
+        : {
+            ...parentCommands,
+            setItalic: rejectEditorCommand,
+            toggleItalic: rejectEditorCommand,
+            unsetItalic: rejectEditorCommand,
+          };
+    },
+    addKeyboardShortcuts() {
+      return policy.italic
+        ? this.parent?.() || {}
+        : { 'Mod-i': () => true, 'Mod-I': () => true };
+    },
+    addInputRules() {
+      return policy.italic ? this.parent?.() || [] : [];
+    },
+    addPasteRules() {
+      return policy.italic ? this.parent?.() || [] : [];
+    },
+  });
+  const CapabilityAwareStrike = Strike.extend({
+    addCommands() {
+      const parentCommands = this.parent?.() || {};
+      return policy.strike
+        ? parentCommands
+        : {
+            ...parentCommands,
+            setStrike: rejectEditorCommand,
+            toggleStrike: rejectEditorCommand,
+            unsetStrike: rejectEditorCommand,
+          };
+    },
+    addKeyboardShortcuts() {
+      return policy.strike
+        ? this.parent?.() || {}
+        : { 'Mod-Shift-s': () => true, 'Mod-Shift-S': () => true };
+    },
+    addInputRules() {
+      return policy.strike ? this.parent?.() || [] : [];
+    },
+    addPasteRules() {
+      return policy.strike ? this.parent?.() || [] : [];
+    },
+  });
   const CapabilityAwareLink = Link.extend({
     addCommands() {
       const parentCommands = this.parent?.() || {};
@@ -214,20 +264,42 @@ export const createCanonicalEditorExtensions = (
       return policy.list ? this.parent?.() || [] : [];
     },
   });
+  const CapabilityAwareOrderedList = OrderedList.extend({
+    addCommands() {
+      const parentCommands = this.parent?.() || {};
+      return policy.orderedList
+        ? parentCommands
+        : {
+            ...parentCommands,
+            toggleOrderedList: rejectEditorCommand,
+          };
+    },
+    addKeyboardShortcuts() {
+      return policy.orderedList
+        ? this.parent?.() || {}
+        : { 'Mod-Shift-7': () => true };
+    },
+    addInputRules() {
+      return policy.orderedList ? this.parent?.() || [] : [];
+    },
+  });
   const CapabilityAwareListItem = ListItem.extend({
     addKeyboardShortcuts() {
-      return policy.list ? this.parent?.() || {} : {};
+      return policy.list || policy.orderedList ? this.parent?.() || {} : {};
     },
   });
 
   return [
     CapabilityAwareUnderline,
     CapabilityAwareBold,
+    CapabilityAwareItalic,
+    CapabilityAwareStrike,
     ...(policy.bold ? [InterceptBoldShortcut] : []),
     ...(policy.underline ? [InterceptUnderlineShortcut] : []),
     CapabilityAwareLink,
     CapabilityAwareHeading,
     CapabilityAwareBulletList,
+    CapabilityAwareOrderedList,
     CapabilityAwareListItem,
   ];
 };

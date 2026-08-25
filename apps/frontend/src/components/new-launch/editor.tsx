@@ -18,6 +18,8 @@ import EmojiPicker from 'emoji-picker-react';
 import { Theme } from 'emoji-picker-react';
 import { BoldText } from '@gitroom/frontend/components/new-launch/bold.text';
 import { UText } from '@gitroom/frontend/components/new-launch/u.text';
+import { ItalicText } from '@gitroom/frontend/components/new-launch/italic.text';
+import { StrikeText } from '@gitroom/frontend/components/new-launch/strike.text';
 import { SignatureBox } from '@gitroom/frontend/components/signature';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import {
@@ -41,6 +43,7 @@ import Paragraph from '@tiptap/extension-paragraph';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { History } from '@tiptap/extension-history';
 import { Bullets } from '@gitroom/frontend/components/new-launch/bullets.component';
+import { OrderedList } from '@gitroom/frontend/components/new-launch/ordered-list.component';
 import { HeadingComponent } from '@gitroom/frontend/components/new-launch/heading.component';
 import Mention from '@tiptap/extension-mention';
 import { suggestion } from '@gitroom/frontend/components/new-launch/mention.component';
@@ -824,6 +827,12 @@ export const Editor: FC<{
                           currentValue={props.value!}
                         />
                       )}
+                      {formattingControls.includes('italic') && (
+                        <ItalicText editor={activeEditor} />
+                      )}
+                      {formattingControls.includes('strike') && (
+                        <StrikeText editor={activeEditor} />
+                      )}
                       {formattingControls.includes('link') && (
                         <AComponent
                           editor={activeEditor}
@@ -835,6 +844,9 @@ export const Editor: FC<{
                           editor={activeEditor}
                           currentValue={props.value!}
                         />
+                      )}
+                      {formattingControls.includes('ordered-list') && (
+                        <OrderedList editor={activeEditor} />
                       )}
                       {formattingControls.includes('heading') && (
                         <HeadingComponent
@@ -909,13 +921,31 @@ export const OnlyEditor = forwardRef<
 >(({ capability, value, onChange, onEditorChange, paste }, ref) => {
   const t = useT();
   const fetch = useFetch();
-  const { bold, underline, links, lists, headings } = capability.formatting;
+  const {
+    bold,
+    underline,
+    italic,
+    strike,
+    links,
+    lists,
+    orderedLists,
+    headings,
+  } = capability.formatting;
   const canonicalEditorExtensions = useMemo(
     () =>
       createCanonicalEditorExtensions({
-        formatting: { bold, underline, links, lists, headings },
+        formatting: {
+          bold,
+          underline,
+          italic,
+          strike,
+          links,
+          lists,
+          orderedLists,
+          headings,
+        },
       }),
-    [bold, headings, links, lists, underline]
+    [bold, headings, italic, links, lists, orderedLists, strike, underline]
   );
 
   const { internal } = useLaunchStore(

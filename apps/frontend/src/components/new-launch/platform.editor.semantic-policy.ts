@@ -8,8 +8,11 @@ export type SemanticEditorCapability = Pick<TextFieldCapability, 'formatting'>;
 export interface EditorSemanticPolicy {
   bold: boolean;
   underline: boolean;
+  italic: boolean;
+  strike: boolean;
   link: boolean;
   list: boolean;
+  orderedList: boolean;
   heading: boolean;
 }
 
@@ -21,8 +24,11 @@ export const getEditorSemanticPolicy = (
 ): EditorSemanticPolicy => ({
   bold: supportsInlineFormatting(capability.formatting.bold),
   underline: supportsInlineFormatting(capability.formatting.underline),
+  italic: supportsInlineFormatting(capability.formatting.italic),
+  strike: supportsInlineFormatting(capability.formatting.strike),
   link: capability.formatting.links === 'native',
   list: capability.formatting.lists === 'native',
+  orderedList: capability.formatting.orderedLists === 'native',
   heading: capability.formatting.headings === 'native',
 });
 

@@ -45,8 +45,11 @@ describe('platform editor capabilities v2', () => {
       formatting: {
         bold: support,
         underline: support,
+        italic: support,
+        strike: support,
         links: support,
         lists: support,
+        orderedLists: support,
         headings: support,
       },
     });
@@ -74,8 +77,11 @@ describe('platform editor capabilities v2', () => {
     expect(getFormattingControls({ formatting })).toEqual([
       'bold',
       'underline',
+      'italic',
+      'strike',
       'link',
       'list',
+      'ordered-list',
       'heading',
     ]);
     expect(inactiveChanged).toEqual(formatting);
@@ -101,13 +107,19 @@ describe('platform editor capabilities v2', () => {
     expect(result.destinations[0].activeField?.formatting).toMatchObject({
       bold: 'native',
       underline: 'native',
+      italic: 'native',
+      strike: 'native',
+      orderedLists: 'native',
       headings: 'native',
     });
     expect(getFormattingControls(result)).toEqual([
       'bold',
       'underline',
+      'italic',
+      'strike',
       'link',
       'list',
+      'ordered-list',
       'heading',
     ]);
   });
@@ -173,7 +185,12 @@ describe('platform editor capabilities v2', () => {
         unit: 'utf16-code-units',
       },
     });
-    expect(getFormattingControls(result)).toEqual(['bold', 'link']);
+    expect(getFormattingControls(result)).toEqual([
+      'bold',
+      'italic',
+      'strike',
+      'link',
+    ]);
     expect(result.blocking).toBe(false);
     expect(result.diagnostics).toEqual(
       expect.arrayContaining([

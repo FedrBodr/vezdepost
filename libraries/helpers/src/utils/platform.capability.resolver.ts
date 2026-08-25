@@ -12,24 +12,33 @@ import type {
 const plainFormatting: TextFieldCapability['formatting'] = {
   bold: 'unicode',
   underline: 'unicode',
+  italic: 'plain',
+  strike: 'plain',
   links: 'plain',
   lists: 'plain',
+  orderedLists: 'plain',
   headings: 'plain',
 };
 
 const unsupportedFormatting: TextFieldCapability['formatting'] = {
   bold: 'unsupported',
   underline: 'unsupported',
+  italic: 'unsupported',
+  strike: 'unsupported',
   links: 'unsupported',
   lists: 'unsupported',
+  orderedLists: 'unsupported',
   headings: 'unsupported',
 };
 
 const nativeFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'native',
+  italic: 'native',
+  strike: 'native',
   links: 'native',
   lists: 'native',
+  orderedLists: 'native',
   headings: 'native',
 };
 
