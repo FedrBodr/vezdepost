@@ -679,6 +679,7 @@ describe('normalizePlatformFields', () => {
           canonicalHtml:
             '<h1>Title</h1><p>Intro</p><p>Second</p>' +
             '<ul><li>One</li><li>Two</li></ul>' +
+            '<ol><li>First</li><li>Second</li></ol>' +
             '<p><em>soft</em> <s>gone</s> <strong>bold</strong> ' +
             '<u>under</u> <a href="https://x.test">link</a></p>',
           settings: {},
@@ -687,6 +688,7 @@ describe('normalizePlatformFields', () => {
       ).toBe(
         '<h1>Title</h1>\n\n<p>Intro</p>\n\n<p>Second</p>\n\n' +
           '<ul><li>One</li><li>Two</li></ul>\n\n' +
+          '<ol><li>First</li><li>Second</li></ol>\n\n' +
           '<p><i>soft</i> <s>gone</s> <b>bold</b> <u>under</u> ' +
           '<a href="https://x.test">link</a></p>'
       );

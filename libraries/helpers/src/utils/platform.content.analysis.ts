@@ -162,8 +162,11 @@ const formattingTags: ReadonlyArray<{
 }> = [
   { pattern: /<(?:strong|b)\b/i, key: 'bold' },
   { pattern: /<u\b/i, key: 'underline' },
+  { pattern: /<(?:em|i)\b/i, key: 'italic' },
+  { pattern: /<(?:s|strike|del)\b/i, key: 'strike' },
   { pattern: /<a\b/i, key: 'links' },
-  { pattern: /<(?:ul|ol|li)\b/i, key: 'lists' },
+  { pattern: /<ul\b/i, key: 'lists' },
+  { pattern: /<ol\b/i, key: 'orderedLists' },
   { pattern: /<h[1-6]\b/i, key: 'headings' },
 ];
 

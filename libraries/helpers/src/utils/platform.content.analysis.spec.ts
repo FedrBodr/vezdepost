@@ -413,6 +413,69 @@ describe('analyzePlatformContentV2', () => {
     expect(result.blocking).toBe(false);
   });
 
+  it.each([
+    '<p><em>Italic</em></p>',
+    '<p><i>Italic</i></p>',
+    '<p><s>Strike</s></p>',
+    '<p><del>Strike</del></p>',
+  ])('warns when a plain destination loses %s', (canonicalHtml) => {
+    const result = analyze({
+      canonicalHtml,
+      resolved: capability('linkedin'),
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'formatting-loss',
+        destination: 'linkedin',
+        field: 'body',
+      })
+    );
+  });
+
+  it('distinguishes ordered-list support from bullet-list support', () => {
+    const telegram = capability('telegram');
+    const resolved: ResolvedPlatformCapabilityV2 = {
+      ...telegram,
+      fields: telegram.fields.map((field) => ({
+        ...field,
+        formatting: {
+          ...field.formatting,
+          lists: 'native',
+          orderedLists: 'plain',
+        },
+      })),
+    };
+
+    const ordered = analyze({
+      canonicalHtml: '<ol><li>First</li></ol>',
+      resolved,
+    });
+    const bullets = analyze({
+      canonicalHtml: '<ul><li>First</li></ul>',
+      resolved,
+    });
+
+    expect(ordered.diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'formatting-loss' })
+    );
+    expect(bullets.diagnostics).not.toContainEqual(
+      expect.objectContaining({ code: 'formatting-loss' })
+    );
+  });
+
+  it('does not warn for Telegram-native italic, strike, or ordered lists', () => {
+    const result = analyze({
+      canonicalHtml:
+        '<p><em>Italic</em> <s>Strike</s></p>' + '<ol><li>First</li></ol>',
+      resolved: capability('telegram'),
+    });
+
+    expect(result.diagnostics).not.toContainEqual(
+      expect.objectContaining({ code: 'formatting-loss' })
+    );
+  });
+
   it('reports Telegram media splitting without blocking on caption overflow', () => {
     const media = [{ type: 'image' as const }];
     const result = analyze({
