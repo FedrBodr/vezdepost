@@ -57,6 +57,36 @@ export const convertHtmlStructureToText = (value: string): string => {
     parts.shift();
   }
 
+  const isBoundaryPart = (part: unknown): boolean =>
+    part === PARAGRAPH_BOUNDARY || part === ITEM_BOUNDARY;
+
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    if (typeof part !== 'string') {
+      continue;
+    }
+    const prevIsBoundary = index > 0 && isBoundaryPart(parts[index - 1]);
+    const nextIsBoundary =
+      index < parts.length - 1 && isBoundaryPart(parts[index + 1]);
+    if (!/\S/.test(part) && part.includes('\n')) {
+      const contentFollows = parts
+        .slice(index + 1)
+        .some((later) => typeof later === 'string' && /\S/.test(later));
+      if (nextIsBoundary || (prevIsBoundary && contentFollows)) {
+        parts.splice(index, 1);
+        index -= 1;
+        continue;
+      }
+    } else {
+      if (nextIsBoundary) {
+        parts[index] = part.replace(/\n+$/, '');
+      }
+      if (prevIsBoundary) {
+        parts[index] = part.replace(/^\n+/, '');
+      }
+    }
+  }
+
   let trailingText = '';
   while (parts.length) {
     const last = parts.at(-1);
