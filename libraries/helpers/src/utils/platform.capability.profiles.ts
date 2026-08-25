@@ -33,11 +33,18 @@ const telegramFormatting: TextFieldCapability['formatting'] = {
   headings: 'native',
 };
 
+const telegramCaptionFormatting: TextFieldCapability['formatting'] = {
+  ...telegramFormatting,
+  lists: 'plain',
+  orderedLists: 'plain',
+  headings: 'plain',
+};
+
 const maxFormatting: TextFieldCapability['formatting'] = {
   bold: 'native',
   underline: 'native',
-  italic: 'native',
-  strike: 'native',
+  italic: 'plain',
+  strike: 'plain',
   links: 'native',
   lists: 'plain',
   orderedLists: 'plain',
@@ -124,7 +131,7 @@ const body = (
 });
 
 const caption = (): TextFieldCapability => ({
-  ...body(1_024, 'html', telegramFormatting),
+  ...body(1_024, 'html', telegramCaptionFormatting),
   key: 'caption',
   label: 'Media caption',
   limit: { ...TELEGRAM_MEDIA_CAPTION_LIMIT },

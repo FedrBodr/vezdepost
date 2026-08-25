@@ -142,7 +142,8 @@ const renderList = (
   ordered: boolean
 ): void => {
   pushBoundary(tokens);
-  let itemNumber = 0;
+  const start = Number.parseInt(getAttribute(node, 'start') ?? '', 10);
+  let itemNumber = ordered && Number.isInteger(start) ? start - 1 : 0;
   for (const child of getChildNodes(node)) {
     if (child.nodeName === '#text' && !/\S/.test(child.value ?? '')) {
       continue;
@@ -232,6 +233,11 @@ const renderNode = (
         style === 'slack-mrkdwn' ? '_' : '*'
       }`
     );
+    return;
+  }
+  if (tagName === 's' || tagName === 'strike' || tagName === 'del') {
+    const marker = style === 'slack-mrkdwn' ? '~' : '~~';
+    tokens.push(`${marker}${inner}${marker}`);
     return;
   }
   if (tagName === 'u') {

@@ -12,6 +12,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import type { TextFieldCapability } from '@gitroom/helpers/utils/platform.capability.types';
+import { Slice } from '@tiptap/pm/model';
 
 vi.stubGlobal('React', React);
 
@@ -164,6 +165,38 @@ const resolvedField = (
 const renderPlainEditor = (value = '<p></p>') =>
   renderEditor(resolvedField('linkedin'), value);
 
+const typeText = (editor: any, text: string): boolean => {
+  const { from, to } = editor.state.selection;
+  let handled = false;
+  editor.view.someProp('handleTextInput', (handler: any) => {
+    handled = handler(editor.view, from, to, text) || handled;
+    return handled;
+  });
+  if (!handled) {
+    editor.view.dispatch(editor.state.tr.insertText(text, from, to));
+  }
+  return handled;
+};
+
+const pastePlainText = (editor: any, text: string): boolean => {
+  let handled = false;
+  editor.view.someProp('handlePaste', (handler: any) => {
+    handled =
+      handler(
+        editor.view,
+        {
+          clipboardData: {
+            getData: (type: string) => (type === 'text/plain' ? text : ''),
+            items: [],
+          },
+        } as unknown as ClipboardEvent,
+        Slice.empty
+      ) || handled;
+    return handled;
+  });
+  return handled;
+};
+
 describe('canonical editor schema and creation policy', () => {
   it('shows the new formatting controls only for a natively capable destination', async () => {
     const telegram = resolveEditorCapabilityV2(
@@ -239,6 +272,12 @@ describe('canonical editor schema and creation policy', () => {
         totalPosts={1}
         dummy={false}
       />
+    );
+
+    await waitFor(() =>
+      expect(
+        plain.container.querySelector('[contenteditable="true"]')
+      ).toBeTruthy()
     );
 
     expect(
@@ -504,7 +543,7 @@ describe('canonical editor schema and creation policy', () => {
       '<h2>Title <a href="https://example.com">linked</a></h2>' +
         '<p><em>soft</em> <s>gone</s></p>' +
         '<ul><li><p>First item</p></li></ul>' +
-        '<ol><li><p>First numbered item</p></li></ol><p>Tail</p>'
+        '<ol start="3"><li><p>First numbered item</p></li></ol><p>Tail</p>'
     );
 
     act(() => {
@@ -516,7 +555,7 @@ describe('canonical editor schema and creation policy', () => {
       '<h2>Title <a target="_blank" rel="noopener noreferrer nofollow" href="https://example.com">linked</a></h2>' +
         '<p><em>soft</em> <s>gone</s></p>' +
         '<ul><li><p>First item</p></li></ul>' +
-        '<ol><li><p>First numbered item</p></li></ol><p>Tail edited</p>'
+        '<ol start="3"><li><p>First numbered item</p></li></ol><p>Tail edited</p>'
     );
   });
 
@@ -534,6 +573,46 @@ describe('canonical editor schema and creation policy', () => {
       '<p><em>soft</em> <s>gone</s></p>' +
         '<ol><li><p>First</p></li><li><p>Second</p></li></ol>'
     );
+  });
+
+  it.each([
+    ['italic', '<p>*soft</p>', '*', '<p><em>soft</em></p>'],
+    ['strike', '<p>~~gone~</p>', '~', '<p><s>gone</s></p>'],
+    ['ordered list', '<p>3.</p>', ' ', '<ol start="3"><li><p></p></li></ol>'],
+  ] as const)(
+    'applies the native %s input rule without enabling it for a plain destination',
+    async (_name, initial, input, nativeHtml) => {
+      const rich = await renderEditor(
+        resolvedField('rich-profile', 'html'),
+        initial
+      );
+      act(() => {
+        rich.editor.commands.focus('end');
+        typeText(rich.editor, input);
+      });
+      expect(rich.editor.getHTML()).toBe(nativeHtml);
+      rich.unmount();
+
+      const plain = await renderPlainEditor(initial);
+      act(() => {
+        plain.editor.commands.focus('end');
+        typeText(plain.editor, input);
+      });
+      expect(plain.editor.getHTML()).toBe(
+        initial.replace('</p>', `${input}</p>`)
+      );
+    }
+  );
+
+  it('keeps pasted Markdown markers literal in a plain destination', async () => {
+    const { editor } = await renderPlainEditor('<p>Replace me</p>');
+
+    act(() => {
+      editor.commands.selectAll();
+      expect(pastePlainText(editor, '*soft* ~~gone~~\n3. Item')).toBe(true);
+    });
+
+    expect(editor.getHTML()).toBe('<p>*soft* ~~gone~~</p><p>3. Item</p>');
   });
 
   it('does not create hidden link, heading, or list markup through editor rules and shortcuts', async () => {
@@ -726,6 +805,31 @@ describe('canonical editor schema and creation policy', () => {
       const event = new KeyboardEvent('keydown', {
         key,
         ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      act(() => {
+        editor.view.dom.dispatchEvent(event);
+      });
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(editor.getHTML()).toBe('<p>Text</p>');
+    }
+  );
+
+  it.each([
+    ['s', true],
+    ['7', true],
+  ] as const)(
+    'consumes native Mod-Shift-%s when the formatting command is unsupported',
+    async (key, shiftKey) => {
+      const capabilities = resolvedField('unsupported-profile', 'none');
+      const { editor } = await renderEditor(capabilities, '<p>Text</p>');
+      const event = new KeyboardEvent('keydown', {
+        key,
+        ctrlKey: true,
+        shiftKey,
         bubbles: true,
         cancelable: true,
       });

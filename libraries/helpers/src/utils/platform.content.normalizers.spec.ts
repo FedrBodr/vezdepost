@@ -116,15 +116,15 @@ describe('normalizePlatformFields', () => {
     expect(
       normalizePlatformFields({
         canonicalHtml:
-          '<h2>Heading</h2><p>Hello <strong>world</strong> <em>soft</em> ' +
+          '<h2>Heading</h2><p>Hello <strong>world</strong> <em>soft</em> <s>gone</s> ' +
           '<a href="https://x.test">site</a></p>' +
-          '<ol><li>One</li><li>Two</li></ol><ul><li>Three</li></ul>',
+          '<ol start="3"><li>One</li><li>Two</li></ol><ul><li>Three</li></ul>',
         settings: {},
         capability: markdown,
       }).body.value
     ).toBe(
-      '## Heading\nHello **world** *soft* [site](https://x.test)\n' +
-        '1. One\n2. Two\n- Three'
+      '## Heading\nHello **world** *soft* ~~gone~~ [site](https://x.test)\n' +
+        '3. One\n4. Two\n- Three'
     );
   });
 
@@ -150,12 +150,12 @@ describe('normalizePlatformFields', () => {
     expect(
       normalizePlatformFields({
         canonicalHtml:
-          '<h1>Heading</h1><p><strong>Bold</strong> <em>soft</em> ' +
+          '<h1>Heading</h1><p><strong>Bold</strong> <em>soft</em> <s>gone</s> ' +
           '<a href="https://x.test">site</a></p>',
         settings: {},
         capability: capability('slack'),
       }).body.value
-    ).toBe('Heading\n*Bold* _soft_ <https://x.test|site>');
+    ).toBe('Heading\n*Bold* _soft_ ~gone~ <https://x.test|site>');
   });
 
   it('keeps decoded Slack control sequences inert', () => {
@@ -341,7 +341,8 @@ describe('normalizePlatformFields', () => {
     });
     const canonicalHtml =
       '<h1>Title</h1><h2>Subtitle</h2><ul><li>One</li>' +
-      '<li><strong>Two</strong></li></ul><p>Body</p>';
+      '<li><strong>Two</strong></li></ul>' +
+      '<ol start="3"><li><em>Three</em> <s>gone</s></li></ol><p>Body</p>';
 
     expect(
       normalizePlatformFields({
@@ -578,12 +579,12 @@ describe('normalizePlatformFields', () => {
   it('renders discord fields through the markdown path', () => {
     expect(
       normalizePlatformFields({
-        canonicalHtml: '<p>Hello <strong>world</strong></p>',
+        canonicalHtml: '<p>Hello <strong>world</strong> <s>gone</s></p>',
         settings: {},
         capability: capability('discord'),
       })
     ).toEqual({
-      body: { value: 'Hello **world**', facets: undefined },
+      body: { value: 'Hello **world** ~~gone~~', facets: undefined },
     });
   });
 
@@ -682,7 +683,7 @@ describe('normalizePlatformFields', () => {
           canonicalHtml:
             '<h1>Title</h1><p>Intro</p><p>Second</p>' +
             '<ul><li>One</li><li>Two</li></ul>' +
-            '<ol><li>First</li><li>Second</li></ol>' +
+            '<ol start="3"><li>First</li><li>Second</li></ol>' +
             '<p><em>soft</em> <s>gone</s> <strong>bold</strong> ' +
             '<u>under</u> <a href="https://x.test">link</a></p>',
           settings: {},
@@ -691,10 +692,42 @@ describe('normalizePlatformFields', () => {
       ).toBe(
         '<h1>Title</h1>\n\n<p>Intro</p>\n\n<p>Second</p>\n\n' +
           '<ul><li>One</li><li>Two</li></ul>\n\n' +
-          '<ol><li>First</li><li>Second</li></ol>\n\n' +
+          '<ol start="3"><li>First</li><li>Second</li></ol>\n\n' +
           '<p><i>soft</i> <s>gone</s> <b>bold</b> <u>under</u> ' +
           '<a href="https://x.test">link</a></p>'
       );
+    });
+
+    it('preserves supported caption marks and degrades ordered lists to readable text', () => {
+      const media = [{ type: 'image' as const }];
+
+      expect(
+        normalizePlatformFields({
+          canonicalHtml:
+            '<p><em>soft</em> <s>gone</s> ' +
+            '<a href="https://x.test">link</a></p>' +
+            '<ol><li>First</li><li>Second</li></ol>',
+          settings: {},
+          media,
+          capability: capability('telegram', media),
+        }).caption.value
+      ).toBe(
+        '<i>soft</i> <s>gone</s> <a href="https://x.test">link</a>\n\n' +
+          '- First\n- Second'
+      );
+    });
+
+    it('keeps unsafe Telegram caption links inert', () => {
+      const media = [{ type: 'image' as const }];
+
+      expect(
+        normalizePlatformFields({
+          canonicalHtml: '<p><a href="javascript:alert(1)">unsafe</a></p>',
+          settings: {},
+          media,
+          capability: capability('telegram', media),
+        }).caption.value
+      ).toBe('unsafe');
     });
 
     it('prepends image media as public img blocks', () => {

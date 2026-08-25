@@ -476,6 +476,45 @@ describe('analyzePlatformContentV2', () => {
     );
   });
 
+  it('warns only for ordered-list loss in Telegram media captions', () => {
+    const media = [{ type: 'image' as const }];
+    const result = analyze({
+      canonicalHtml:
+        '<p><em>Italic</em> <s>Strike</s></p>' + '<ol><li>First</li></ol>',
+      media,
+      resolved: capability('telegram', media),
+    });
+
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'formatting-loss',
+        destination: 'telegram',
+        field: 'caption',
+      })
+    );
+    expect(
+      result.diagnostics.filter(({ code }) => code === 'formatting-loss')
+    ).toHaveLength(1);
+  });
+
+  it.each(['<p><em>Italic</em></p>', '<p><s>Strike</s></p>'])(
+    'warns instead of silently claiming unsupported Max formatting for %s',
+    (canonicalHtml) => {
+      const result = analyze({
+        canonicalHtml,
+        resolved: capability('max'),
+      });
+
+      expect(result.diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: 'formatting-loss',
+          destination: 'max',
+          field: 'body',
+        })
+      );
+    }
+  );
+
   it('reports Telegram media splitting without blocking on caption overflow', () => {
     const media = [{ type: 'image' as const }];
     const result = analyze({

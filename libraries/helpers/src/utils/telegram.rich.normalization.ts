@@ -143,7 +143,12 @@ const renderNode = (
           : renderNode(child, convertMentionFunction)
       )
       .join('');
-    return `<${tagName}>${items}</${tagName}>`;
+    const start = tagName === 'ol' ? getAttribute(node, 'start') : undefined;
+    const startAttribute =
+      start && /^-?\d+$/.test(start.trim())
+        ? ` start="${escapeRichAttribute(start.trim())}"`
+        : '';
+    return `<${tagName}${startAttribute}>${items}</${tagName}>`;
   }
   if (tagName === 'li') {
     return `<li>${inner}</li>`;

@@ -158,12 +158,18 @@ export const stripHtmlValidation = (
   if (type === 'html') {
     return striptags(convertMention(value, convertMentionFunction), [
       'ul',
+      'ol',
       'li',
       'h1',
       'h2',
       'h3',
       'p',
       'strong',
+      'em',
+      'i',
+      's',
+      'strike',
+      'del',
       'u',
       'a',
     ])

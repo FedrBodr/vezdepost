@@ -135,6 +135,20 @@ describe('platform editor capabilities v2', () => {
 
     expect(result.destinations[0].capability.variant).toBe('media');
     expect(result.destinations[0].activeField?.key).toBe('caption');
+    expect(result.destinations[0].activeField?.formatting).toMatchObject({
+      italic: 'native',
+      strike: 'native',
+      lists: 'plain',
+      orderedLists: 'plain',
+      headings: 'plain',
+    });
+    expect(getFormattingControls(result)).toEqual([
+      'bold',
+      'underline',
+      'italic',
+      'strike',
+      'link',
+    ]);
     expect(result.counters[0]).toMatchObject({
       measured: 1_025,
       limit: { max: 1_024, unit: 'utf16-code-units' },
@@ -149,6 +163,26 @@ describe('platform editor capabilities v2', () => {
         }),
       ])
     );
+  });
+
+  it('hides unverified Max italic and strike controls', () => {
+    const result = resolveEditorCapabilityV2(
+      'max-account',
+      [selected('max-account', 'max')],
+      [],
+      '<p>Hello</p>',
+      []
+    );
+
+    expect(result.formatting).toMatchObject({
+      italic: 'plain',
+      strike: 'plain',
+    });
+    expect(getFormattingControls(result)).toEqual([
+      'bold',
+      'underline',
+      'link',
+    ]);
   });
 
   it('uses LinkedIn Unicode fallbacks without exposing a link button', () => {

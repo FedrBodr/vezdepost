@@ -294,10 +294,26 @@ describe('Batch 0 platform capability resolution', () => {
         }),
         expect.objectContaining({
           key: 'caption',
+          formatting: expect.objectContaining({
+            italic: 'native',
+            strike: 'native',
+            lists: 'plain',
+            orderedLists: 'plain',
+            headings: 'plain',
+          }),
           limit: expect.objectContaining({ max: 1_024 }),
         }),
       ],
       delivery: { longMediaText: 'split-after-media' },
+    });
+  });
+
+  it('does not advertise unverified Max italic or strike support', () => {
+    expect(
+      resolvePlatformCapabilityV2(ctx('max')).fields[0].formatting
+    ).toMatchObject({
+      italic: 'plain',
+      strike: 'plain',
     });
   });
 

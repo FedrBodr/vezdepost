@@ -50,10 +50,46 @@ const getChildContainer = (node: HtmlNode): HtmlNode =>
 const getChildNodes = (node: HtmlNode): HtmlNode[] =>
   getChildContainer(node).childNodes || [];
 
-const isAllowedInlineTag = (platform: VerifiedHtmlPlatform, tagName: string) =>
-  platform === 'telegram'
-    ? tagName === 'b' || tagName === 'strong' || tagName === 'u'
-    : tagName === 'strong' || tagName === 'u' || tagName === 'a';
+const normalizedInlineTag = (
+  platform: VerifiedHtmlPlatform,
+  tagName: string
+): string | undefined => {
+  if (platform === 'max') {
+    return tagName === 'strong' || tagName === 'u' || tagName === 'a'
+      ? tagName
+      : undefined;
+  }
+  switch (tagName) {
+    case 'b':
+    case 'u':
+    case 'i':
+    case 's':
+    case 'a':
+      return tagName;
+    case 'strong':
+      return 'b';
+    case 'em':
+      return 'i';
+    case 'strike':
+    case 'del':
+      return 's';
+    default:
+      return undefined;
+  }
+};
+
+const TELEGRAM_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+
+const normalizeTelegramLink = (value: string): string | undefined => {
+  const trimmed = value.trim();
+  try {
+    return TELEGRAM_LINK_PROTOCOLS.has(new URL(trimmed).protocol)
+      ? trimmed
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const normalizeTree = (
   parent: HtmlNode,
@@ -108,11 +144,19 @@ const normalizeTree = (
       });
       continue;
     }
-    if (isAllowedInlineTag(platform, child.tagName)) {
-      if (platform === 'telegram' && child.tagName === 'strong') {
-        child.nodeName = 'b';
-        child.tagName = 'b';
+    const inlineTag = normalizedInlineTag(platform, child.tagName);
+    if (inlineTag) {
+      if (platform === 'telegram' && inlineTag === 'a') {
+        const href = child.attrs?.find(({ name }) => name === 'href')?.value;
+        const normalizedHref = href ? normalizeTelegramLink(href) : undefined;
+        if (!normalizedHref) {
+          normalizedChildren.push(...getChildNodes(child));
+          continue;
+        }
+        child.attrs = [{ name: 'href', value: normalizedHref }];
       }
+      child.nodeName = inlineTag;
+      child.tagName = inlineTag;
       normalizedChildren.push(child);
       continue;
     }
