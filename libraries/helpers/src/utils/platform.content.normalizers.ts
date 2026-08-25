@@ -78,7 +78,7 @@ const escapeDialectText = (value: string, style: RenderStyle): string => {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
   }
-  return value.replace(/([\\`*_[\]{}()#+\-.!|])/g, '\\$1');
+  return value.replace(/([\\`*_[\]{}()#+\-.!|~])/g, '\\$1');
 };
 
 const escapeLinkDestination = (value: string, style: RenderStyle): string =>

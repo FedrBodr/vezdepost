@@ -12,9 +12,36 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
 import type { TextFieldCapability } from '@gitroom/helpers/utils/platform.capability.types';
-import { Slice } from '@tiptap/pm/model';
 
 vi.stubGlobal('React', React);
+
+class TestDataTransfer {
+  private readonly data = new Map<string, string>();
+  readonly items: Array<{ kind: string }> = [];
+
+  getData(type: string) {
+    return this.data.get(type) ?? '';
+  }
+
+  setData(type: string, value: string) {
+    this.data.set(type, value);
+  }
+}
+
+class TestClipboardEvent extends Event {
+  readonly clipboardData: TestDataTransfer | null;
+
+  constructor(
+    type: string,
+    init?: EventInit & { clipboardData?: TestDataTransfer }
+  ) {
+    super(type, init);
+    this.clipboardData = init?.clipboardData ?? null;
+  }
+}
+
+vi.stubGlobal('DataTransfer', TestDataTransfer);
+vi.stubGlobal('ClipboardEvent', TestClipboardEvent);
 
 const { launchStoreState } = vi.hoisted(() => ({
   launchStoreState: {
@@ -179,22 +206,15 @@ const typeText = (editor: any, text: string): boolean => {
 };
 
 const pastePlainText = (editor: any, text: string): boolean => {
-  let handled = false;
-  editor.view.someProp('handlePaste', (handler: any) => {
-    handled =
-      handler(
-        editor.view,
-        {
-          clipboardData: {
-            getData: (type: string) => (type === 'text/plain' ? text : ''),
-            items: [],
-          },
-        } as unknown as ClipboardEvent,
-        Slice.empty
-      ) || handled;
-    return handled;
+  const clipboardData = new TestDataTransfer();
+  clipboardData.setData('text/plain', text);
+  const event = new TestClipboardEvent('paste', {
+    bubbles: true,
+    cancelable: true,
+    clipboardData,
   });
-  return handled;
+
+  return !editor.view.dom.dispatchEvent(event);
 };
 
 describe('canonical editor schema and creation policy', () => {
@@ -613,6 +633,20 @@ describe('canonical editor schema and creation policy', () => {
     });
 
     expect(editor.getHTML()).toBe('<p>*soft* ~~gone~~</p><p>3. Item</p>');
+  });
+
+  it('applies enabled paste rules in a rich destination', async () => {
+    const { editor } = await renderEditor(
+      resolvedField('rich-profile', 'html'),
+      '<p>Replace me</p>'
+    );
+
+    act(() => {
+      editor.commands.selectAll();
+      expect(pastePlainText(editor, '*soft* ~~gone~~')).toBe(true);
+    });
+
+    expect(editor.getHTML()).toBe('<p><em>soft</em> <s>gone</s></p>');
   });
 
   it('does not create hidden link, heading, or list markup through editor rules and shortcuts', async () => {

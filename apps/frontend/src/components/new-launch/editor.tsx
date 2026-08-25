@@ -8,7 +8,6 @@ import React, {
   useMemo,
   useRef,
   useState,
-  ClipboardEvent,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -69,6 +68,7 @@ import {
 } from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
 import {
   createCanonicalEditorExtensions,
+  getEditorCreationPolicy,
   getEditorCreationPolicyKey,
 } from '@gitroom/frontend/components/new-launch/platform.editor.extensions';
 import { PlatformContentNotice } from '@gitroom/frontend/components/new-launch/platform.content.notice';
@@ -634,18 +634,16 @@ export const Editor: FC<{
   );
 
   const paste = useCallback(
-    async (event: ClipboardEvent | File[]) => {
+    async (event: globalThis.ClipboardEvent) => {
       if (num > 0 && comments === 'no-media') {
         return;
       }
-      // @ts-ignore
       const clipboardItems = event.clipboardData?.items;
       if (!clipboardItems) {
         return;
       }
 
       const files: File[] = [];
-      // @ts-ignore
       for (const item of clipboardItems) {
         if (item.kind === 'file') {
           const file = item.getAsFile();
@@ -916,7 +914,7 @@ export const OnlyEditor = forwardRef<
     value: string;
     onChange: (value: string) => void;
     onEditorChange?: (editor: any) => void;
-    paste?: (event: ClipboardEvent | File[]) => void;
+    paste?: (event: globalThis.ClipboardEvent) => void;
   }
 >(({ capability, value, onChange, onEditorChange, paste }, ref) => {
   const t = useT();
@@ -934,6 +932,22 @@ export const OnlyEditor = forwardRef<
   const canonicalEditorExtensions = useMemo(
     () =>
       createCanonicalEditorExtensions({
+        formatting: {
+          bold,
+          underline,
+          italic,
+          strike,
+          links,
+          lists,
+          orderedLists,
+          headings,
+        },
+      }),
+    [bold, headings, italic, links, lists, orderedLists, strike, underline]
+  );
+  const editorCreationPolicy = useMemo(
+    () =>
+      getEditorCreationPolicy({
         formatting: {
           bold,
           underline,
@@ -989,7 +1003,13 @@ export const OnlyEditor = forwardRef<
       Document,
       Paragraph,
       Text,
-      PlainTextPasteExtension,
+      PlainTextPasteExtension.configure({
+        applyPasteRules:
+          editorCreationPolicy.bold ||
+          editorCreationPolicy.italic ||
+          editorCreationPolicy.strike ||
+          editorCreationPolicy.link,
+      }),
       ...canonicalEditorExtensions,
       Placeholder.configure({
         placeholder: t('write_something', 'Write something …'),
@@ -1023,8 +1043,9 @@ export const OnlyEditor = forwardRef<
     content: value || '',
     shouldRerenderOnTransaction: true,
     immediatelyRender: false,
-    // @ts-ignore
-    onPaste: paste,
+    ...(paste
+      ? { onPaste: (event: globalThis.ClipboardEvent) => paste(event) }
+      : {}),
     onUpdate: (innerProps) => {
       onChange?.(innerProps.editor.getHTML());
     },

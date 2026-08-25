@@ -199,6 +199,14 @@ describe('normalizePlatformFields', () => {
         capability: markdown,
       }).body.value
     ).toBe('\\*literal\\* \\[label\\]');
+
+    expect(
+      normalizePlatformFields({
+        canonicalHtml: '<p><s>gone ~~ literal</s></p>',
+        settings: {},
+        capability: markdown,
+      }).body.value
+    ).toBe('~~gone \\~\\~ literal~~');
   });
 
   it('escapes generated link destination delimiters per dialect', () => {
