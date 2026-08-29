@@ -43,10 +43,10 @@ classify_restore_error() {
     printf 'RESTORE_HOST_STORAGE_FAILED\n'
   elif grep -Eiq 'network .* not found|connection refused' "$diagnostic"; then
     printf 'RESTORE_NETWORK_FAILED\n'
-  elif grep -Eiq '^gpg:' "$diagnostic"; then
-    printf 'RESTORE_DECRYPTION_TOOL_FAILED\n'
   elif grep -Eiq '^pg_restore:' "$diagnostic"; then
     printf 'RESTORE_DATABASE_APPLY_FAILED\n'
+  elif grep -Eiq '^gpg:' "$diagnostic"; then
+    printf 'RESTORE_DECRYPTION_TOOL_FAILED\n'
   elif grep -Eiq '^/bin/sh:|restore\.sh:' "$diagnostic"; then
     printf 'RESTORE_TOOLING_FAILED\n'
   else
