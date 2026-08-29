@@ -25,7 +25,8 @@ ENV
   printf 'services: {}\n' > "$case_dir/opt/ksy-deals/docker-compose.yml"
   cat > "$case_dir/bin/curl" <<'STUB'
 #!/usr/bin/env bash
-[[ -z "${PLATPRICES_API_KEY:-}" && -z "${PLATPRICES_PROXY_URL:-}" ]] || exit 93
+[[ -z "${PLATPRICES_API_KEY:-}" && -z "${PLATPRICES_PROXY_URL:-}" && \
+  -z "${TELEGRAM_BOT_TOKEN:-}" && -z "${TELEGRAM_WEBHOOK_SECRET:-}" ]] || exit 93
 config=''
 while (($#)); do
   [[ "$1" == --config ]] && { config=$2; shift 2; continue; }
@@ -76,6 +77,9 @@ fi
 STUB
   cat > "$case_dir/bin/docker" <<'STUB'
 #!/usr/bin/env bash
+if env | grep -Eq '^(TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|DATABASE_URL)='; then
+  exit 98
+fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 if [[ "$*" == *'run --rm --no-deps server node apps/server/dist/src/provision-approved-watchlist-cli.js'* ]]; then
   count=$(wc -l < "$PROVISION_CALLS" | tr -d ' ')

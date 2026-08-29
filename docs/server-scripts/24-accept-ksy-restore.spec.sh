@@ -24,6 +24,9 @@ ENV
   printf 'encrypted' > "$case_dir/backups/ksy-deals-20260816T010000Z.dump.gpg"
   cat > "$case_dir/bin/docker" <<'STUB'
 #!/usr/bin/env bash
+if env | grep -Eq '^(DATABASE_URL|POSTGRES_PASSWORD|BACKUP_ENCRYPTION_PASSPHRASE|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL)='; then
+  exit 98
+fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 if [[ "$*" == *'CREATE DATABASE ksy_deals_restore'* ]]; then
   [[ ! -e "$RESTORE_EXISTS" ]] || exit 3
