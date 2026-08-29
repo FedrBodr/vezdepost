@@ -86,10 +86,14 @@ if [[ "$*" == *'run --rm --no-deps server node apps/server/dist/src/provision-ap
     if [[ "${KSY_TEST_BAD_SECOND:-0}" == 1 ]]; then printf '{"confirmed":1,"existing":1,"mappingRequired":1}\n'; else printf '{"confirmed":0,"existing":2,"mappingRequired":1}\n'; fi
   fi
   printf 'x\n' >> "$PROVISION_CALLS"
-elif printf '%s' "$*" | grep -Fq 'SELECT o.id'; then
-  if [[ "${KSY_TEST_CHANGED_IDS:-0}" == 1 && "$(wc -l < "$PROVISION_CALLS" | tr -d ' ')" == 2 ]]; then printf 'observation-a\nobservation-c\n'; else printf 'observation-a\nobservation-b\n'; fi
+elif printf '%s' "$*" | grep -Fq 'KSY_FINGERPRINT_V1'; then
+  if [[ "${KSY_TEST_CHANGED_IDS:-0}" == 1 && "$(wc -l < "$PROVISION_CALLS" | tr -d ' ')" == 2 ]]; then
+    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-row-changed\n'
+  else
+    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-row-b\n'
+  fi
 elif printf '%s' "$*" | grep -Fq -- '--command SELECT'; then
-  if [[ ! -s "$PROVISION_CALLS" ]]; then printf '0|0\n'; elif [[ "${KSY_TEST_EXTRA_ROWS:-0}" == 1 ]]; then printf '3|2\n'; else printf '2|2\n'; fi
+  if [[ "${KSY_TEST_MATURE:-0}" == 1 ]]; then printf '136|162\n'; elif [[ ! -s "$PROVISION_CALLS" ]]; then printf '0|0\n'; elif [[ "${KSY_TEST_EXTRA_ROWS:-0}" == 1 ]]; then printf '3|2\n'; else printf '2|2\n'; fi
 elif [[ "$*" == *'compose '*' ps -q server'* ]]; then
   printf 'server-container\n'
 elif [[ "$*" == *'compose '*' ps -q db'* ]]; then
@@ -108,12 +112,12 @@ STUB
 }
 
 run_case() {
-  local case_dir=$1 output=$2
+  local case_dir=$1 output=$2 mode=${3:-bootstrap}
   PATH="$case_dir/bin:$PATH" KSY_LIVE_TEST_MODE=1 KSY_LIVE_TEST_DISK_USED_PERCENT=72 \
     KSY_ROOT="$case_dir/opt/ksy-deals" KSY_LIVE_WORK_PARENT="$case_dir" \
     CURL_CONFIGS="$case_dir/curl.configs" DOCKER_CALLS="$case_dir/docker.calls" \
     PROVISION_CALLS="$case_dir/provision.calls" PROXY_CALLS="$case_dir/proxy.calls" \
-    bash "$SCRIPT" > "$output" 2>&1
+    bash "$SCRIPT" --mode "$mode" > "$output" 2>&1
 }
 
 test_accepts_without_leaking_secrets() {
@@ -123,8 +127,8 @@ test_accepts_without_leaking_secrets() {
   grep -q 'KSY_LIVE_ACCEPTED webhook=PASS invalid_secret=403 configured_secret=204' "$output" || fail 'acceptance summary missing'
   grep -q 'KSY_PROXY_ACCEPTED noAuth=407 destinationDenied=true provider=200 quotaHealthy=true' "$output" || fail 'proxy acceptance summary missing'
   [[ "$(<"$case_dir/proxy.calls")" == $'noAuth\ndestinationDenied\nprovider' ]] || fail 'proxy probes were not ordered'
-  grep -q 'first=2_confirmed+1_mapping_required second=2_existing+1_mapping_required' "$output" || fail 'provider counts missing'
-  grep -q 'editions=2 observations=2 identities=UNCHANGED' "$output" || fail 'identity evidence missing'
+  grep -q 'mode=bootstrap first=2_confirmed+1_mapping_required second=2_existing+1_mapping_required' "$output" || fail 'provider counts missing'
+  grep -q 'editions=2 observations=2 fingerprints=STABLE' "$output" || fail 'fingerprint evidence missing'
   grep -q 'server_restart=0 server_oom=false server_health=healthy server_limit=1g db_restart=0 db_oom=false db_health=healthy db_limit=512m' "$output" || fail 'container evidence missing'
   [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'watchlist CLI was not invoked twice'
   grep -q 'run --rm --no-deps server node apps/server/dist/src/provision-approved-watchlist-cli.js' "$case_dir/docker.calls" || fail 'image-contained CLI missing'
@@ -133,9 +137,12 @@ test_accepts_without_leaking_secrets() {
     ! grep -Fq "$secret" "$output" || fail "secret or identity leaked: $secret"
     ! grep -Fq "$secret" "$case_dir/docker.calls" || fail "secret reached argv: $secret"
   done
-  run_case "$case_dir" "$case_dir/rerun.out" || fail 'completed acceptance is not rerunnable'
+  sed -i.bak 's/sha256:aaaaaaaa/sha256:bbbbbbbb/' "$case_dir/opt/ksy-deals/.env"
+  rm -f "$case_dir/opt/ksy-deals/.env.bak"
+  run_case "$case_dir" "$case_dir/rerun.out" routine || fail 'routine acceptance after image change failed'
   [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'rerun consumed provider requests'
-  grep -q 'identities=UNCHANGED' "$case_dir/rerun.out" || fail 'rerun evidence missing'
+  grep -q 'mode=routine editions=2 observations=2 fingerprints=STABLE provisioning=SKIPPED' "$case_dir/rerun.out" || fail 'routine evidence missing'
+  grep -q 'accepted_image=.*sha256:bbbbbbbb' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'routine state did not attest new image'
 }
 
 test_rejects_public_env() {
@@ -152,7 +159,7 @@ test_stops_at_disk_gate() {
   if PATH="$case_dir/bin:$PATH" KSY_LIVE_TEST_MODE=1 KSY_LIVE_TEST_DISK_USED_PERCENT=85 \
     KSY_ROOT="$case_dir/opt/ksy-deals" KSY_LIVE_WORK_PARENT="$case_dir" \
     CURL_CONFIGS="$case_dir/curl.configs" DOCKER_CALLS="$case_dir/docker.calls" \
-    PROVISION_CALLS="$case_dir/provision.calls" PROXY_CALLS="$case_dir/proxy.calls" bash "$SCRIPT" > "$output" 2>&1; then
+    PROVISION_CALLS="$case_dir/provision.calls" PROXY_CALLS="$case_dir/proxy.calls" bash "$SCRIPT" --mode bootstrap > "$output" 2>&1; then
     fail 'disk gate accepted 85 percent'
   fi
   grep -q 'KSY_LIVE_ACCEPT_FAILED DISK_USAGE_LIMIT' "$output" || fail 'wrong disk failure'
@@ -166,10 +173,13 @@ expect_failure() {
   if env "$knob=1" PATH="$case_dir/bin:$PATH" KSY_LIVE_TEST_MODE=1 KSY_LIVE_TEST_DISK_USED_PERCENT=72 \
     KSY_ROOT="$case_dir/opt/ksy-deals" KSY_LIVE_WORK_PARENT="$case_dir" \
     CURL_CONFIGS="$case_dir/curl.configs" DOCKER_CALLS="$case_dir/docker.calls" \
-    PROVISION_CALLS="$case_dir/provision.calls" PROXY_CALLS="$case_dir/proxy.calls" bash "$SCRIPT" > "$output" 2>&1; then
+    PROVISION_CALLS="$case_dir/provision.calls" PROXY_CALLS="$case_dir/proxy.calls" bash "$SCRIPT" --mode bootstrap > "$output" 2>&1; then
     fail "$name unexpectedly passed"
   fi
-  grep -q "KSY_LIVE_ACCEPT_FAILED $reason" "$output" || fail "$name returned wrong failure"
+  grep -q "KSY_LIVE_ACCEPT_FAILED $reason" "$output" || {
+    cat "$output" >&2
+    fail "$name returned wrong failure"
+  }
 }
 
 test_resumes_after_first_pass() {
@@ -195,7 +205,7 @@ phase=COMPLETE
 stored_checksum=$checksum
 STATE
   chmod 600 "$case_dir/opt/ksy-deals/live-acceptance.state"
-  run_case "$case_dir" "$output" || fail 'data-only state was rejected'
+  KSY_TEST_MATURE=1 run_case "$case_dir" "$output" routine || fail 'data-only legacy state was rejected'
   [[ ! -e "$executed" ]] || fail 'state content was executed'
   grep -q 'ACCEPTANCE_STATE_OWNER_INVALID' "$SCRIPT" || fail 'production state owner check missing'
 }
@@ -210,6 +220,33 @@ test_rejects_symlink_state() {
   grep -q 'KSY_LIVE_ACCEPT_FAILED ACCEPTANCE_STATE_MODE_INVALID' "$output" || fail 'wrong symlink-state failure'
 }
 
+test_routine_requires_completed_state_and_skips_provisioning() {
+  local case_dir="$TMP_DIR/routine" output="$TMP_DIR/routine.out" checksum
+  make_case "$case_dir"
+  printf 'x\nx\n' > "$case_dir/provision.calls"
+  if KSY_TEST_MATURE=1 run_case "$case_dir" "$output" routine; then fail 'routine without state passed'; fi
+  grep -q 'KSY_LIVE_ACCEPT_FAILED ROUTINE_STATE_REQUIRED' "$output" || fail 'wrong missing routine-state failure'
+  checksum=$(printf 'legacy-bootstrap-evidence' | (command -v sha256sum >/dev/null 2>&1 && sha256sum || LC_ALL=C shasum -a 256) | awk '{print $1}')
+  cat > "$case_dir/opt/ksy-deals/live-acceptance.state" <<STATE
+stored_image=ghcr.io/fedrbodr/ksy-deals@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+phase=COMPLETE
+stored_checksum=$checksum
+STATE
+  chmod 600 "$case_dir/opt/ksy-deals/live-acceptance.state"
+  KSY_TEST_MATURE=1 run_case "$case_dir" "$output" routine || fail 'mature routine migration failed'
+  grep -q 'mode=routine editions=136 observations=162 fingerprints=STABLE provisioning=SKIPPED' "$output" || fail 'mature routine evidence missing'
+  [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'routine invoked provisioning'
+  grep -q '^state_version=2$' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'legacy state was not migrated'
+}
+
+test_bootstrap_rejects_mature_database() {
+  local case_dir="$TMP_DIR/bootstrap-mature" output="$TMP_DIR/bootstrap-mature.out"
+  make_case "$case_dir"
+  if KSY_TEST_MATURE=1 run_case "$case_dir" "$output" bootstrap; then fail 'bootstrap accepted mature database'; fi
+  grep -q 'KSY_LIVE_ACCEPT_FAILED INITIAL_DATABASE_NOT_EMPTY' "$output" || fail 'wrong mature bootstrap failure'
+  [[ ! -s "$case_dir/provision.calls" ]] || fail 'mature bootstrap invoked provisioning'
+}
+
 test_accepts_without_leaking_secrets
 test_rejects_public_env
 test_stops_at_disk_gate
@@ -219,10 +256,12 @@ expect_failure configured-code KSY_TEST_BAD_CONFIGURED CONFIGURED_SECRET_NOT_ACC
 expect_failure provider-count KSY_TEST_BAD_FIRST FIRST_PROVISION_COUNTS_UNEXPECTED
 expect_failure second-count KSY_TEST_BAD_SECOND SECOND_PROVISION_COUNTS_UNEXPECTED
 expect_failure changed-ids KSY_TEST_CHANGED_IDS OBSERVATION_IDENTITIES_CHANGED
-expect_failure extra-rows KSY_TEST_EXTRA_ROWS FINAL_COUNTS_UNEXPECTED
+expect_failure extra-rows KSY_TEST_EXTRA_ROWS FIRST_EVIDENCE_FAILED
 expect_failure container-state KSY_TEST_BAD_STATE CONTAINER_STATE_UNHEALTHY
 test_resumes_after_first_pass
 test_state_file_is_data_not_code
 test_rejects_symlink_state
+test_routine_requires_completed_state_and_skips_provisioning
+test_bootstrap_rejects_mature_database
 bash -n "$SCRIPT"
 printf 'KSY live acceptance tests passed\n'

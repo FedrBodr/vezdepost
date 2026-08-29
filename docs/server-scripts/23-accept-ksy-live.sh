@@ -112,6 +112,19 @@ proxy_response_status() {
   awk '/^HTTP\// { status=$2 } END { print status }' "$1"
 }
 
+MODE=''
+while (($#)); do
+  case "$1" in
+    --mode)
+      [[ $# -ge 2 && -z "$MODE" ]] || fail ARGUMENTS_INVALID
+      MODE=$2
+      shift 2
+      ;;
+    *) fail ARGUMENTS_INVALID ;;
+  esac
+done
+[[ "$MODE" == bootstrap || "$MODE" == routine ]] || fail ACCEPTANCE_MODE_REQUIRED
+
 [[ "$TEST_MODE" == 1 || $EUID -eq 0 ]] || fail ROOT_REQUIRED
 [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]] || fail KSY_INSTALLATION_MISSING
 [[ "$(file_mode "$ENV_FILE")" == 600 ]] || fail KSY_ENV_MODE_INVALID
@@ -135,9 +148,79 @@ safe_token "${PLATPRICES_API_KEY:-}" || fail PLATPRICES_API_KEY_INVALID
 PROXY_USERNAME=${BASH_REMATCH[1]}
 PROXY_PASSWORD=${BASH_REMATCH[2]}
 
+compose=(docker compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+read_counts() {
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+    --no-psqlrc --tuples-only --no-align \
+    --command "SELECT (SELECT COUNT(*) FROM game_editions),(SELECT COUNT(*) FROM price_observations)"
+}
+read_fingerprint_rows() {
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+    --no-psqlrc --tuples-only --no-align --command "-- KSY_FINGERPRINT_V1
+SELECT table_name || '|' || row_data
+FROM (
+  SELECT 'game_editions' AS table_name, row_to_json(e)::text AS row_data FROM game_editions e
+  UNION ALL
+  SELECT 'price_observations' AS table_name, row_to_json(o)::text AS row_data FROM price_observations o
+) snapshot
+ORDER BY table_name, row_data"
+}
+read_fingerprint() { read_fingerprint_rows | fingerprint; }
+write_state() {
+  local candidate="$WORK_DIR/live-acceptance.state"
+  printf 'state_version=2\nphase=%s\naccepted_image=%s\naccepted_counts=%s\naccepted_fingerprint=%s\n' \
+    "$phase" "$KSY_DEALS_IMAGE" "$accepted_counts" "$accepted_fingerprint" > "$candidate"
+  install_private "$candidate" "$STATE_FILE"
+}
+
+phase=NEW
+state_kind=none
+accepted_counts=''
+accepted_fingerprint=''
+if [[ -e "$STATE_FILE" ]]; then
+  [[ -f "$STATE_FILE" && ! -L "$STATE_FILE" && "$(file_mode "$STATE_FILE")" == 600 ]] || fail ACCEPTANCE_STATE_MODE_INVALID
+  if [[ "$TEST_MODE" != 1 ]]; then
+    [[ "$(stat -c '%U:%G' "$STATE_FILE")" == root:root ]] || fail ACCEPTANCE_STATE_OWNER_INVALID
+  fi
+  state_version=$(sed -n 's/^state_version=//p' "$STATE_FILE")
+  phase=$(sed -n 's/^phase=//p' "$STATE_FILE")
+  if [[ -z "$state_version" ]]; then
+    legacy_image=$(sed -n 's/^stored_image=//p' "$STATE_FILE")
+    legacy_checksum=$(sed -n 's/^stored_checksum=//p' "$STATE_FILE")
+    [[ "$legacy_image" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ &&
+      "$legacy_checksum" =~ ^[a-f0-9]{64}$ && "$phase" =~ ^(FIRST_PASS|COMPLETE)$ ]] ||
+      fail ACCEPTANCE_STATE_INVALID
+    state_kind=legacy
+  else
+    accepted_image=$(sed -n 's/^accepted_image=//p' "$STATE_FILE")
+    accepted_counts=$(sed -n 's/^accepted_counts=//p' "$STATE_FILE")
+    accepted_fingerprint=$(sed -n 's/^accepted_fingerprint=//p' "$STATE_FILE")
+    [[ "$state_version" == 2 && "$phase" =~ ^(FIRST_PASS|COMPLETE)$ &&
+      "$accepted_image" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ &&
+      "$accepted_counts" =~ ^[0-9]+\|[0-9]+$ && "$accepted_fingerprint" =~ ^[a-f0-9]{64}$ ]] ||
+      fail ACCEPTANCE_STATE_INVALID
+    state_kind=v2
+  fi
+fi
+
+pre_counts=$(read_counts) || fail DATABASE_EVIDENCE_FAILED
+[[ "$pre_counts" =~ ^[0-9]+\|[0-9]+$ ]] || fail DATABASE_EVIDENCE_FAILED
+pre_fingerprint=$(read_fingerprint) || fail DATABASE_EVIDENCE_FAILED
+if [[ "$MODE" == routine ]]; then
+  [[ "$state_kind" != none && "$phase" == COMPLETE ]] || fail ROUTINE_STATE_REQUIRED
+  routine_counts=$pre_counts
+  routine_fingerprint=$pre_fingerprint
+elif [[ "$phase" == NEW ]]; then
+  [[ "$pre_counts" == '0|0' ]] || fail INITIAL_DATABASE_NOT_EMPTY
+elif [[ "$state_kind" == v2 && "$phase" == FIRST_PASS ]]; then
+  [[ "$pre_counts" == "$accepted_counts" && "$pre_fingerprint" == "$accepted_fingerprint" ]] ||
+    fail FIRST_EVIDENCE_CHANGED
+else
+  fail BOOTSTRAP_STATE_INVALID
+fi
+
 curl --fail --silent --show-error http://127.0.0.1:4300/health/live >/dev/null || fail LIVE_FAILED
 curl --fail --silent --show-error http://127.0.0.1:4300/health/ready >/dev/null || fail READY_FAILED
-compose=(docker compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 
 [[ "$(telegram_request setWebhook)" == 200 ]] || fail TELEGRAM_SET_WEBHOOK_HTTP_FAILED
 [[ "$(tr -d '[:space:]' < "$WORK_DIR/telegram-setWebhook.body")" == *'"ok":true'* &&
@@ -169,64 +252,51 @@ quota_reset=$(quota_header X-RateLimit-Reset "$provider_headers")
   $((quota_used + quota_remaining)) -eq "$quota_limit" ]] || fail PLATPRICES_QUOTA_UNHEALTHY
 unset authenticated_proxy PROXY_USERNAME PROXY_PASSWORD PLATPRICES_PROXY_URL PLATPRICES_API_KEY
 
-read_ids() {
-  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --no-psqlrc --tuples-only --no-align \
-    --command "SELECT o.id FROM price_observations o JOIN game_editions e ON e.id=o.edition_id WHERE o.source_status='CONFIRMED' ORDER BY o.id"
-}
-read_counts() {
-  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --no-psqlrc --tuples-only --no-align \
-    --command "SELECT (SELECT COUNT(*) FROM game_editions),(SELECT COUNT(*) FROM price_observations)"
-}
 run_provision() {
   "${compose[@]}" run --rm --no-deps server node apps/server/dist/src/provision-approved-watchlist-cli.js
 }
 
-phase=NEW
-stored_image=''
-stored_checksum=''
-if [[ -e "$STATE_FILE" ]]; then
-  [[ -f "$STATE_FILE" && ! -L "$STATE_FILE" && "$(file_mode "$STATE_FILE")" == 600 ]] || fail ACCEPTANCE_STATE_MODE_INVALID
-  if [[ "$TEST_MODE" != 1 ]]; then
-    [[ "$(stat -c '%U:%G' "$STATE_FILE")" == root:root ]] || fail ACCEPTANCE_STATE_OWNER_INVALID
-  fi
-  stored_image=$(sed -n 's/^stored_image=//p' "$STATE_FILE")
-  phase=$(sed -n 's/^phase=//p' "$STATE_FILE")
-  stored_checksum=$(sed -n 's/^stored_checksum=//p' "$STATE_FILE")
-  [[ "$stored_image" == "$KSY_DEALS_IMAGE" && "$phase" =~ ^(FIRST_PASS|COMPLETE)$ && "$stored_checksum" =~ ^[a-f0-9]{64}$ ]] || fail ACCEPTANCE_STATE_INVALID
-fi
-
-before=''
-if [[ "$phase" == NEW ]]; then
-  [[ "$(read_counts)" == '0|0' ]] || fail INITIAL_DATABASE_NOT_EMPTY
+if [[ "$MODE" == bootstrap && "$phase" == NEW ]]; then
   first=$(run_provision) || fail FIRST_PROVISION_FAILED
   json_counts_match "$first" 2 0 1 || fail FIRST_PROVISION_COUNTS_UNEXPECTED
-  before=$(read_ids)
-  [[ "$(printf '%s\n' "$before" | sed '/^$/d' | wc -l | tr -d ' ')" == 2 ]] || fail FIRST_EVIDENCE_FAILED
-  stored_checksum=$(printf '%s' "$before" | fingerprint)
-  stored_image=$KSY_DEALS_IMAGE
+  accepted_counts=$(read_counts) || fail FIRST_EVIDENCE_FAILED
+  [[ "$accepted_counts" == '2|2' ]] || fail FIRST_EVIDENCE_FAILED
+  accepted_fingerprint=$(read_fingerprint) || fail FIRST_EVIDENCE_FAILED
   phase=FIRST_PASS
-  state_candidate="$WORK_DIR/live-acceptance.state"
-  printf 'stored_image=%s\nphase=%s\nstored_checksum=%s\n' "$stored_image" "$phase" "$stored_checksum" > "$state_candidate"
-  install_private "$state_candidate" "$STATE_FILE"
+  write_state
 fi
 
-if [[ "$phase" == FIRST_PASS ]]; then
-  before=$(read_ids)
-  [[ "$(printf '%s' "$before" | fingerprint)" == "$stored_checksum" ]] || fail FIRST_EVIDENCE_CHANGED
+if [[ "$MODE" == bootstrap && "$phase" == FIRST_PASS ]]; then
+  before_counts=$(read_counts) || fail FIRST_EVIDENCE_CHANGED
+  before_fingerprint=$(read_fingerprint) || fail FIRST_EVIDENCE_CHANGED
+  [[ "$before_counts" == "$accepted_counts" && "$before_fingerprint" == "$accepted_fingerprint" ]] ||
+    fail FIRST_EVIDENCE_CHANGED
   second=$(run_provision) || fail SECOND_PROVISION_FAILED
   json_counts_match "$second" 0 2 1 || fail SECOND_PROVISION_COUNTS_UNEXPECTED
-  after=$(read_ids)
-  [[ "$before" == "$after" ]] || fail OBSERVATION_IDENTITIES_CHANGED
+  after_counts=$(read_counts) || fail FINAL_EVIDENCE_FAILED
+  after_fingerprint=$(read_fingerprint) || fail FINAL_EVIDENCE_FAILED
+  [[ "$after_counts" == '2|2' ]] || fail FINAL_COUNTS_UNEXPECTED
+  [[ "$after_counts" == "$before_counts" && "$after_fingerprint" == "$before_fingerprint" ]] ||
+    fail OBSERVATION_IDENTITIES_CHANGED
+  accepted_counts=$after_counts
+  accepted_fingerprint=$after_fingerprint
   phase=COMPLETE
-  state_candidate="$WORK_DIR/live-acceptance.state"
-  printf 'stored_image=%s\nphase=%s\nstored_checksum=%s\n' "$stored_image" "$phase" "$stored_checksum" > "$state_candidate"
-  install_private "$state_candidate" "$STATE_FILE"
+  write_state
+  final_counts=$after_counts
+  final_fingerprint=$after_fingerprint
+else
+  final_counts=$(read_counts) || fail FINAL_EVIDENCE_FAILED
+  final_fingerprint=$(read_fingerprint) || fail FINAL_EVIDENCE_FAILED
 fi
 
-[[ "$(printf '%s' "$(read_ids)" | fingerprint)" == "$stored_checksum" ]] || fail FINAL_IDENTITIES_CHANGED
-counts=$("${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --no-psqlrc --tuples-only --no-align \
-  --command "SELECT (SELECT COUNT(*) FROM game_editions),(SELECT COUNT(*) FROM price_observations)") || fail FINAL_EVIDENCE_FAILED
-[[ "$counts" == '2|2' ]] || fail FINAL_COUNTS_UNEXPECTED
+if [[ "$MODE" == routine ]]; then
+  [[ "$final_counts" == "$routine_counts" && "$final_fingerprint" == "$routine_fingerprint" ]] ||
+    fail ROUTINE_DATABASE_CHANGED
+  accepted_counts=$final_counts
+  accepted_fingerprint=$final_fingerprint
+  phase=COMPLETE
+  write_state
+fi
 
 server_id=$("${compose[@]}" ps -q server)
 db_id=$("${compose[@]}" ps -q db)
@@ -238,8 +308,16 @@ server_memory=$(docker stats --no-stream --format '{{.MemUsage}}' "$server_id" |
 db_memory=$(docker stats --no-stream --format '{{.MemUsage}}' "$db_id" | cut -d/ -f1 | xargs)
 
 unset TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET
+final_editions=${final_counts%%|*}
+final_observations=${final_counts##*|}
 printf 'KSY_LIVE_ACCEPTED webhook=PASS invalid_secret=403 configured_secret=204\n'
 printf 'KSY_PROXY_ACCEPTED noAuth=407 destinationDenied=true provider=200 quotaHealthy=true\n'
-printf 'KSY_PROVIDER_ACCEPTED first=2_confirmed+1_mapping_required second=2_existing+1_mapping_required editions=2 observations=2 identities=UNCHANGED\n'
+if [[ "$MODE" == bootstrap ]]; then
+  printf 'KSY_PROVIDER_ACCEPTED mode=bootstrap first=2_confirmed+1_mapping_required second=2_existing+1_mapping_required editions=%s observations=%s fingerprints=STABLE\n' \
+    "$final_editions" "$final_observations"
+else
+  printf 'KSY_PROVIDER_ACCEPTED mode=routine editions=%s observations=%s fingerprints=STABLE provisioning=SKIPPED\n' \
+    "$final_editions" "$final_observations"
+fi
 printf 'KSY_RESOURCE_EVIDENCE server_restart=0 server_oom=false server_health=healthy server_limit=1g db_restart=0 db_oom=false db_health=healthy db_limit=512m server_memory=%s db_memory=%s disk_used_percent=%s\n' \
   "$server_memory" "$db_memory" "$used"
