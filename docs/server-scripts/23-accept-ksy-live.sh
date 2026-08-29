@@ -113,18 +113,9 @@ proxy_response_status() {
   awk '/^HTTP\// { status=$2 } END { print status }' "$1"
 }
 
-MODE=''
-while (($#)); do
-  case "$1" in
-    --mode)
-      [[ $# -ge 2 && -z "$MODE" ]] || fail ARGUMENTS_INVALID
-      MODE=$2
-      shift 2
-      ;;
-    *) fail ARGUMENTS_INVALID ;;
-  esac
-done
-[[ "$MODE" == bootstrap || "$MODE" == routine ]] || fail ACCEPTANCE_MODE_REQUIRED
+[[ $# -eq 2 && "$1" == --confirm &&
+  "$2" == KSY_BOOTSTRAP_PROVIDER_ACCEPTANCE ]] ||
+  fail BOOTSTRAP_CONFIRMATION_REQUIRED
 
 [[ "$TEST_MODE" == 1 || $EUID -eq 0 ]] || fail ROOT_REQUIRED
 [[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]] || fail KSY_INSTALLATION_MISSING
@@ -157,35 +148,23 @@ read_counts() {
     --no-psqlrc --tuples-only --no-align \
     --command "SELECT (SELECT COUNT(*) FROM game_editions),(SELECT COUNT(*) FROM price_observations)"
 }
-read_edition_ids() {
-  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
-    --no-psqlrc --tuples-only --no-align --command "-- KSY_EDITION_FINGERPRINT_V1
-SELECT id FROM game_editions ORDER BY id"
-}
 read_observation_ids() {
   "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
     --no-psqlrc --tuples-only --no-align --command "-- KSY_OBSERVATION_FINGERPRINT_V1
 SELECT id FROM price_observations ORDER BY id"
-}
-read_edition_fingerprint() {
-  local identities
-  identities=$(read_edition_ids) || return 1
-  printf '%s' "$identities" | fingerprint
 }
 read_observation_fingerprint() {
   local identities
   identities=$(read_observation_ids) || return 1
   printf '%s' "$identities" | fingerprint
 }
-write_state_v2() {
+write_state() {
   local state_dir candidate
   state_dir=$(dirname "$STATE_FILE")
   candidate=$(mktemp "$state_dir/.live-acceptance.state.XXXXXX") || fail ACCEPTANCE_STATE_WRITE_FAILED
   STATE_CANDIDATE=$candidate
-  printf 'state_version=2\nbootstrap_phase=%s\nbootstrap_image=%s\nbootstrap_observation_fingerprint=%s\nroutine_image=%s\nroutine_edition_count=%s\nroutine_observation_count=%s\nroutine_edition_fingerprint=%s\nroutine_observation_fingerprint=%s\nroutine_accepted_at=%s\n' \
-    "$bootstrap_phase" "$bootstrap_image" "$bootstrap_observation_fingerprint" \
-    "$routine_image" "$routine_edition_count" "$routine_observation_count" \
-    "$routine_edition_fingerprint" "$routine_observation_fingerprint" "$routine_accepted_at" > "$candidate"
+  printf 'stored_image=%s\nphase=%s\nstored_checksum=%s\n' \
+    "$bootstrap_image" "$bootstrap_phase" "$bootstrap_observation_fingerprint" > "$candidate"
   chmod 600 "$candidate" || fail ACCEPTANCE_STATE_WRITE_FAILED
   if [[ "$TEST_MODE" != 1 ]]; then
     chown root:root "$candidate" || fail ACCEPTANCE_STATE_WRITE_FAILED
@@ -194,95 +173,31 @@ write_state_v2() {
   STATE_CANDIDATE=''
 }
 
-state_kind=none
 bootstrap_phase=NOT_RUN
 bootstrap_image=''
 bootstrap_observation_fingerprint=''
-routine_image=''
-routine_edition_count=''
-routine_observation_count=''
-routine_edition_fingerprint=''
-routine_observation_fingerprint=''
-routine_accepted_at=''
 if [[ -e "$STATE_FILE" ]]; then
   [[ -f "$STATE_FILE" && ! -L "$STATE_FILE" && "$(file_mode "$STATE_FILE")" == 600 ]] || fail ACCEPTANCE_STATE_MODE_INVALID
   if [[ "$TEST_MODE" != 1 ]]; then
     [[ "$(stat -c '%U:%G' "$STATE_FILE")" == root:root ]] || fail ACCEPTANCE_STATE_OWNER_INVALID
   fi
-  if grep -q '^state_version=' "$STATE_FILE"; then
-    expected_keys='state_version bootstrap_phase bootstrap_image bootstrap_observation_fingerprint routine_image routine_edition_count routine_observation_count routine_edition_fingerprint routine_observation_fingerprint routine_accepted_at'
-    [[ "$(wc -l < "$STATE_FILE" | tr -d ' ')" == 10 ]] || fail ACCEPTANCE_STATE_INVALID
-    for state_key in $expected_keys; do
-      [[ "$(grep -c "^${state_key}=" "$STATE_FILE")" == 1 ]] || fail ACCEPTANCE_STATE_INVALID
-    done
-    grep -Ev '^(state_version|bootstrap_phase|bootstrap_image|bootstrap_observation_fingerprint|routine_image|routine_edition_count|routine_observation_count|routine_edition_fingerprint|routine_observation_fingerprint|routine_accepted_at)=' "$STATE_FILE" | grep -q . &&
-      fail ACCEPTANCE_STATE_INVALID
-    state_version=$(sed -n 's/^state_version=//p' "$STATE_FILE")
-    bootstrap_phase=$(sed -n 's/^bootstrap_phase=//p' "$STATE_FILE")
-    bootstrap_image=$(sed -n 's/^bootstrap_image=//p' "$STATE_FILE")
-    bootstrap_observation_fingerprint=$(sed -n 's/^bootstrap_observation_fingerprint=//p' "$STATE_FILE")
-    routine_image=$(sed -n 's/^routine_image=//p' "$STATE_FILE")
-    routine_edition_count=$(sed -n 's/^routine_edition_count=//p' "$STATE_FILE")
-    routine_observation_count=$(sed -n 's/^routine_observation_count=//p' "$STATE_FILE")
-    routine_edition_fingerprint=$(sed -n 's/^routine_edition_fingerprint=//p' "$STATE_FILE")
-    routine_observation_fingerprint=$(sed -n 's/^routine_observation_fingerprint=//p' "$STATE_FILE")
-    routine_accepted_at=$(sed -n 's/^routine_accepted_at=//p' "$STATE_FILE")
-    [[ "$state_version" == 2 && "$bootstrap_phase" =~ ^(NOT_RUN|FIRST_PASS|COMPLETE)$ ]] || fail ACCEPTANCE_STATE_INVALID
-    [[ -z "$bootstrap_image" || "$bootstrap_image" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] || fail ACCEPTANCE_STATE_INVALID
-    [[ -z "$bootstrap_observation_fingerprint" || "$bootstrap_observation_fingerprint" =~ ^[a-f0-9]{64}$ ]] || fail ACCEPTANCE_STATE_INVALID
-    [[ -z "$routine_image" || "$routine_image" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] || fail ACCEPTANCE_STATE_INVALID
-    [[ -z "$routine_edition_count" || "$routine_edition_count" =~ ^[0-9]+$ ]] || fail ACCEPTANCE_STATE_INVALID
-    [[ -z "$routine_observation_count" || "$routine_observation_count" =~ ^[0-9]+$ ]] || fail ACCEPTANCE_STATE_INVALID
-    [[ -z "$routine_edition_fingerprint" || "$routine_edition_fingerprint" =~ ^[a-f0-9]{64}$ ]] || fail ACCEPTANCE_STATE_INVALID
-    [[ -z "$routine_observation_fingerprint" || "$routine_observation_fingerprint" =~ ^[a-f0-9]{64}$ ]] || fail ACCEPTANCE_STATE_INVALID
-    [[ -z "$routine_accepted_at" || "$routine_accepted_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || fail ACCEPTANCE_STATE_INVALID
-    if [[ "$bootstrap_phase" == NOT_RUN ]]; then
-      [[ -z "$bootstrap_image" && -z "$bootstrap_observation_fingerprint" ]] || fail ACCEPTANCE_STATE_INVALID
-    else
-      [[ -n "$bootstrap_image" && -n "$bootstrap_observation_fingerprint" ]] || fail ACCEPTANCE_STATE_INVALID
-    fi
-    if [[ -n "$routine_image" ]]; then
-      [[ -n "$routine_edition_count" && -n "$routine_observation_count" &&
-        -n "$routine_edition_fingerprint" && -n "$routine_observation_fingerprint" &&
-        -n "$routine_accepted_at" ]] || fail ACCEPTANCE_STATE_INVALID
-    else
-      [[ -z "$routine_edition_count" && -z "$routine_observation_count" &&
-        -z "$routine_edition_fingerprint" && -z "$routine_observation_fingerprint" &&
-        -z "$routine_accepted_at" ]] || fail ACCEPTANCE_STATE_INVALID
-    fi
-    state_kind=v2
-  else
-    [[ "$(wc -l < "$STATE_FILE" | tr -d ' ')" == 3 &&
-      "$(grep -c '^stored_image=' "$STATE_FILE")" == 1 &&
-      "$(grep -c '^phase=' "$STATE_FILE")" == 1 &&
-      "$(grep -c '^stored_checksum=' "$STATE_FILE")" == 1 ]] || fail ACCEPTANCE_STATE_INVALID
-    grep -Ev '^(stored_image|phase|stored_checksum)=' "$STATE_FILE" | grep -q . && fail ACCEPTANCE_STATE_INVALID
-    legacy_image=$(sed -n 's/^stored_image=//p' "$STATE_FILE")
-    legacy_phase=$(sed -n 's/^phase=//p' "$STATE_FILE")
-    legacy_checksum=$(sed -n 's/^stored_checksum=//p' "$STATE_FILE")
-    [[ "$legacy_image" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ &&
-      "$legacy_checksum" =~ ^[a-f0-9]{64}$ && "$legacy_phase" =~ ^(FIRST_PASS|COMPLETE)$ ]] ||
-      fail ACCEPTANCE_STATE_INVALID
-    bootstrap_phase=$legacy_phase
-    bootstrap_image=$legacy_image
-    bootstrap_observation_fingerprint=$legacy_checksum
-    state_kind=legacy
-  fi
+  [[ "$(wc -l < "$STATE_FILE" | tr -d ' ')" == 3 &&
+    "$(grep -c '^stored_image=' "$STATE_FILE")" == 1 &&
+    "$(grep -c '^phase=' "$STATE_FILE")" == 1 &&
+    "$(grep -c '^stored_checksum=' "$STATE_FILE")" == 1 ]] || fail ACCEPTANCE_STATE_INVALID
+  grep -Ev '^(stored_image|phase|stored_checksum)=' "$STATE_FILE" | grep -q . && fail ACCEPTANCE_STATE_INVALID
+  bootstrap_image=$(sed -n 's/^stored_image=//p' "$STATE_FILE")
+  bootstrap_phase=$(sed -n 's/^phase=//p' "$STATE_FILE")
+  bootstrap_observation_fingerprint=$(sed -n 's/^stored_checksum=//p' "$STATE_FILE")
+  [[ "$bootstrap_image" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ &&
+    "$bootstrap_observation_fingerprint" =~ ^[a-f0-9]{64}$ &&
+    "$bootstrap_phase" =~ ^(FIRST_PASS|COMPLETE)$ ]] || fail ACCEPTANCE_STATE_INVALID
 fi
 
 pre_counts=$(read_counts) || fail DATABASE_EVIDENCE_FAILED
 [[ "$pre_counts" =~ ^[0-9]+\|[0-9]+$ ]] || fail DATABASE_EVIDENCE_FAILED
-pre_edition_fingerprint=$(read_edition_fingerprint) || fail DATABASE_EVIDENCE_FAILED
 pre_observation_fingerprint=$(read_observation_fingerprint) || fail DATABASE_EVIDENCE_FAILED
-if [[ "$MODE" == routine ]]; then
-  [[ "$state_kind" != none && ("$bootstrap_phase" == COMPLETE || -n "$routine_image") ]] || fail ROUTINE_STATE_REQUIRED
-  pre_editions=${pre_counts%%|*}
-  pre_observations=${pre_counts##*|}
-  ((10#$pre_editions > 0 && 10#$pre_observations > 0)) || fail ROUTINE_COUNTS_NOT_POSITIVE
-  routine_counts=$pre_counts
-  routine_pre_edition_fingerprint=$pre_edition_fingerprint
-  routine_pre_observation_fingerprint=$pre_observation_fingerprint
-elif [[ "$bootstrap_phase" == NOT_RUN ]]; then
+if [[ "$bootstrap_phase" == NOT_RUN ]]; then
   [[ "$pre_counts" == '0|0' ]] || fail INITIAL_DATABASE_NOT_EMPTY
 elif [[ "$bootstrap_phase" == FIRST_PASS ]]; then
   [[ "$bootstrap_image" == "$KSY_DEALS_IMAGE" ]] || fail BOOTSTRAP_IMAGE_MISMATCH
@@ -330,7 +245,7 @@ run_provision() {
 }
 
 bootstrap_complete_pending=0
-if [[ "$MODE" == bootstrap && "$bootstrap_phase" == NOT_RUN ]]; then
+if [[ "$bootstrap_phase" == NOT_RUN ]]; then
   first=$(run_provision) || fail FIRST_PROVISION_FAILED
   json_counts_match "$first" 2 0 1 || fail FIRST_PROVISION_COUNTS_UNEXPECTED
   first_counts=$(read_counts) || fail FIRST_EVIDENCE_FAILED
@@ -338,10 +253,10 @@ if [[ "$MODE" == bootstrap && "$bootstrap_phase" == NOT_RUN ]]; then
   bootstrap_observation_fingerprint=$(read_observation_fingerprint) || fail FIRST_EVIDENCE_FAILED
   bootstrap_phase=FIRST_PASS
   bootstrap_image=$KSY_DEALS_IMAGE
-  write_state_v2
+  write_state
 fi
 
-if [[ "$MODE" == bootstrap && "$bootstrap_phase" == FIRST_PASS ]]; then
+if [[ "$bootstrap_phase" == FIRST_PASS ]]; then
   before_counts=$(read_counts) || fail FIRST_EVIDENCE_CHANGED
   before_observation_fingerprint=$(read_observation_fingerprint) || fail FIRST_EVIDENCE_CHANGED
   [[ "$before_counts" == '2|2' && "$before_observation_fingerprint" == "$bootstrap_observation_fingerprint" ]] ||
@@ -358,17 +273,6 @@ if [[ "$MODE" == bootstrap && "$bootstrap_phase" == FIRST_PASS ]]; then
   bootstrap_observation_fingerprint=$after_observation_fingerprint
   bootstrap_complete_pending=1
   final_counts=$after_counts
-else
-  final_counts=$(read_counts) || fail FINAL_EVIDENCE_FAILED
-  final_edition_fingerprint=$(read_edition_fingerprint) || fail FINAL_EVIDENCE_FAILED
-  final_observation_fingerprint=$(read_observation_fingerprint) || fail FINAL_EVIDENCE_FAILED
-fi
-
-if [[ "$MODE" == routine ]]; then
-  [[ "$final_counts" == "$routine_counts" &&
-    "$final_edition_fingerprint" == "$routine_pre_edition_fingerprint" &&
-    "$final_observation_fingerprint" == "$routine_pre_observation_fingerprint" ]] ||
-    fail ROUTINE_DATABASE_CHANGED
 fi
 
 server_id=$("${compose[@]}" ps -q server)
@@ -380,30 +284,15 @@ db_state=$(docker --host unix:///var/run/docker.sock inspect --format '{{.Restar
 server_memory=$(docker --host unix:///var/run/docker.sock stats --no-stream --format '{{.MemUsage}}' "$server_id" | cut -d/ -f1 | xargs)
 db_memory=$(docker --host unix:///var/run/docker.sock stats --no-stream --format '{{.MemUsage}}' "$db_id" | cut -d/ -f1 | xargs)
 
-if [[ "$MODE" == bootstrap ]]; then
-  [[ "$bootstrap_complete_pending" == 1 ]] || fail BOOTSTRAP_STATE_INVALID
-  write_state_v2
-else
-  routine_image=$KSY_DEALS_IMAGE
-  routine_edition_count=${final_counts%%|*}
-  routine_observation_count=${final_counts##*|}
-  routine_edition_fingerprint=$final_edition_fingerprint
-  routine_observation_fingerprint=$final_observation_fingerprint
-  routine_accepted_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-  write_state_v2
-fi
+[[ "$bootstrap_complete_pending" == 1 ]] || fail BOOTSTRAP_STATE_INVALID
+write_state
 
 unset TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET
 final_editions=${final_counts%%|*}
 final_observations=${final_counts##*|}
 printf 'KSY_LIVE_ACCEPTED webhook=PASS invalid_secret=403 configured_secret=204\n'
 printf 'KSY_PROXY_ACCEPTED noAuth=407 destinationDenied=true provider=200 quotaHealthy=true\n'
-if [[ "$MODE" == bootstrap ]]; then
-  printf 'KSY_PROVIDER_ACCEPTED mode=bootstrap first=2_confirmed+1_mapping_required second=2_existing+1_mapping_required editions=%s observations=%s fingerprints=STABLE\n' \
-    "$final_editions" "$final_observations"
-else
-  printf 'KSY_PROVIDER_ACCEPTED mode=routine editions=%s observations=%s fingerprints=STABLE provisioning=SKIPPED\n' \
-    "$final_editions" "$final_observations"
-fi
+printf 'KSY_PROVIDER_ACCEPTED first=2_confirmed+1_mapping_required second=2_existing+1_mapping_required editions=%s observations=%s fingerprints=STABLE\n' \
+  "$final_editions" "$final_observations"
 printf 'KSY_RESOURCE_EVIDENCE server_restart=0 server_oom=false server_health=healthy server_limit=1g db_restart=0 db_oom=false db_health=healthy db_limit=512m server_memory=%s db_memory=%s disk_used_percent=%s\n' \
   "$server_memory" "$db_memory" "$used"
