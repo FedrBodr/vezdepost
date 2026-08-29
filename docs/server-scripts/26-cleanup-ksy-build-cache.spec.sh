@@ -63,7 +63,10 @@ STUB
 if env | grep -Eq '^(DATABASE_URL|POSTGRES_PASSWORD|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|BACKUP_ENCRYPTION_PASSPHRASE|B2_ACCOUNT_ID|B2_APP_KEY|B2_BUCKET|DOCKER_HOST|DOCKER_CONTEXT)='; then
   exit 91
 fi
-printf '%s\n' "$*" >> "$DOCKER_CALLS"
+original_args="$*"
+[[ "$1" == --host && "$2" == unix:///var/run/docker.sock ]] || exit 92
+shift 2
+printf '%s\n' "$original_args" >> "$DOCKER_CALLS"
 if [[ "$*" == 'builder prune --all --force' ]]; then
   [[ "${KSY_TEST_PRUNE_FAIL:-0}" != 1 ]] || exit 97
   : > "$PRUNE_MARKER"
@@ -83,7 +86,8 @@ elif [[ "$1 $2" == 'image inspect' ]]; then
     exit 1
   fi
 elif [[ "$*" == 'inspect --format {{.Id}} ksy-deals-server-1' ]]; then
-  if [[ "${KSY_TEST_CONTAINER_DRIFT:-0}" == 1 && -e "$CONTAINER_DRIFT_MARKER" ]]; then
+  if [[ ("${KSY_TEST_CONTAINER_DRIFT:-0}" == 1 || "${KSY_TEST_FINAL_CONTAINER_DRIFT:-0}" == 1) && \
+    -e "$CONTAINER_DRIFT_MARKER" ]]; then
     printf 'sha256:server-replaced\n'
   else
     printf 'sha256:server-original\n'
@@ -132,6 +136,9 @@ if env | grep -Eq '^(DATABASE_URL|POSTGRES_PASSWORD|TELEGRAM_BOT_TOKEN|TELEGRAM_
   exit 91
 fi
 [[ -n "${RCLONE_CONFIG_B2_TYPE:-}" && -n "${RCLONE_CONFIG_B2_ACCOUNT:-}" && -n "${RCLONE_CONFIG_B2_KEY:-}" ]] || exit 90
+[[ $# == 5 && "$1" == lsf && "$2" == B2:synthetic-ksy-bucket/ksy-deals/ && \
+  "$3" == --files-only && "$4" == --include && \
+  "$5" =~ ^ksy-deals-[0-9]{8}T[0-9]{6}Z\.dump\.gpg$ ]] || exit 98
 [[ "${KSY_TEST_OFFSITE_MISSING:-0}" != 1 && \
   !("${KSY_TEST_POST_OFFSITE_MISSING:-0}" == 1 && -e "$PRUNE_MARKER") ]] || exit 0
 if [[ "${KSY_TEST_EVIDENCE_DRIFT:-0}" == 1 && ! -e "$EVIDENCE_DRIFT_MARKER" ]]; then
@@ -141,7 +148,17 @@ fi
 if [[ "${KSY_TEST_CONTAINER_DRIFT:-0}" == 1 && ! -e "$CONTAINER_DRIFT_MARKER" ]]; then
   : > "$CONTAINER_DRIFT_MARKER"
 fi
-printf '%s\n' "${@: -1}"
+rclone_calls=0
+[[ ! -f "$RCLONE_CALLS" ]] || rclone_calls=$(cat "$RCLONE_CALLS")
+rclone_calls=$((rclone_calls + 1))
+printf '%s\n' "$rclone_calls" > "$RCLONE_CALLS"
+if [[ "${KSY_TEST_FINAL_EVIDENCE_DRIFT:-0}" == 1 && "$rclone_calls" == 2 ]]; then
+  printf '{"image":"%s","rollbackImage":"%s"}\n' "$historical_image" "$rollback_image" > "$EVIDENCE_PATH"
+fi
+if [[ "${KSY_TEST_FINAL_CONTAINER_DRIFT:-0}" == 1 && "$rclone_calls" == 2 ]]; then
+  : > "$CONTAINER_DRIFT_MARKER"
+fi
+printf '%s\n' "$5"
 STUB
 
   chmod +x "$case_dir/bin/df" "$case_dir/bin/docker" "$case_dir/bin/curl" "$case_dir/bin/rclone"
@@ -159,6 +176,7 @@ run_case() {
     EVIDENCE_PATH="$case_dir/opt/ksy-deals/deployment-evidence.json" \
     EVIDENCE_DRIFT_MARKER="$case_dir/evidence-drifted" \
     CONTAINER_DRIFT_MARKER="$case_dir/container-drifted" \
+    RCLONE_CALLS="$case_dir/rclone.calls" \
     historical_image="$historical_image" rollback_image="$rollback_image" \
     BACKUP_FILE="$case_dir/backups/ksy-deals-20260829T120000Z.dump.gpg" \
     REPLACEMENT_BACKUP_FILE="$case_dir/backups/ksy-deals-20260829T130000Z.dump.gpg" \
@@ -214,8 +232,10 @@ test_cleans_only_build_cache_without_leaking_secrets() {
   run_case "$case_dir" "$output" || { cat "$output" >&2; fail 'success case failed'; }
   grep -q 'KSY_BUILD_CACHE_CLEANUP before=85 after=79 cache_records=33 physical_reclaimable=4.696GB protected_images=3 postgres_volume=PASS local_backup=PASS offsite_backup=PASS health=PASS routes=PASS' "$output" ||
     fail 'redacted cleanup evidence missing'
-  [[ "$(grep -c '^builder prune --all --force$' "$case_dir/docker.calls")" == 1 ]] ||
+  [[ "$(grep -c '^--host unix:///var/run/docker.sock builder prune --all --force$' "$case_dir/docker.calls")" == 1 ]] ||
     fail 'expected exactly one BuildKit prune'
+  ! grep -Ev '^--host unix:///var/run/docker\.sock ' "$case_dir/docker.calls" >/dev/null ||
+    fail 'Docker call escaped the pinned local socket'
   for forbidden in 'system prune' 'image prune' 'container prune' 'network prune' \
     'volume prune' 'volume rm' 'image rm' 'buildx prune' 'compose down' \
     'exec rm' 'rm -f' 'rmi '; do
@@ -232,6 +252,8 @@ test_requires_explicit_confirmation
 expect_failure bad-evidence BAD_EVIDENCE DEPLOYMENT_EVIDENCE_INVALID
 expect_failure evidence-drift KSY_TEST_EVIDENCE_DRIFT DEPLOYMENT_EVIDENCE_CHANGED
 expect_failure container-drift KSY_TEST_CONTAINER_DRIFT CONTAINER_SNAPSHOT_CHANGED
+expect_failure final-evidence-drift KSY_TEST_FINAL_EVIDENCE_DRIFT DEPLOYMENT_EVIDENCE_CHANGED
+expect_failure final-container-drift KSY_TEST_FINAL_CONTAINER_DRIFT CONTAINER_SNAPSHOT_CHANGED
 expect_failure missing-image KSY_TEST_MISSING_IMAGE PROTECTED_IMAGE_MISSING
 expect_failure bad-volume KSY_TEST_BAD_VOLUME POSTGRES_VOLUME_INVALID
 expect_failure unhealthy KSY_TEST_UNHEALTHY CONTAINER_STATE_UNHEALTHY

@@ -17,6 +17,10 @@ fail() {
   exit 1
 }
 
+docker_local() {
+  docker --host unix:///var/run/docker.sock "$@"
+}
+
 file_mode() {
   stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
@@ -112,7 +116,7 @@ verify_evidence_snapshot() {
 }
 
 container_id() {
-  docker inspect --format '{{.Id}}' "$1" 2>/dev/null
+  docker_local inspect --format '{{.Id}}' "$1" 2>/dev/null
 }
 
 verify_container_snapshot() {
@@ -130,13 +134,13 @@ disk_used_percent() {
 verify_images() {
   local image
   for image in "${protected[@]}"; do
-    docker image inspect "$image" >/dev/null 2>&1 || fail PROTECTED_IMAGE_MISSING
+    docker_local image inspect "$image" >/dev/null 2>&1 || fail PROTECTED_IMAGE_MISSING
   done
 }
 
 verify_volume() {
   local mount
-  mount=$(docker inspect --format '{{range .Mounts}}{{.Type}}|{{.Name}}|{{.Destination}}|{{.RW}}{{end}}' \
+  mount=$(docker_local inspect --format '{{range .Mounts}}{{.Type}}|{{.Name}}|{{.Destination}}|{{.RW}}{{end}}' \
     ksy-deals-db-1 2>/dev/null) || fail POSTGRES_VOLUME_INVALID
   [[ "$mount" == 'volume|ksy-deals_postgres-data|/var/lib/postgresql/data|true' ]] ||
     fail POSTGRES_VOLUME_INVALID
@@ -144,9 +148,9 @@ verify_volume() {
 
 verify_health() {
   local server_state db_state
-  server_state=$(docker inspect --format '{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Health.Status}}' \
+  server_state=$(docker_local inspect --format '{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Health.Status}}' \
     ksy-deals-server-1 2>/dev/null) || fail CONTAINER_STATE_UNHEALTHY
-  db_state=$(docker inspect --format '{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Health.Status}}' \
+  db_state=$(docker_local inspect --format '{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Health.Status}}' \
     ksy-deals-db-1 2>/dev/null) || fail CONTAINER_STATE_UNHEALTHY
   [[ "$server_state" == '0|false|healthy' && "$db_state" == '0|false|healthy' ]] ||
     fail CONTAINER_STATE_UNHEALTHY
@@ -219,12 +223,16 @@ verify_backup() {
   [[ "$offsite" == "$backup_name" ]] || fail OFFSITE_BACKUP_MISSING
 }
 
-verify_invariants() {
+verify_local_invariants() {
   verify_evidence_snapshot
   verify_container_snapshot
   verify_images
   verify_volume
   verify_health
+}
+
+verify_invariants() {
+  verify_local_invariants
   verify_routes
   verify_backup
 }
@@ -238,9 +246,9 @@ before=$(disk_used_percent)
 [[ "$before" -gt "$DISK_TARGET" ]] || fail DISK_CLEANUP_NOT_REQUIRED
 
 verify_invariants
-cache_output=$(docker builder du --format '{{.ID}}') || fail BUILD_CACHE_INVENTORY_FAILED
+cache_output=$(docker_local builder du --format '{{.ID}}') || fail BUILD_CACHE_INVENTORY_FAILED
 cache_records=$(printf '%s\n' "$cache_output" | sed '/^$/d' | wc -l | tr -d ' ')
-physical_output=$(docker system df --format '{{.Type}}|{{.Reclaimable}}') ||
+physical_output=$(docker_local system df --format '{{.Type}}|{{.Reclaimable}}') ||
   fail BUILD_CACHE_INVENTORY_FAILED
 physical_reclaimable=$(printf '%s\n' "$physical_output" |
   awk -F'|' '$1 == "Build Cache" { split($2, value, " "); print value[1]; exit }')
@@ -248,11 +256,12 @@ physical_reclaimable=$(printf '%s\n' "$physical_output" |
   fail BUILD_CACHE_EVIDENCE_INVALID
 
 verify_invariants
+verify_local_invariants
 mutation_disk=$(disk_used_percent)
 [[ "$mutation_disk" =~ ^[0-9]+$ ]] || fail DISK_USAGE_INVALID
 [[ "$mutation_disk" -gt "$DISK_TARGET" ]] || fail DISK_CLEANUP_NOT_REQUIRED
 
-docker builder prune --all --force >/dev/null || fail BUILD_CACHE_PRUNE_FAILED
+docker_local builder prune --all --force >/dev/null || fail BUILD_CACHE_PRUNE_FAILED
 
 verify_invariants
 after=$(disk_used_percent)
