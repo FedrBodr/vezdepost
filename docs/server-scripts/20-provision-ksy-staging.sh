@@ -80,18 +80,45 @@ progress() {
     "$step" "$PROGRESS_TOTAL" "$phase" "$message"
 }
 
+APPROVED_ORDER_TELEGRAM_URL=https://t.me/ksy_deals_store_bot
 REUSE_EXISTING_SECRETS=0
-case "$#:${1:-}" in
-  2:--image)
-    KSY_DEALS_IMAGE=$2
-    ;;
-  3:--reuse-existing-secrets)
-    [[ "$2" == --image ]] || fail IMAGE_ARGUMENT_REQUIRED
-    REUSE_EXISTING_SECRETS=1
-    KSY_DEALS_IMAGE=$3
-    ;;
-  *) fail IMAGE_ARGUMENT_REQUIRED ;;
-esac
+KSY_DEALS_IMAGE=''
+ORDER_TELEGRAM_URL_OVERRIDE=''
+reuse_seen=0
+image_seen=0
+order_url_seen=0
+
+while (($#)); do
+  case "$1" in
+    --reuse-existing-secrets)
+      [[ "$reuse_seen" == 0 ]] || fail IMAGE_ARGUMENT_REQUIRED
+      reuse_seen=1
+      REUSE_EXISTING_SECRETS=1
+      shift
+      ;;
+    --order-telegram-url)
+      [[ "$order_url_seen" == 0 && $# -ge 2 && "$2" != --* ]] ||
+        fail ORDER_TELEGRAM_URL_ARGUMENT_INVALID
+      order_url_seen=1
+      ORDER_TELEGRAM_URL_OVERRIDE=$2
+      shift 2
+      ;;
+    --image)
+      [[ "$image_seen" == 0 && $# -ge 2 && "$2" != --* ]] || fail IMAGE_ARGUMENT_REQUIRED
+      image_seen=1
+      KSY_DEALS_IMAGE=$2
+      shift 2
+      ;;
+    *) fail IMAGE_ARGUMENT_REQUIRED ;;
+  esac
+done
+
+[[ "$image_seen" == 1 ]] || fail IMAGE_ARGUMENT_REQUIRED
+if [[ "$order_url_seen" == 1 ]]; then
+  [[ "$REUSE_EXISTING_SECRETS" == 1 &&
+    "$ORDER_TELEGRAM_URL_OVERRIDE" == "$APPROVED_ORDER_TELEGRAM_URL" ]] ||
+    fail ORDER_TELEGRAM_URL_ARGUMENT_INVALID
+fi
 
 read_batch() {
   local input_fd=0
@@ -276,8 +303,12 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
     ' "$ENV_FILE")
     [[ "$runtime_key_state" == 1:1:0 ]] || fail EXISTING_ENV_INVALID
   done
-  awk -v image="$KSY_DEALS_IMAGE" '
+  awk -v image="$KSY_DEALS_IMAGE" -v order="$ORDER_TELEGRAM_URL_OVERRIDE" '
     /^KSY_DEALS_IMAGE=/ { print "KSY_DEALS_IMAGE=" image; next }
+    order != "" && /^ORDER_TELEGRAM_URL=/ {
+      print "ORDER_TELEGRAM_URL=" order
+      next
+    }
     { print }
   ' "$ENV_FILE" > "$candidate_env"
   chmod 600 "$candidate_env"

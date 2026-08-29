@@ -5,6 +5,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SCRIPT="$SCRIPT_DIR/20-provision-ksy-staging.sh"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
+APPROVED_ORDER_URL='https://t.me/ksy_deals_store_bot'
 
 fail() {
   echo "FAIL: $*" >&2
@@ -277,11 +278,18 @@ run_reuse_case() {
   local image=${5:-$REUSE_IMAGE}
   local cp_fail_install=${6:-none}
   local stat_force_uid_mismatch=${7:-0}
+  local order_url_override=${8:-}
   local bin_dir="$case_dir/bin"
+  local arguments=(--reuse-existing-secrets)
   mkdir -p "$case_dir"
   make_stubs "$bin_dir"
   : > "$case_dir/docker.calls"
   : > "$case_dir/curl.calls"
+
+  if [[ -n "$order_url_override" ]]; then
+    arguments+=(--order-telegram-url "$order_url_override")
+  fi
+  arguments+=(--image "$image")
 
   PATH="$bin_dir:$PATH" \
     DOCKER_CALLS="$case_dir/docker.calls" \
@@ -297,7 +305,30 @@ run_reuse_case() {
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
-    bash "$SCRIPT" --reuse-existing-secrets --image "$image" </dev/null > "$output" 2>&1
+    bash "$SCRIPT" "${arguments[@]}" </dev/null > "$output" 2>&1
+}
+
+run_reuse_arguments_case() {
+  local case_dir=$1
+  local output=$2
+  shift 2
+  local bin_dir="$case_dir/bin"
+  mkdir -p "$case_dir"
+  make_stubs "$bin_dir"
+  : > "$case_dir/docker.calls"
+  : > "$case_dir/curl.calls"
+
+  PATH="$bin_dir:$PATH" \
+    DOCKER_CALLS="$case_dir/docker.calls" \
+    CURL_CALLS="$case_dir/curl.calls" \
+    NETWORK_MARKER="$case_dir/network.created" \
+    KSY_PROVISION_TEST_MODE=1 \
+    KSY_PROVISION_TEST_DISK_USED_PERCENT=20 \
+    KSY_ROOT="$case_dir/opt/ksy-deals" \
+    KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
+    STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
+    bash "$SCRIPT" "$@" </dev/null > "$output" 2>&1
 }
 
 assert_reuse_rejection_unchanged() {
@@ -802,6 +833,73 @@ test_reuses_existing_secrets_without_prompting() {
   assert_synthetic_secrets_absent "$output"
 }
 
+test_routine_override_changes_only_image_and_order_url() {
+  local case_dir="$TMP_DIR/reuse-order-url-success"
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  write_existing_installation "$case_dir"
+  awk '!/^KSY_DEALS_IMAGE=/ && !/^ORDER_TELEGRAM_URL=/' "$root/.env" > \
+    "$case_dir/env-without-image-or-order.before"
+
+  run_reuse_case "$case_dir" "$output" 0 0 "$REUSE_IMAGE" none 0 "$APPROVED_ORDER_URL" ||
+    fail 'routine order URL override unexpectedly failed'
+
+  awk '!/^KSY_DEALS_IMAGE=/ && !/^ORDER_TELEGRAM_URL=/' "$root/.env" > \
+    "$case_dir/env-without-image-or-order.after"
+  cmp -s "$case_dir/env-without-image-or-order.before" \
+    "$case_dir/env-without-image-or-order.after" ||
+    fail 'routine order URL override changed an unrelated env byte'
+  grep -Fxq "KSY_DEALS_IMAGE=$REUSE_IMAGE" "$root/.env" ||
+    fail 'routine order URL override did not install the requested image'
+  grep -Fxq "ORDER_TELEGRAM_URL=$APPROVED_ORDER_URL" "$root/.env" ||
+    fail 'routine order URL override did not install the approved URL'
+  ! grep -Fq 'Paste the twelve KSY secret assignments' "$output" ||
+    fail 'routine order URL override emitted the hidden bootstrap prompt'
+  ! grep -q '^login ' "$case_dir/docker.calls" ||
+    fail 'routine order URL override replaced existing Docker authentication'
+  assert_synthetic_secrets_absent "$output"
+}
+
+assert_order_override_rejected_before_mutation() {
+  local case_name=$1
+  shift
+  local case_dir="$TMP_DIR/$case_name"
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  local env_before compose_before
+  write_existing_installation "$case_dir"
+  env_before=$(file_sha256 "$root/.env")
+  compose_before=$(file_sha256 "$root/docker-compose.yml")
+
+  if run_reuse_arguments_case "$case_dir" "$output" "$@"; then
+    fail "$case_name accepted an invalid order URL override invocation"
+  fi
+  grep -q '^KSY_PROVISION_FAILED ORDER_TELEGRAM_URL_ARGUMENT_INVALID$' "$output" ||
+    fail "$case_name lost the fail-closed order URL argument error"
+  assert_eq "$env_before" "$(file_sha256 "$root/.env")" \
+    "$case_name changed the previous env"
+  assert_eq "$compose_before" "$(file_sha256 "$root/docker-compose.yml")" \
+    "$case_name changed the previous Compose file"
+  [[ ! -s "$case_dir/docker.calls" ]] || fail "$case_name invoked Docker"
+  assert_synthetic_secrets_absent "$output"
+}
+
+test_rejects_invalid_order_url_override_arguments_before_mutation() {
+  assert_order_override_rejected_before_mutation reuse-order-bootstrap \
+    --image "$REUSE_IMAGE" --order-telegram-url "$APPROVED_ORDER_URL"
+  assert_order_override_rejected_before_mutation reuse-order-missing-value \
+    --reuse-existing-secrets --order-telegram-url
+  assert_order_override_rejected_before_mutation reuse-order-duplicate \
+    --reuse-existing-secrets --order-telegram-url "$APPROVED_ORDER_URL" \
+    --order-telegram-url "$APPROVED_ORDER_URL" --image "$REUSE_IMAGE"
+  assert_order_override_rejected_before_mutation reuse-order-malformed \
+    --reuse-existing-secrets --order-telegram-url http://ksy_deals_store_bot \
+    --image "$REUSE_IMAGE"
+  assert_order_override_rejected_before_mutation reuse-order-alternate \
+    --reuse-existing-secrets --order-telegram-url https://t.me/yar_neo \
+    --image "$REUSE_IMAGE"
+}
+
 test_clears_inherited_runtime_values_before_compose() {
   local case_dir="$TMP_DIR/reuse-inherited-runtime-sanitized"
   local output="$case_dir/reuse.output"
@@ -1046,7 +1144,8 @@ test_reuse_restores_previous_installation_after_failed_readiness() {
   cp "$root/docker-compose.yml" "$case_dir/compose.before"
   previous_image=$(sed -n 's/^KSY_DEALS_IMAGE=//p' "$root/.env")
 
-  if run_reuse_case "$case_dir" "$output" 1; then
+  if run_reuse_case "$case_dir" "$output" 1 0 "$REUSE_IMAGE" none 0 \
+    "$APPROVED_ORDER_URL"; then
     fail 'routine reuse accepted failed readiness'
   fi
   cmp -s "$case_dir/env.before" "$root/.env" ||
@@ -1112,6 +1211,8 @@ test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
 test_reuses_existing_secrets_without_prompting
+test_routine_override_changes_only_image_and_order_url
+test_rejects_invalid_order_url_override_arguments_before_mutation
 test_clears_inherited_runtime_values_before_compose
 test_rejects_unsafe_or_incomplete_existing_installations_without_mutation
 test_rejects_invalid_existing_env_without_mutation
