@@ -61,16 +61,17 @@ elif [[ "$*" == *'KSY_RESTORE_RUNNER_V2'* ]]; then
     exit 7
   fi
   [[ "${KSY_TEST_RESTORE_FAIL:-0}" != 1 ]] || exit 7
-elif [[ "$*" == *'SELECT o.id'* ]]; then
-  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_ID_MISMATCH:-0}" == 1 ]]; then
-    printf 'observation-a\nobservation-c\n'
-  elif [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_ONE_ID:-0}" == 1 ]]; then
-    printf 'observation-a\n'
+elif [[ "$*" == *'KSY_FINGERPRINT_V1'* ]]; then
+  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_FINGERPRINT_MISMATCH:-0}" == 1 ]]; then
+    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-row-changed\n'
+  elif [[ "$*" == *'--dbname ksy_deals '* && "${KSY_TEST_LIVE_CHANGED:-0}" == 1 && -e "$FINGERPRINT_READ" ]]; then
+    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-live-changed\n'
   else
-    printf 'observation-a\nobservation-b\n'
+    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-row-b\n'
   fi
+  [[ "$*" != *'--dbname ksy_deals '* ]] || : > "$FINGERPRINT_READ"
 elif [[ "$*" == *'--command SELECT (SELECT COUNT('* ]]; then
-  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_BAD_RESTORE_COUNTS:-0}" == 1 ]]; then printf '3|2\n'; else printf '2|2\n'; fi
+  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_BAD_RESTORE_COUNTS:-0}" == 1 ]]; then printf '136|161\n'; else printf '136|162\n'; fi
 fi
 STUB
   chmod +x "$case_dir/bin/docker"
@@ -80,7 +81,7 @@ STUB
 run_case() {
   local case_dir=$1 output=$2
   PATH="$case_dir/bin:$PATH" KSY_RESTORE_TEST_MODE=1 KSY_ROOT="$case_dir/opt/ksy-deals" \
-    DOCKER_CALLS="$case_dir/docker.calls" RESTORE_EXISTS="$case_dir/restore.exists" \
+    DOCKER_CALLS="$case_dir/docker.calls" RESTORE_EXISTS="$case_dir/restore.exists" FINGERPRINT_READ="$case_dir/fingerprint.read" \
     bash "$SCRIPT" > "$output" 2>&1
 }
 
@@ -88,15 +89,14 @@ test_restores_verifies_and_drops_without_secret_leaks() {
   local case_dir="$TMP_DIR/success" output="$TMP_DIR/success.out"
   make_case "$case_dir"
   run_case "$case_dir" "$output" || { cat "$output" >&2; fail 'success case failed'; }
-  grep -q 'KSY_RESTORE_ACCEPTED file=ksy-deals-20260816T010000Z.dump.gpg bytes=9 editions=2 observations=2 identities=MATCH drop=PASS' "$output" || {
+  grep -q 'KSY_RESTORE_ACCEPTED file=ksy-deals-20260816T010000Z.dump.gpg bytes=9 editions=136 observations=162 fingerprints=MATCH liveStable=PASS drop=PASS' "$output" || {
     cat "$output" >&2
     fail 'acceptance evidence missing'
   }
   [[ ! -e "$case_dir/restore.exists" ]] || fail 'disposable database remains'
   grep -q 'CREATE DATABASE ksy_deals_restore' "$case_dir/docker.calls" || fail 'restore database not created'
   grep -q 'DROP DATABASE ksy_deals_restore WITH (FORCE)' "$case_dir/docker.calls" || fail 'restore database not dropped'
-  grep -q -- '--dbname ksy_deals --no-psqlrc --tuples-only --no-align --command SELECT o.id' "$case_dir/docker.calls" || fail 'live identities not read'
-  grep -q -- '--dbname ksy_deals_restore --no-psqlrc --tuples-only --no-align --command SELECT o.id' "$case_dir/docker.calls" || fail 'restore identities not read'
+  grep -q 'KSY_FINGERPRINT_V1' "$case_dir/docker.calls" || fail 'fingerprints not read'
   grep -q 'run --rm --no-deps -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM backup /bin/sh -c' "$case_dir/docker.calls" || fail 'image-contained restore missing'
   grep -q 'KSY_RESTORE_RUNNER_V2' "$case_dir/docker.calls" || fail 'spooled restore runner missing'
   ! grep -Fq -- '--decrypt "$BACKUP_FILE" | pg_restore' "$case_dir/docker.calls" || fail 'unsafe streaming restore returned'
@@ -175,7 +175,7 @@ expect_verification_failure_cleans_up() {
   make_case "$case_dir"
   if env "$knob=1" PATH="$case_dir/bin:$PATH" KSY_RESTORE_TEST_MODE=1 \
     KSY_ROOT="$case_dir/opt/ksy-deals" DOCKER_CALLS="$case_dir/docker.calls" \
-    RESTORE_EXISTS="$case_dir/restore.exists" bash "$SCRIPT" > "$output" 2>&1; then
+    RESTORE_EXISTS="$case_dir/restore.exists" FINGERPRINT_READ="$case_dir/fingerprint.read" bash "$SCRIPT" > "$output" 2>&1; then
     fail "$name unexpectedly passed"
   fi
   grep -q "KSY_RESTORE_ACCEPT_FAILED $reason" "$output" || fail "$name returned wrong failure"
@@ -198,8 +198,8 @@ test_redacts_and_classifies_restore_errors
 test_rejects_ambiguous_newest_backup
 test_rejects_public_env
 expect_verification_failure_cleans_up bad-counts KSY_TEST_BAD_RESTORE_COUNTS RESTORE_COUNTS_UNEXPECTED
-expect_verification_failure_cleans_up one-id KSY_TEST_ONE_ID RESTORE_IDENTITIES_COUNT_UNEXPECTED
-expect_verification_failure_cleans_up mismatched-id KSY_TEST_ID_MISMATCH RESTORE_IDENTITIES_MISMATCH
+expect_verification_failure_cleans_up mismatched-fingerprint KSY_TEST_FINGERPRINT_MISMATCH RESTORE_FINGERPRINT_MISMATCH
+expect_verification_failure_cleans_up live-changed KSY_TEST_LIVE_CHANGED LIVE_CHANGED_DURING_RESTORE
 test_rejects_existing_restore_without_dropping_it
 bash -n "$SCRIPT"
 printf 'KSY restore acceptance tests passed\n'

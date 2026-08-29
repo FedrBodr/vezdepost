@@ -138,6 +138,29 @@ backup_name=$(basename "$newest")
 backup_bytes=$(wc -c < "$newest" | tr -d ' ')
 
 compose=(docker compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+read_counts() {
+  local database=$1
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
+    --no-psqlrc --tuples-only --no-align \
+    --command "SELECT (SELECT COUNT(*) FROM game_editions),(SELECT COUNT(*) FROM price_observations)"
+}
+read_fingerprint_rows() {
+  local database=$1
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
+    --no-psqlrc --tuples-only --no-align --command "-- KSY_FINGERPRINT_V1
+SELECT table_name || '|' || row_data
+FROM (
+  SELECT 'game_editions' AS table_name, row_to_json(e)::text AS row_data FROM game_editions e
+  UNION ALL
+  SELECT 'price_observations' AS table_name, row_to_json(o)::text AS row_data FROM price_observations o
+) snapshot
+ORDER BY table_name, row_data"
+}
+
+live_counts_before=$(read_counts ksy_deals) || fail LIVE_EVIDENCE_FAILED
+[[ "$live_counts_before" =~ ^[0-9]+\|[0-9]+$ ]] || fail LIVE_COUNTS_INVALID
+live_fingerprint_before=$(read_fingerprint_rows ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
+
 existing=$("${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname postgres \
   --no-psqlrc --tuples-only --no-align --command "SELECT 1 FROM pg_database WHERE datname='ksy_deals_restore'") || fail RESTORE_DATABASE_PREFLIGHT_FAILED
 [[ -z "$existing" ]] || fail RESTORE_DATABASE_ALREADY_EXISTS
@@ -192,29 +215,19 @@ fi
 : > "$restore_diagnostic"
 unset RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM POSTGRES_PASSWORD BACKUP_ENCRYPTION_PASSPHRASE
 
-read_ids() {
-  local database=$1
-  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
-    --no-psqlrc --tuples-only --no-align \
-    --command "SELECT o.id FROM price_observations o JOIN game_editions e ON e.id=o.edition_id WHERE o.source_status='CONFIRMED' ORDER BY o.id"
-}
-read_counts() {
-  local database=$1
-  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
-    --no-psqlrc --tuples-only --no-align \
-    --command "SELECT (SELECT COUNT(*) FROM game_editions),(SELECT COUNT(*) FROM price_observations)"
-}
-live_counts=$(read_counts ksy_deals) || fail LIVE_EVIDENCE_FAILED
 restore_counts=$(read_counts ksy_deals_restore) || fail RESTORE_EVIDENCE_FAILED
-[[ "$live_counts" == '2|2' && "$restore_counts" == '2|2' ]] || fail RESTORE_COUNTS_UNEXPECTED
-live_ids=$(read_ids ksy_deals) || fail LIVE_IDENTITIES_FAILED
-restore_ids=$(read_ids ksy_deals_restore) || fail RESTORE_IDENTITIES_FAILED
-[[ "$(printf '%s\n' "$live_ids" | sed '/^$/d' | wc -l | tr -d ' ')" == 2 &&
-  "$(printf '%s\n' "$restore_ids" | sed '/^$/d' | wc -l | tr -d ' ')" == 2 ]] || fail RESTORE_IDENTITIES_COUNT_UNEXPECTED
-live_fingerprint=$(printf '%s' "$live_ids" | fingerprint)
-restore_fingerprint=$(printf '%s' "$restore_ids" | fingerprint)
-[[ "$live_fingerprint" == "$restore_fingerprint" ]] || fail RESTORE_IDENTITIES_MISMATCH
+[[ "$restore_counts" =~ ^[0-9]+\|[0-9]+$ && "$restore_counts" == "$live_counts_before" ]] ||
+  fail RESTORE_COUNTS_UNEXPECTED
+restore_fingerprint=$(read_fingerprint_rows ksy_deals_restore | fingerprint) ||
+  fail RESTORE_FINGERPRINT_FAILED
+[[ "$restore_fingerprint" == "$live_fingerprint_before" ]] || fail RESTORE_FINGERPRINT_MISMATCH
+live_counts_after=$(read_counts ksy_deals) || fail LIVE_EVIDENCE_FAILED
+live_fingerprint_after=$(read_fingerprint_rows ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
+[[ "$live_counts_after" == "$live_counts_before" && "$live_fingerprint_after" == "$live_fingerprint_before" ]] ||
+  fail LIVE_CHANGED_DURING_RESTORE
+editions=${live_counts_before%%|*}
+observations=${live_counts_before##*|}
 
 cleanup_restore || fail CLEANUP_FAILED
-printf 'KSY_RESTORE_ACCEPTED file=%s bytes=%s editions=2 observations=2 identities=MATCH drop=PASS\n' \
-  "$backup_name" "$backup_bytes"
+printf 'KSY_RESTORE_ACCEPTED file=%s bytes=%s editions=%s observations=%s fingerprints=MATCH liveStable=PASS drop=PASS\n' \
+  "$backup_name" "$backup_bytes" "$editions" "$observations"
