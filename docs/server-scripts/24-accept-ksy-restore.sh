@@ -8,96 +8,61 @@ ENV_FILE="$KSY_ROOT/.env"
 COMPOSE_FILE="$KSY_ROOT/docker-compose.yml"
 TEST_MODE=${KSY_RESTORE_TEST_MODE:-0}
 restore_created=0
-restore_diagnostic=''
+failure=RESTORE_TOOL_FAILED
+WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ksy-restore-accept.XXXXXX")
+chmod 700 "$WORK_DIR"
+restore_diagnostic="$WORK_DIR/restore.stderr"
+: > "$restore_diagnostic"
+chmod 600 "$restore_diagnostic"
 
-fail() { printf 'KSY_RESTORE_ACCEPT_FAILED %s\n' "$1" >&2; exit 1; }
+fail() { failure=$1; exit 1; }
 file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 mtime() { stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1"; }
 fingerprint() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print $1}'
   else LC_ALL=C shasum -a 256 | awk '{print $1}'; fi
 }
-classify_restore_error() {
-  local diagnostic=$1 signals=''
-  if grep -Eiq 'gpg: (decryption failed|public key decryption failed)|Bad session key|No secret key' "$diagnostic"; then
-    printf 'RESTORE_DECRYPTION_FAILED\n'
-  elif grep -Eiq 'pg_restore: .*valid archive|pg_restore: .*unsupported version|pg_restore: .*end of file' "$diagnostic"; then
-    printf 'RESTORE_ARCHIVE_INVALID\n'
-  elif grep -Eiq '(pg_restore|psql): .*connection to server.*failed|could not translate host name' "$diagnostic"; then
-    printf 'RESTORE_DATABASE_CONNECTION_FAILED\n'
-  elif grep -Eiq 'pg_restore: .*could not execute query|pg_restore: error: COPY failed|pg_restore: error: could not' "$diagnostic"; then
-    printf 'RESTORE_DATABASE_APPLY_FAILED\n'
-  elif grep -Fqi 'BACKUP_FILE is not a regular file' "$diagnostic"; then
-    printf 'RESTORE_BACKUP_MOUNT_FAILED\n'
-  elif grep -Fqi 'restore database must end with _restore' "$diagnostic"; then
-    printf 'RESTORE_TARGET_SAFETY_FAILED\n'
-  elif grep -Eiq 'restore\.sh: (not found|Permission denied)|pg_restore: not found|gpg: not found' "$diagnostic"; then
-    printf 'RESTORE_TOOLING_FAILED\n'
-  elif grep -Eiq 'set: .*illegal option.*pipefail|set: illegal option -o pipefail' "$diagnostic"; then
-    printf 'RESTORE_SHELL_INCOMPATIBLE\n'
-  elif grep -Eiq 'no such service|unknown (flag|shorthand flag)|requires .* argument|invalid compose project' "$diagnostic"; then
-    printf 'RESTORE_COMPOSE_INVOCATION_FAILED\n'
-  elif grep -Eiq 'permission denied|operation not permitted' "$diagnostic"; then
-    printf 'RESTORE_BACKUP_ACCESS_FAILED\n'
-  elif grep -Eiq 'no space left on device' "$diagnostic"; then
-    printf 'RESTORE_HOST_STORAGE_FAILED\n'
-  elif grep -Eiq 'network .* not found|connection refused' "$diagnostic"; then
-    printf 'RESTORE_NETWORK_FAILED\n'
-  elif grep -Eiq 'pg_restore:' "$diagnostic"; then
-    printf 'RESTORE_DATABASE_APPLY_FAILED\n'
-  elif grep -Eiq 'gpg: .*write error: Broken pipe|gpg: .*filter_flush.*Broken pipe' "$diagnostic"; then
-    printf 'RESTORE_DECRYPTION_PIPE_BROKEN\n'
-  elif grep -Eiq 'gpg: .*cannot open.*/dev/tty|gpg: .*Inappropriate ioctl for device' "$diagnostic"; then
-    printf 'RESTORE_DECRYPTION_NONINTERACTIVE_FAILED\n'
-  elif grep -Eiq 'gpg: .*no valid OpenPGP data|gpg: .*invalid packet|gpg: .*premature eof' "$diagnostic"; then
-    printf 'RESTORE_ENCRYPTED_BACKUP_FORMAT_INVALID\n'
-  elif grep -Eiq 'gpg: .*problem with the agent|gpg: .*can.t connect to the agent|gpg: .*failed to create temporary file' "$diagnostic"; then
-    printf 'RESTORE_DECRYPTION_RUNTIME_FAILED\n'
-  elif grep -Eiq 'gpg: .*handle plaintext failed' "$diagnostic"; then
-    printf 'RESTORE_DECRYPTION_OUTPUT_FAILED\n'
-  elif grep -Eiq 'gpg: .*key derivation failed' "$diagnostic"; then
-    printf 'RESTORE_DECRYPTION_KDF_FAILED\n'
-  elif grep -Eiq 'gpg: .*message was not integrity protected|gpg: .*BADMDC|gpg: .*invalid MDC' "$diagnostic"; then
-    printf 'RESTORE_ENCRYPTED_BACKUP_INTEGRITY_FAILED\n'
-  elif grep -Eiq 'gpg: .*can.t open.*(No such file|not found)' "$diagnostic"; then
-    printf 'RESTORE_BACKUP_MOUNT_FAILED\n'
-  elif grep -Eiq '^gpg:' "$diagnostic"; then
-    grep -Eiq 'encrypted data' "$diagnostic" && signals=encrypted_data
-    grep -Eiq 'encrypted with .*passphrase' "$diagnostic" && signals="${signals:+$signals,}passphrase"
-    grep -Eiq 'warning' "$diagnostic" && signals="${signals:+$signals,}warning"
-    grep -Eiq 'error' "$diagnostic" && signals="${signals:+$signals,}error"
-    grep -Eiq 'failed' "$diagnostic" && signals="${signals:+$signals,}failed"
-    grep -Eiq 'invalid' "$diagnostic" && signals="${signals:+$signals,}invalid"
-    grep -Eiq 'option|usage' "$diagnostic" && signals="${signals:+$signals,}invocation"
-    [[ -n "$signals" ]] || signals=none
-    printf 'RESTORE_DECRYPTION_TOOL_FAILED signals=%s\n' "$signals"
-  elif grep -Eiq '^/bin/sh:|restore\.sh:' "$diagnostic"; then
-    printf 'RESTORE_TOOLING_FAILED\n'
-  else
-    printf 'RESTORE_FAILED_UNKNOWN\n'
-  fi
+
+restore_class_for_status() {
+  case "$1" in
+    41) printf '%s\n' DECRYPTION_FAILED ;;
+    42) printf '%s\n' ARCHIVE_TOC_FAILED ;;
+    43) printf '%s\n' DATABASE_CONNECTION_FAILED ;;
+    44) printf '%s\n' PG_RESTORE_FAILED ;;
+    *) printf '%s\n' RESTORE_TOOL_FAILED ;;
+  esac
 }
 
 cleanup_restore() {
   [[ "$restore_created" == 1 ]] || return 0
   "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname postgres \
-    --no-psqlrc --set ON_ERROR_STOP=1 --command 'DROP DATABASE ksy_deals_restore WITH (FORCE)' >/dev/null || return 1
+    --no-psqlrc --set ON_ERROR_STOP=1 \
+    --command 'DROP DATABASE ksy_deals_restore WITH (FORCE)' >/dev/null 2>"$WORK_DIR/cleanup.stderr" ||
+    return 1
   restore_created=0
 }
+
 on_exit() {
-  local status=$?
-  trap - EXIT
-  if ! cleanup_restore; then
-    printf 'KSY_RESTORE_ACCEPT_FAILED CLEANUP_FAILED\n' >&2
+  local status=$? cleanup_failed=0
+  trap - EXIT HUP INT TERM
+  cleanup_restore || cleanup_failed=1
+  rm -rf "$WORK_DIR"
+  if [[ "$cleanup_failed" == 1 ]]; then
+    failure=CLEANUP_FAILED
     status=1
   fi
-  [[ -z "$restore_diagnostic" ]] || rm -f "$restore_diagnostic"
+  if [[ "$status" != 0 ]]; then
+    printf 'KSY_RESTORE_ACCEPT_FAILED %s\n' "$failure" >&2
+  fi
   exit "$status"
 }
 trap on_exit EXIT
+trap 'failure=RESTORE_TOOL_FAILED; exit 1' HUP INT TERM
 
+[[ $# -eq 0 ]] || fail ARGUMENTS_INVALID
 [[ "$TEST_MODE" == 1 || $EUID -eq 0 ]] || fail ROOT_REQUIRED
-[[ -f "$ENV_FILE" && -f "$COMPOSE_FILE" ]] || fail KSY_INSTALLATION_MISSING
+[[ -f "$ENV_FILE" && ! -L "$ENV_FILE" && -f "$COMPOSE_FILE" && ! -L "$COMPOSE_FILE" ]] ||
+  fail KSY_INSTALLATION_MISSING
 [[ "$(file_mode "$ENV_FILE")" == 600 ]] || fail KSY_ENV_MODE_INVALID
 if [[ "$TEST_MODE" != 1 ]]; then
   [[ "$(stat -c '%U:%G' "$ENV_FILE")" == root:root ]] || fail KSY_ENV_OWNER_INVALID
@@ -109,11 +74,27 @@ unset POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL \
   PLATPRICES_API_KEY PLATPRICES_PROXY_URL
 # shellcheck disable=SC1090
 . "$ENV_FILE"
-[[ "${POSTGRES_DB:-}" == ksy_deals && "${POSTGRES_USER:-}" == ksy_deals ]] || fail POSTGRES_IDENTITY_INVALID
+[[ "${POSTGRES_DB:-}" == ksy_deals && "${POSTGRES_USER:-}" == ksy_deals ]] ||
+  fail POSTGRES_IDENTITY_INVALID
 [[ "${POSTGRES_PASSWORD:-}" =~ ^[a-f0-9]{64}$ ]] || fail POSTGRES_PASSWORD_INVALID
 [[ "${BACKUP_ENCRYPTION_PASSPHRASE:-}" =~ ^[a-f0-9]{64}$ ]] || fail BACKUP_PASSPHRASE_INVALID
 [[ "${KSY_DEALS_BACKUP_DIR:-}" == /* && -d "$KSY_DEALS_BACKUP_DIR" ]] || fail BACKUP_DIR_INVALID
-[[ "${KSY_DEALS_IMAGE:-}" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] || fail KSY_DEALS_IMAGE_INVALID
+
+compose_project=ksy-deals
+if [[ "$TEST_MODE" == 1 ]]; then
+  [[ "${KSY_RESTORE_COMPOSE_PROJECT:-ksy-deals}" =~ ^[a-z0-9][a-z0-9_-]{0,62}$ ]] ||
+    fail TEST_COMPOSE_PROJECT_INVALID
+  compose_project=${KSY_RESTORE_COMPOSE_PROJECT:-ksy-deals}
+  if [[ -n "${KSY_RESTORE_TEST_IMAGE:-}" ]]; then
+    [[ "$KSY_DEALS_IMAGE" == "$KSY_RESTORE_TEST_IMAGE" ]] || fail TEST_IMAGE_MISMATCH
+  else
+    [[ "$KSY_DEALS_IMAGE" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] ||
+      fail KSY_DEALS_IMAGE_INVALID
+  fi
+else
+  [[ "$KSY_DEALS_IMAGE" =~ ^ghcr\.io/fedrbodr/ksy-deals@sha256:[a-f0-9]{64}$ ]] ||
+    fail KSY_DEALS_IMAGE_INVALID
+fi
 
 shopt -s nullglob
 candidates=("$KSY_DEALS_BACKUP_DIR"/ksy-deals-*.dump.gpg)
@@ -124,14 +105,15 @@ newest_mtime=-1
 newest_ties=0
 for candidate in "${candidates[@]}"; do
   [[ -f "$candidate" && ! -L "$candidate" && -s "$candidate" ]] || fail BACKUP_INVALID
-  basename "$candidate" | grep -Eq '^ksy-deals-[0-9]{8}T[0-9]{6}Z\.dump\.gpg$' || fail BACKUP_NAME_INVALID
+  basename "$candidate" | grep -Eq '^ksy-deals-[0-9]{8}T[0-9]{6}Z\.dump\.gpg$' ||
+    fail BACKUP_NAME_INVALID
   candidate_mtime=$(mtime "$candidate")
   [[ "$candidate_mtime" =~ ^[0-9]+$ ]] || fail BACKUP_MTIME_INVALID
-  if (( candidate_mtime > newest_mtime )); then
+  if ((candidate_mtime > newest_mtime)); then
     newest=$candidate
     newest_mtime=$candidate_mtime
     newest_ties=1
-  elif (( candidate_mtime == newest_mtime )); then
+  elif ((candidate_mtime == newest_mtime)); then
     newest_ties=$((newest_ties + 1))
   fi
 done
@@ -139,38 +121,83 @@ done
 backup_name=$(basename "$newest")
 backup_bytes=$(wc -c < "$newest" | tr -d ' ')
 
-compose=(docker --host unix:///var/run/docker.sock compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+compose=(docker --host unix:///var/run/docker.sock compose --project-name "$compose_project" \
+  --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+
 read_counts() {
   local database=$1
   "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
     --no-psqlrc --tuples-only --no-align \
     --command "SELECT (SELECT COUNT(*) FROM game_editions),(SELECT COUNT(*) FROM price_observations)"
 }
-read_edition_ids() {
+
+read_game_editions() {
   local database=$1
   "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
-    --no-psqlrc --tuples-only --no-align \
-    --command "-- KSY_EDITION_FINGERPRINT_V1
-SELECT id FROM game_editions ORDER BY id"
-}
-read_observation_ids() {
-  local database=$1
-  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
-    --no-psqlrc --tuples-only --no-align \
-    --command "-- KSY_OBSERVATION_FINGERPRINT_V1
-SELECT id FROM price_observations ORDER BY id"
+    --no-psqlrc --tuples-only --no-align --command "-- KSY_FULL_GAME_EDITIONS_V1
+SELECT encode(convert_to(row_to_json(row_data)::text,'UTF8'),'hex')
+FROM (SELECT * FROM game_editions ORDER BY id) AS row_data"
 }
 
-live_counts_before=$(read_counts ksy_deals) || fail LIVE_EVIDENCE_FAILED
-[[ "$live_counts_before" =~ ^[0-9]+\|[0-9]+$ ]] || fail LIVE_COUNTS_INVALID
-live_edition_fingerprint_before=$(read_edition_ids ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
-live_observation_fingerprint_before=$(read_observation_ids ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
+read_price_observations() {
+  local database=$1
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
+    --no-psqlrc --tuples-only --no-align --command "-- KSY_FULL_PRICE_OBSERVATIONS_V1
+SELECT encode(convert_to(row_to_json(row_data)::text,'UTF8'),'hex')
+FROM (SELECT * FROM price_observations ORDER BY id) AS row_data"
+}
+
+read_migrations() {
+  local database=$1
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
+    --no-psqlrc --tuples-only --no-align --command "-- KSY_SCHEMA_MIGRATIONS_V1
+SELECT encode(convert_to(name,'UTF8'),'hex') FROM schema_migrations ORDER BY name"
+}
+
+read_post_format_count() {
+  local database=$1
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
+    --no-psqlrc --tuples-only --no-align --command "-- KSY_DEAL_POST_FORMAT_COUNT_V1
+SELECT CASE WHEN COUNT(*)=1 AND bool_and(singleton AND format IN ('ONE_LINE','TWO_LINES','THREE_LINES')) THEN 1 ELSE 0 END
+FROM deal_post_format_settings"
+}
+
+read_post_format() {
+  local database=$1
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
+    --no-psqlrc --tuples-only --no-align --command "-- KSY_DEAL_POST_FORMAT_V1
+SELECT encode(convert_to(row_to_json(row_data)::text,'UTF8'),'hex')
+FROM (SELECT * FROM deal_post_format_settings ORDER BY singleton) AS row_data"
+}
+
+read_snapshot() {
+  local database=$1 target=$2 counts editions observations migrations post_format format_rows
+  counts=$(read_counts "$database") || return 1
+  [[ "$counts" =~ ^[0-9]+\|[0-9]+$ ]] || return 1
+  editions=$(read_game_editions "$database" | fingerprint) || return 1
+  observations=$(read_price_observations "$database" | fingerprint) || return 1
+  migrations=$(read_migrations "$database" | fingerprint) || return 1
+  post_format=$(read_post_format "$database" | fingerprint) || return 1
+  format_rows=$(read_post_format_count "$database") || return 1
+  [[ "$format_rows" == 1 ]] || return 1
+  printf 'edition_count=%s\nobservation_count=%s\nedition_sha256=%s\nobservation_sha256=%s\nmigrations_sha256=%s\npost_format_sha256=%s\npost_format_rows=1\n' \
+    "${counts%%|*}" "${counts##*|}" "$editions" "$observations" "$migrations" "$post_format" > "$target"
+  chmod 600 "$target"
+}
+
+live_before="$WORK_DIR/live-before.snapshot"
+restore_snapshot="$WORK_DIR/restore.snapshot"
+live_after="$WORK_DIR/live-after.snapshot"
+read_snapshot ksy_deals "$live_before" || fail LIVE_EVIDENCE_FAILED
 
 existing=$("${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname postgres \
-  --no-psqlrc --tuples-only --no-align --command "SELECT 1 FROM pg_database WHERE datname='ksy_deals_restore'") || fail RESTORE_DATABASE_PREFLIGHT_FAILED
+  --no-psqlrc --tuples-only --no-align \
+  --command "SELECT 1 FROM pg_database WHERE datname='ksy_deals_restore'") ||
+  fail RESTORE_DATABASE_PREFLIGHT_FAILED
 [[ -z "$existing" ]] || fail RESTORE_DATABASE_ALREADY_EXISTS
 "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname postgres \
-  --no-psqlrc --set ON_ERROR_STOP=1 --command 'CREATE DATABASE ksy_deals_restore' >/dev/null || fail RESTORE_DATABASE_CREATE_FAILED
+  --no-psqlrc --set ON_ERROR_STOP=1 --command 'CREATE DATABASE ksy_deals_restore' \
+  >/dev/null 2>"$WORK_DIR/create.stderr" || fail RESTORE_DATABASE_CREATE_FAILED
 restore_created=1
 
 RESTORE_DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/ksy_deals_restore"
@@ -179,34 +206,29 @@ RESTORE_CONFIRM=RESTORE_KSY_DEALS_DISPOSABLE
 export RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM
 restore_runner=''
 IFS= read -r -d '' restore_runner <<'RUNNER' || true
-# KSY_RESTORE_RUNNER_V2
+# KSY_RESTORE_RUNNER_V3
 set -eu
 umask 077
 : "${RESTORE_DATABASE_URL:?}"
 : "${BACKUP_ENCRYPTION_PASSPHRASE:?}"
 : "${BACKUP_FILE:?}"
 : "${RESTORE_CONFIRM:?}"
-[ "$RESTORE_CONFIRM" = RESTORE_KSY_DEALS_DISPOSABLE ] || exit 31
-case "$BACKUP_FILE" in /backups/ksy-deals-*.dump.gpg) ;; *) exit 32 ;; esac
-[ -f "$BACKUP_FILE" ] || exit 33
-database_name=$(psql "$RESTORE_DATABASE_URL" --no-psqlrc --tuples-only --no-align --command 'SELECT current_database()')
-case "$database_name" in *_restore) ;; *) exit 34 ;; esac
+[ "$RESTORE_CONFIRM" = RESTORE_KSY_DEALS_DISPOSABLE ] || exit 43
+case "$BACKUP_FILE" in /backups/ksy-deals-*.dump.gpg) ;; *) exit 43 ;; esac
+[ -f "$BACKUP_FILE" ] || exit 43
 archive=$(mktemp /tmp/ksy-restore-archive.XXXXXX)
 trap 'rm -f "$archive"' EXIT HUP INT TERM
-if ! printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE" | \
+if ! printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE" |
   gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
-    --output "$archive" --decrypt "$BACKUP_FILE"; then
-  printf 'KSY_RESTORE_PHASE_DECRYPT\n' >&2
-  exit 41
-fi
+    --output "$archive" --decrypt "$BACKUP_FILE"; then exit 41; fi
+if ! pg_restore --list "$archive" >/dev/null; then exit 42; fi
+database_name=$(psql "$RESTORE_DATABASE_URL" --no-psqlrc --tuples-only \
+  --no-align --command 'SELECT current_database()') || exit 43
+[ "$database_name" = ksy_deals_restore ] || exit 43
 if ! pg_restore --clean --if-exists --exit-on-error --no-owner --no-privileges \
-  --dbname "$RESTORE_DATABASE_URL" "$archive"; then
-  printf 'KSY_RESTORE_PHASE_APPLY\n' >&2
-  exit 42
-fi
+  --dbname "$RESTORE_DATABASE_URL" "$archive"; then exit 44; fi
 RUNNER
-restore_diagnostic=$(mktemp "${TMPDIR:-/tmp}/ksy-restore-diagnostic.XXXXXX") ||
-  fail RESTORE_DIAGNOSTIC_CREATE_FAILED
+
 set +e
 "${compose[@]}" --profile maintenance run --rm --no-deps \
   -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM \
@@ -214,33 +236,20 @@ set +e
 restore_status=$?
 set -e
 if [[ "$restore_status" != 0 ]]; then
-  restore_failure=$(classify_restore_error "$restore_diagnostic")
+  failure=$(restore_class_for_status "$restore_status")
   : > "$restore_diagnostic"
-  fail "$restore_failure exit_code=$restore_status"
+  exit 1
 fi
 : > "$restore_diagnostic"
 unset RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM POSTGRES_PASSWORD BACKUP_ENCRYPTION_PASSPHRASE
 
-restore_counts=$(read_counts ksy_deals_restore) || fail RESTORE_EVIDENCE_FAILED
-[[ "$restore_counts" =~ ^[0-9]+\|[0-9]+$ && "$restore_counts" == "$live_counts_before" ]] ||
-  fail RESTORE_COUNTS_UNEXPECTED
-restore_edition_fingerprint=$(read_edition_ids ksy_deals_restore | fingerprint) ||
-  fail RESTORE_FINGERPRINT_FAILED
-restore_observation_fingerprint=$(read_observation_ids ksy_deals_restore | fingerprint) ||
-  fail RESTORE_FINGERPRINT_FAILED
-[[ "$restore_edition_fingerprint" == "$live_edition_fingerprint_before" &&
-  "$restore_observation_fingerprint" == "$live_observation_fingerprint_before" ]] ||
-  fail RESTORE_FINGERPRINT_MISMATCH
-live_counts_after=$(read_counts ksy_deals) || fail LIVE_EVIDENCE_FAILED
-live_edition_fingerprint_after=$(read_edition_ids ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
-live_observation_fingerprint_after=$(read_observation_ids ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
-[[ "$live_counts_after" == "$live_counts_before" &&
-  "$live_edition_fingerprint_after" == "$live_edition_fingerprint_before" &&
-  "$live_observation_fingerprint_after" == "$live_observation_fingerprint_before" ]] ||
-  fail LIVE_CHANGED_DURING_RESTORE
-editions=${live_counts_before%%|*}
-observations=${live_counts_before##*|}
+read_snapshot ksy_deals_restore "$restore_snapshot" || fail VERIFICATION_FAILED
+cmp -s "$live_before" "$restore_snapshot" || fail VERIFICATION_FAILED
+read_snapshot ksy_deals "$live_after" || fail LIVE_EVIDENCE_FAILED
+cmp -s "$live_before" "$live_after" || fail LIVE_CHANGED_DURING_RESTORE
+editions=$(sed -n 's/^edition_count=//p' "$live_before")
+observations=$(sed -n 's/^observation_count=//p' "$live_before")
 
 cleanup_restore || fail CLEANUP_FAILED
-printf 'KSY_RESTORE_ACCEPTED file=%s bytes=%s editions=%s observations=%s fingerprints=MATCH liveStable=PASS drop=PASS\n' \
+printf 'KSY_RESTORE_ACCEPTED file=%s bytes=%s editions=%s observations=%s fingerprints=MATCH migrations=MATCH postFormat=MATCH liveStable=PASS drop=PASS\n' \
   "$backup_name" "$backup_bytes" "$editions" "$observations"

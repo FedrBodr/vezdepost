@@ -32,164 +32,127 @@ if [[ "$*" == *'CREATE DATABASE ksy_deals_restore'* ]]; then
   [[ ! -e "$RESTORE_EXISTS" ]] || exit 3
   : > "$RESTORE_EXISTS"
 elif [[ "$*" == *'DROP DATABASE ksy_deals_restore WITH (FORCE)'* ]]; then
+  if [[ "${KSY_TEST_CLEANUP_FAIL:-0}" == 1 ]]; then exit 91; fi
   rm -f "$RESTORE_EXISTS"
-elif [[ "$*" == *'SELECT 1 FROM pg_database'* ]]; then
+elif [[ "$*" == *"SELECT 1 FROM pg_database WHERE datname='ksy_deals_restore'"* ]]; then
   [[ -e "$RESTORE_EXISTS" ]] && printf '1\n' || true
-elif [[ "$*" == *'KSY_RESTORE_RUNNER_V2'* ]]; then
+elif [[ "$*" == *'KSY_RESTORE_RUNNER_V3'* ]]; then
   [[ "${RESTORE_DATABASE_URL:-}" == postgresql://ksy_deals:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@db:5432/ksy_deals_restore ]] || exit 4
   [[ "${BACKUP_FILE:-}" == /backups/ksy-deals-20260816T010000Z.dump.gpg ]] || exit 5
   [[ "${RESTORE_CONFIRM:-}" == RESTORE_KSY_DEALS_DISPOSABLE ]] || exit 6
-  if [[ -n "${KSY_TEST_RESTORE_ERROR:-}" ]]; then
-    case "$KSY_TEST_RESTORE_ERROR" in
-      decrypt) printf 'gpg: decryption failed: Bad session key\n' >&2 ;;
-      archive) printf 'pg_restore: error: input file does not appear to be a valid archive\n' >&2 ;;
-      connect) printf 'pg_restore: error: connection to server at db failed\n' >&2 ;;
-      apply) printf 'pg_restore: error: could not execute query: ERROR: synthetic failure\n' >&2 ;;
-      mount) printf 'BACKUP_FILE is not a regular file\n' >&2 ;;
-      target) printf 'restore database must end with _restore\n' >&2 ;;
-      tooling) printf '/bin/sh: infra/scripts/restore.sh: not found\n' >&2 ;;
-      shell) printf 'infra/scripts/restore.sh: set: line 3: illegal option -o pipefail\n' >&2 ;;
-      pg-generic) printf 'gpg: AES256.CFB encrypted data\npg_restore: error: synthetic pg failure\n' >&2 ;;
-      pg-interleaved) printf 'gpg: AES256.CFB encrypted datapg_restore: error: synthetic pg failure\n' >&2 ;;
-      gpg-pipe) printf 'gpg: [stdout]: write error: Broken pipe\n' >&2 ;;
-      gpg-tty) printf 'gpg: cannot open /dev/tty: No such device or address\n' >&2 ;;
-      gpg-format) printf 'gpg: no valid OpenPGP data found\n' >&2 ;;
-      gpg-runtime) printf 'gpg: problem with the agent: General error\n' >&2 ;;
-      gpg-output) printf 'gpg: handle plaintext failed: General error\n' >&2 ;;
-      gpg-kdf) printf 'gpg: key derivation failed: Invalid value\n' >&2 ;;
-      gpg-integrity) printf 'gpg: WARNING: message was not integrity protected\n' >&2 ;;
-      gpg-generic) printf 'gpg: AES256.CFB encrypted data\ngpg: synthetic category\n' >&2 ;;
-      unknown) printf 'synthetic unclassified failure\n' >&2 ;;
-    esac
-    exit 7
+  if [[ -n "${KSY_TEST_STAGE_STATUS:-}" ]]; then
+    printf 'raw-secret=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb postgresql://user:password@db/private diagnostic\n' >&2
+    exit "$KSY_TEST_STAGE_STATUS"
   fi
-  [[ "${KSY_TEST_RESTORE_FAIL:-0}" != 1 ]] || exit 7
-elif [[ "$*" == *'KSY_EDITION_FINGERPRINT_V1'* ]]; then
-  printf 'edition-identity-a\nedition-identity-b\n'
-elif [[ "$*" == *'KSY_OBSERVATION_FINGERPRINT_V1'* ]]; then
-  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_FINGERPRINT_MISMATCH:-0}" == 1 ]]; then
-    printf 'observation-identity-a\nobservation-identity-changed\n'
-  elif [[ "$*" == *'--dbname ksy_deals '* && "${KSY_TEST_LIVE_CHANGED:-0}" == 1 && -e "$FINGERPRINT_READ" ]]; then
-    printf 'observation-identity-a\nobservation-live-changed\n'
+elif [[ "$*" == *'KSY_FULL_GAME_EDITIONS_V1'* ]]; then
+  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_ROW_MISMATCH:-0}" == 1 ]]; then
+    printf '67616d652d726f772d6368616e676564\n'
   else
-    printf 'observation-identity-a\nobservation-identity-b\n'
+    printf '67616d652d726f772d636f6d706c657465\n'
   fi
-  [[ "$*" != *'--dbname ksy_deals '* ]] || : > "$FINGERPRINT_READ"
+elif [[ "$*" == *'KSY_FULL_PRICE_OBSERVATIONS_V1'* ]]; then
+  if [[ "$*" == *'--dbname ksy_deals '* ]]; then
+    reads=$(wc -l < "$LIVE_OBSERVATION_READS" | tr -d ' ')
+    printf 'x\n' >> "$LIVE_OBSERVATION_READS"
+    if [[ "${KSY_TEST_LIVE_CHANGED:-0}" == 1 && "$reads" -ge 1 ]]; then
+      printf '6c6976652d6f62736572766174696f6e2d6368616e676564\n'
+    else
+      printf '6f62736572766174696f6e2d726f772d636f6d706c657465\n'
+    fi
+  elif [[ "${KSY_TEST_ROW_MISMATCH:-0}" == 1 ]]; then
+    printf '726573746f72652d6f62736572766174696f6e2d6368616e676564\n'
+  else
+    printf '6f62736572766174696f6e2d726f772d636f6d706c657465\n'
+  fi
+elif [[ "$*" == *'KSY_SCHEMA_MIGRATIONS_V1'* ]]; then
+  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_MIGRATION_MISMATCH:-0}" == 1 ]]; then
+    printf '303030315f763031\n303030325f756e6578706563746564\n'
+  else
+    printf '303030315f763031\n303030325f6f62736572766174696f6e5f70706964\n'
+  fi
+elif [[ "$*" == *'KSY_DEAL_POST_FORMAT_COUNT_V1'* ]]; then
+  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_FORMAT_ROWS_BAD:-0}" == 1 ]]; then printf '2\n'; else printf '1\n'; fi
+elif [[ "$*" == *'KSY_DEAL_POST_FORMAT_V1'* ]]; then
+  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_FORMAT_MISMATCH:-0}" == 1 ]]; then
+    printf '666f726d61742d4f4e455f4c494e45\n'
+  else
+    printf '666f726d61742d54485245455f4c494e4553\n'
+  fi
 elif [[ "$*" == *'--command SELECT (SELECT COUNT('* ]]; then
-  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_BAD_RESTORE_COUNTS:-0}" == 1 ]]; then printf '136|161\n'; else printf '136|162\n'; fi
+  if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_COUNT_MISMATCH:-0}" == 1 ]]; then printf '136|161\n'; else printf '136|162\n'; fi
 fi
 STUB
   chmod +x "$case_dir/bin/docker"
   : > "$case_dir/docker.calls"
+  : > "$case_dir/live-observation.reads"
 }
 
 run_case() {
   local case_dir=$1 output=$2
-  PATH="$case_dir/bin:$PATH" KSY_RESTORE_TEST_MODE=1 KSY_ROOT="$case_dir/opt/ksy-deals" \
-    DOCKER_CALLS="$case_dir/docker.calls" RESTORE_EXISTS="$case_dir/restore.exists" FINGERPRINT_READ="$case_dir/fingerprint.read" \
+  PATH="$case_dir/bin:$PATH" TMPDIR="$case_dir" KSY_RESTORE_TEST_MODE=1 \
+    KSY_ROOT="$case_dir/opt/ksy-deals" DOCKER_CALLS="$case_dir/docker.calls" \
+    RESTORE_EXISTS="$case_dir/restore.exists" \
+    LIVE_OBSERVATION_READS="$case_dir/live-observation.reads" \
     bash "$SCRIPT" > "$output" 2>&1
 }
 
-test_restores_verifies_and_drops_without_secret_leaks() {
+assert_no_sensitive_output() {
+  local output=$1
+  ! grep -Eiq 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|postgres(ql)?://|raw-secret|private diagnostic|DATABASE_URL|BACKUP_ENCRYPTION_PASSPHRASE' "$output" ||
+    fail 'sensitive restore evidence leaked'
+}
+
+test_restores_complete_snapshot_and_drops_owned_database() {
   local case_dir="$TMP_DIR/success" output="$TMP_DIR/success.out"
   make_case "$case_dir"
   run_case "$case_dir" "$output" || { cat "$output" >&2; fail 'success case failed'; }
-  grep -q 'KSY_RESTORE_ACCEPTED file=ksy-deals-20260816T010000Z.dump.gpg bytes=9 editions=136 observations=162 fingerprints=MATCH liveStable=PASS drop=PASS' "$output" || {
-    cat "$output" >&2
-    fail 'acceptance evidence missing'
-  }
+  grep -q '^KSY_RESTORE_ACCEPTED file=ksy-deals-20260816T010000Z.dump.gpg bytes=9 editions=136 observations=162 fingerprints=MATCH migrations=MATCH postFormat=MATCH liveStable=PASS drop=PASS$' "$output" ||
+    fail 'complete acceptance evidence missing'
   [[ ! -e "$case_dir/restore.exists" ]] || fail 'disposable database remains'
   grep -q 'CREATE DATABASE ksy_deals_restore' "$case_dir/docker.calls" || fail 'restore database not created'
-  grep -q 'DROP DATABASE ksy_deals_restore WITH (FORCE)' "$case_dir/docker.calls" || fail 'restore database not dropped'
-  grep -q 'KSY_EDITION_FINGERPRINT_V1' "$case_dir/docker.calls" || fail 'edition fingerprints not read'
-  grep -q 'KSY_OBSERVATION_FINGERPRINT_V1' "$case_dir/docker.calls" || fail 'observation fingerprints not read'
-  grep -q 'run --rm --no-deps -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM backup /bin/sh -c' "$case_dir/docker.calls" || fail 'image-contained restore missing'
-  grep -q 'KSY_RESTORE_RUNNER_V2' "$case_dir/docker.calls" || fail 'spooled restore runner missing'
+  [[ "$(grep -c 'DROP DATABASE ksy_deals_restore WITH (FORCE)' "$case_dir/docker.calls")" == 1 ]] || fail 'owned database was not dropped exactly once'
+  for marker in KSY_RESTORE_RUNNER_V3 KSY_FULL_GAME_EDITIONS_V1 KSY_FULL_PRICE_OBSERVATIONS_V1 KSY_SCHEMA_MIGRATIONS_V1 KSY_DEAL_POST_FORMAT_V1; do
+    grep -q "$marker" "$case_dir/docker.calls" || fail "$marker missing"
+  done
+  grep -q 'pg_restore --list "$archive"' "$case_dir/docker.calls" || fail 'real archive TOC stage missing'
   grep -q -- '--passphrase-fd 0' "$case_dir/docker.calls" || fail 'private passphrase fd missing'
-  ! grep -Fq -- '--passphrase "$BACKUP_ENCRYPTION_PASSPHRASE"' "$case_dir/docker.calls" || fail 'passphrase remained in child argv'
-  ! grep -Fq -- '--decrypt "$BACKUP_FILE" | pg_restore' "$case_dir/docker.calls" || fail 'unsafe streaming restore returned'
-  for secret in aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb postgresql:// \
-    edition-identity-a edition-identity-b observation-identity-a observation-identity-b; do
-    ! grep -Fq "$secret" "$output" || fail "secret leaked to output: $secret"
-    ! grep -Fq "$secret" "$case_dir/docker.calls" || fail "secret reached argv: $secret"
-  done
+  ! grep -Fq 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@db' "$case_dir/docker.calls" || fail 'database password reached argv'
+  ! grep -Fq 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$case_dir/docker.calls" || fail 'passphrase reached argv'
+  assert_no_sensitive_output "$output"
+  [[ -z "$(find "$case_dir" -maxdepth 1 -name 'ksy-restore-diagnostic.*' -print -quit)" ]] || fail 'diagnostic file survived success'
 }
 
-test_failure_still_drops_disposable_database() {
-  local case_dir="$TMP_DIR/failure" output="$TMP_DIR/failure.out"
+expect_stage_failure() {
+  local status=$1 reason=$2
+  local case_dir="$TMP_DIR/stage-$status" output="$TMP_DIR/stage-$status.out"
   make_case "$case_dir"
-  if KSY_TEST_RESTORE_FAIL=1 run_case "$case_dir" "$output"; then fail 'failed restore passed'; fi
-  [[ ! -e "$case_dir/restore.exists" ]] || fail 'failed restore left database'
-  grep -q 'KSY_RESTORE_ACCEPT_FAILED RESTORE_FAILED_UNKNOWN' "$output" || fail 'wrong restore failure'
+  KSY_TEST_STAGE_STATUS=$status
+  export KSY_TEST_STAGE_STATUS
+  if run_case "$case_dir" "$output"; then
+    unset KSY_TEST_STAGE_STATUS
+    fail "stage $status unexpectedly passed"
+  fi
+  unset KSY_TEST_STAGE_STATUS
+  grep -q "^KSY_RESTORE_ACCEPT_FAILED $reason$" "$output" || { cat "$output" >&2; fail "stage $status returned wrong class"; }
+  assert_no_sensitive_output "$output"
+  [[ ! -e "$case_dir/restore.exists" ]] || fail "stage $status left disposable database"
+  [[ -z "$(find "$case_dir" -maxdepth 1 -name 'ksy-restore-diagnostic.*' -print -quit)" ]] || fail "stage $status left diagnostic file"
 }
 
-test_redacts_and_classifies_restore_errors() {
-  local error expected case_dir output
-  for error in decrypt archive connect apply mount target tooling shell pg-generic pg-interleaved gpg-pipe gpg-tty gpg-format gpg-runtime gpg-output gpg-kdf gpg-integrity gpg-generic unknown; do
-    case "$error" in
-      decrypt) expected=RESTORE_DECRYPTION_FAILED ;;
-      archive) expected=RESTORE_ARCHIVE_INVALID ;;
-      connect) expected=RESTORE_DATABASE_CONNECTION_FAILED ;;
-      apply) expected=RESTORE_DATABASE_APPLY_FAILED ;;
-      mount) expected=RESTORE_BACKUP_MOUNT_FAILED ;;
-      target) expected=RESTORE_TARGET_SAFETY_FAILED ;;
-      tooling) expected=RESTORE_TOOLING_FAILED ;;
-      shell) expected=RESTORE_SHELL_INCOMPATIBLE ;;
-      pg-generic) expected=RESTORE_DATABASE_APPLY_FAILED ;;
-      pg-interleaved) expected=RESTORE_DATABASE_APPLY_FAILED ;;
-      gpg-pipe) expected=RESTORE_DECRYPTION_PIPE_BROKEN ;;
-      gpg-tty) expected=RESTORE_DECRYPTION_NONINTERACTIVE_FAILED ;;
-      gpg-format) expected=RESTORE_ENCRYPTED_BACKUP_FORMAT_INVALID ;;
-      gpg-runtime) expected=RESTORE_DECRYPTION_RUNTIME_FAILED ;;
-      gpg-output) expected=RESTORE_DECRYPTION_OUTPUT_FAILED ;;
-      gpg-kdf) expected=RESTORE_DECRYPTION_KDF_FAILED ;;
-      gpg-integrity) expected=RESTORE_ENCRYPTED_BACKUP_INTEGRITY_FAILED ;;
-      gpg-generic) expected='RESTORE_DECRYPTION_TOOL_FAILED signals=encrypted_data' ;;
-      unknown) expected=RESTORE_FAILED_UNKNOWN ;;
-    esac
-    case_dir="$TMP_DIR/classify-$error"
-    output="$TMP_DIR/classify-$error.out"
-    make_case "$case_dir"
-    if KSY_TEST_RESTORE_ERROR="$error" run_case "$case_dir" "$output"; then
-      fail "$error restore failure passed"
-    fi
-    grep -q "KSY_RESTORE_ACCEPT_FAILED $expected" "$output" || fail "$error classification missing"
-    ! grep -Eq 'Bad session key|synthetic failure|connection to server|valid archive|not a regular file|not found|unclassified' "$output" ||
-      fail "$error diagnostic leaked raw stderr"
-    [[ ! -e "$case_dir/restore.exists" ]] || fail "$error failure left disposable database"
-  done
-}
-
-test_rejects_ambiguous_newest_backup() {
-  local case_dir="$TMP_DIR/ambiguous" output="$TMP_DIR/ambiguous.out"
-  make_case "$case_dir"
-  printf 'encrypted-2' > "$case_dir/backups/ksy-deals-20260816T020000Z.dump.gpg"
-  touch -t 202608160300 "$case_dir/backups/ksy-deals-20260816T010000Z.dump.gpg" "$case_dir/backups/ksy-deals-20260816T020000Z.dump.gpg"
-  if run_case "$case_dir" "$output"; then fail 'ambiguous latest backup passed'; fi
-  grep -q 'KSY_RESTORE_ACCEPT_FAILED BACKUP_NEWEST_AMBIGUOUS' "$output" || fail 'wrong ambiguity failure'
-  [[ ! -s "$case_dir/docker.calls" ]] || fail 'database touched after backup rejection'
-}
-
-test_rejects_public_env() {
-  local case_dir="$TMP_DIR/public" output="$TMP_DIR/public.out"
-  make_case "$case_dir"
-  chmod 644 "$case_dir/opt/ksy-deals/.env"
-  if run_case "$case_dir" "$output"; then fail 'public env passed'; fi
-  grep -q 'KSY_RESTORE_ACCEPT_FAILED KSY_ENV_MODE_INVALID' "$output" || fail 'wrong env failure'
-}
-
-expect_verification_failure_cleans_up() {
+expect_verification_failure() {
   local name=$1 knob=$2 reason=$3
   local case_dir="$TMP_DIR/$name" output="$TMP_DIR/$name.out"
   make_case "$case_dir"
-  if env "$knob=1" PATH="$case_dir/bin:$PATH" KSY_RESTORE_TEST_MODE=1 \
-    KSY_ROOT="$case_dir/opt/ksy-deals" DOCKER_CALLS="$case_dir/docker.calls" \
-    RESTORE_EXISTS="$case_dir/restore.exists" FINGERPRINT_READ="$case_dir/fingerprint.read" bash "$SCRIPT" > "$output" 2>&1; then
+  printf -v "$knob" '%s' 1
+  export "$knob"
+  if run_case "$case_dir" "$output"; then
+    unset "$knob"
     fail "$name unexpectedly passed"
   fi
-  grep -q "KSY_RESTORE_ACCEPT_FAILED $reason" "$output" || fail "$name returned wrong failure"
+  unset "$knob"
+  grep -q "^KSY_RESTORE_ACCEPT_FAILED $reason$" "$output" || { cat "$output" >&2; fail "$name returned wrong failure"; }
   [[ ! -e "$case_dir/restore.exists" ]] || fail "$name left disposable database"
+  assert_no_sensitive_output "$output"
 }
 
 test_rejects_existing_restore_without_dropping_it() {
@@ -197,19 +160,61 @@ test_rejects_existing_restore_without_dropping_it() {
   make_case "$case_dir"
   : > "$case_dir/restore.exists"
   if run_case "$case_dir" "$output"; then fail 'existing restore database passed'; fi
-  grep -q 'KSY_RESTORE_ACCEPT_FAILED RESTORE_DATABASE_ALREADY_EXISTS' "$output" || fail 'wrong existing-db failure'
+  grep -q '^KSY_RESTORE_ACCEPT_FAILED RESTORE_DATABASE_ALREADY_EXISTS$' "$output" || fail 'wrong existing-db failure'
   [[ -e "$case_dir/restore.exists" ]] || fail 'pre-existing restore database was dropped'
   ! grep -q 'DROP DATABASE' "$case_dir/docker.calls" || fail 'drop ran for pre-existing database'
 }
 
-test_restores_verifies_and_drops_without_secret_leaks
-test_failure_still_drops_disposable_database
-test_redacts_and_classifies_restore_errors
-test_rejects_ambiguous_newest_backup
-test_rejects_public_env
-expect_verification_failure_cleans_up bad-counts KSY_TEST_BAD_RESTORE_COUNTS RESTORE_COUNTS_UNEXPECTED
-expect_verification_failure_cleans_up mismatched-fingerprint KSY_TEST_FINGERPRINT_MISMATCH RESTORE_FINGERPRINT_MISMATCH
-expect_verification_failure_cleans_up live-changed KSY_TEST_LIVE_CHANGED LIVE_CHANGED_DURING_RESTORE
+test_cleanup_failure_is_safe_and_visible() {
+  local case_dir="$TMP_DIR/cleanup" output="$TMP_DIR/cleanup.out"
+  make_case "$case_dir"
+  KSY_TEST_CLEANUP_FAIL=1
+  export KSY_TEST_CLEANUP_FAIL
+  if run_case "$case_dir" "$output"; then
+    unset KSY_TEST_CLEANUP_FAIL
+    fail 'cleanup failure passed'
+  fi
+  unset KSY_TEST_CLEANUP_FAIL
+  grep -q '^KSY_RESTORE_ACCEPT_FAILED CLEANUP_FAILED$' "$output" || fail 'cleanup failure class missing'
+  assert_no_sensitive_output "$output"
+}
+
+test_rejects_ambiguous_newest_backup_before_database_access() {
+  local case_dir="$TMP_DIR/ambiguous" output="$TMP_DIR/ambiguous.out"
+  make_case "$case_dir"
+  printf 'encrypted-2' > "$case_dir/backups/ksy-deals-20260816T020000Z.dump.gpg"
+  touch -t 202608160300 "$case_dir/backups/ksy-deals-20260816T010000Z.dump.gpg" "$case_dir/backups/ksy-deals-20260816T020000Z.dump.gpg"
+  if run_case "$case_dir" "$output"; then fail 'ambiguous latest backup passed'; fi
+  grep -q '^KSY_RESTORE_ACCEPT_FAILED BACKUP_NEWEST_AMBIGUOUS$' "$output" || fail 'wrong ambiguity failure'
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'database touched after backup rejection'
+}
+
+test_static_target_safety() {
+  ! grep -Eiq 'DROP DATABASE ksy_deals([^_]|$)|--dbname[ =]+ksy_deals([^_]|$).*(pg_restore|restore)|TRUNCATE|ALTER DATABASE ksy_deals' "$SCRIPT" ||
+    fail 'live database appears in a mutation target'
+}
+
+test_static_post_format_invariant() {
+  grep -Fq "bool_and(singleton AND format IN ('ONE_LINE','TWO_LINES','THREE_LINES'))" "$SCRIPT" ||
+    fail 'restore snapshot does not validate the complete post-format singleton enum'
+}
+
+test_restores_complete_snapshot_and_drops_owned_database
+expect_stage_failure 41 DECRYPTION_FAILED
+expect_stage_failure 42 ARCHIVE_TOC_FAILED
+expect_stage_failure 43 DATABASE_CONNECTION_FAILED
+expect_stage_failure 44 PG_RESTORE_FAILED
+expect_stage_failure 70 RESTORE_TOOL_FAILED
+expect_verification_failure count-mismatch KSY_TEST_COUNT_MISMATCH VERIFICATION_FAILED
+expect_verification_failure row-mismatch KSY_TEST_ROW_MISMATCH VERIFICATION_FAILED
+expect_verification_failure migration-mismatch KSY_TEST_MIGRATION_MISMATCH VERIFICATION_FAILED
+expect_verification_failure format-mismatch KSY_TEST_FORMAT_MISMATCH VERIFICATION_FAILED
+expect_verification_failure format-rows KSY_TEST_FORMAT_ROWS_BAD VERIFICATION_FAILED
+expect_verification_failure live-changed KSY_TEST_LIVE_CHANGED LIVE_CHANGED_DURING_RESTORE
 test_rejects_existing_restore_without_dropping_it
+test_cleanup_failure_is_safe_and_visible
+test_rejects_ambiguous_newest_backup_before_database_access
+test_static_target_safety
+test_static_post_format_invariant
 bash -n "$SCRIPT"
 printf 'KSY restore acceptance tests passed\n'
