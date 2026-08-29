@@ -8,6 +8,7 @@ ENV_FILE="$KSY_ROOT/.env"
 COMPOSE_FILE="$KSY_ROOT/docker-compose.yml"
 TEST_MODE=${KSY_RESTORE_TEST_MODE:-0}
 restore_created=0
+restore_diagnostic=''
 
 fail() { printf 'KSY_RESTORE_ACCEPT_FAILED %s\n' "$1" >&2; exit 1; }
 file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
@@ -15,6 +16,26 @@ mtime() { stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1"; }
 fingerprint() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print $1}'
   else LC_ALL=C shasum -a 256 | awk '{print $1}'; fi
+}
+classify_restore_error() {
+  local diagnostic=$1
+  if grep -Eiq 'gpg: (decryption failed|public key decryption failed)|Bad session key|No secret key' "$diagnostic"; then
+    printf 'RESTORE_DECRYPTION_FAILED\n'
+  elif grep -Eiq 'pg_restore: .*valid archive|pg_restore: .*unsupported version|pg_restore: .*end of file' "$diagnostic"; then
+    printf 'RESTORE_ARCHIVE_INVALID\n'
+  elif grep -Eiq '(pg_restore|psql): .*connection to server.*failed|could not translate host name' "$diagnostic"; then
+    printf 'RESTORE_DATABASE_CONNECTION_FAILED\n'
+  elif grep -Eiq 'pg_restore: .*could not execute query|pg_restore: error: COPY failed|pg_restore: error: could not' "$diagnostic"; then
+    printf 'RESTORE_DATABASE_APPLY_FAILED\n'
+  elif grep -Fqi 'BACKUP_FILE is not a regular file' "$diagnostic"; then
+    printf 'RESTORE_BACKUP_MOUNT_FAILED\n'
+  elif grep -Fqi 'restore database must end with _restore' "$diagnostic"; then
+    printf 'RESTORE_TARGET_SAFETY_FAILED\n'
+  elif grep -Eiq 'restore\.sh: (not found|Permission denied)|pg_restore: not found|gpg: not found' "$diagnostic"; then
+    printf 'RESTORE_TOOLING_FAILED\n'
+  else
+    printf 'RESTORE_FAILED_UNKNOWN\n'
+  fi
 }
 
 cleanup_restore() {
@@ -30,6 +51,7 @@ on_exit() {
     printf 'KSY_RESTORE_ACCEPT_FAILED CLEANUP_FAILED\n' >&2
     status=1
   fi
+  [[ -z "$restore_diagnostic" ]] || rm -f "$restore_diagnostic"
   exit "$status"
 }
 trap on_exit EXIT
@@ -87,11 +109,16 @@ RESTORE_DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432
 BACKUP_FILE="/backups/${backup_name}"
 RESTORE_CONFIRM=RESTORE_KSY_DEALS_DISPOSABLE
 export RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM
+restore_diagnostic=$(mktemp "${TMPDIR:-/tmp}/ksy-restore-diagnostic.XXXXXX") ||
+  fail RESTORE_DIAGNOSTIC_CREATE_FAILED
 if ! "${compose[@]}" --profile maintenance run --rm --no-deps \
   -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM \
-  backup /bin/sh infra/scripts/restore.sh >/dev/null 2>&1; then
-  fail RESTORE_FAILED
+  backup /bin/sh infra/scripts/restore.sh >/dev/null 2>"$restore_diagnostic"; then
+  restore_failure=$(classify_restore_error "$restore_diagnostic")
+  : > "$restore_diagnostic"
+  fail "$restore_failure"
 fi
+: > "$restore_diagnostic"
 unset RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM POSTGRES_PASSWORD BACKUP_ENCRYPTION_PASSPHRASE
 
 read_ids() {

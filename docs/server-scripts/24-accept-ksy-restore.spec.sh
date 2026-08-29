@@ -36,6 +36,19 @@ elif [[ "$*" == *'infra/scripts/restore.sh'* ]]; then
   [[ "${RESTORE_DATABASE_URL:-}" == postgresql://ksy_deals:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@db:5432/ksy_deals_restore ]] || exit 4
   [[ "${BACKUP_FILE:-}" == /backups/ksy-deals-20260816T010000Z.dump.gpg ]] || exit 5
   [[ "${RESTORE_CONFIRM:-}" == RESTORE_KSY_DEALS_DISPOSABLE ]] || exit 6
+  if [[ -n "${KSY_TEST_RESTORE_ERROR:-}" ]]; then
+    case "$KSY_TEST_RESTORE_ERROR" in
+      decrypt) printf 'gpg: decryption failed: Bad session key\n' >&2 ;;
+      archive) printf 'pg_restore: error: input file does not appear to be a valid archive\n' >&2 ;;
+      connect) printf 'pg_restore: error: connection to server at db failed\n' >&2 ;;
+      apply) printf 'pg_restore: error: could not execute query: ERROR: synthetic failure\n' >&2 ;;
+      mount) printf 'BACKUP_FILE is not a regular file\n' >&2 ;;
+      target) printf 'restore database must end with _restore\n' >&2 ;;
+      tooling) printf '/bin/sh: infra/scripts/restore.sh: not found\n' >&2 ;;
+      unknown) printf 'synthetic unclassified failure\n' >&2 ;;
+    esac
+    exit 7
+  fi
   [[ "${KSY_TEST_RESTORE_FAIL:-0}" != 1 ]] || exit 7
 elif [[ "$*" == *'SELECT o.id'* ]]; then
   if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_ID_MISMATCH:-0}" == 1 ]]; then
@@ -82,7 +95,33 @@ test_failure_still_drops_disposable_database() {
   make_case "$case_dir"
   if KSY_TEST_RESTORE_FAIL=1 run_case "$case_dir" "$output"; then fail 'failed restore passed'; fi
   [[ ! -e "$case_dir/restore.exists" ]] || fail 'failed restore left database'
-  grep -q 'KSY_RESTORE_ACCEPT_FAILED RESTORE_FAILED' "$output" || fail 'wrong restore failure'
+  grep -q 'KSY_RESTORE_ACCEPT_FAILED RESTORE_FAILED_UNKNOWN' "$output" || fail 'wrong restore failure'
+}
+
+test_redacts_and_classifies_restore_errors() {
+  local error expected case_dir output
+  for error in decrypt archive connect apply mount target tooling unknown; do
+    case "$error" in
+      decrypt) expected=RESTORE_DECRYPTION_FAILED ;;
+      archive) expected=RESTORE_ARCHIVE_INVALID ;;
+      connect) expected=RESTORE_DATABASE_CONNECTION_FAILED ;;
+      apply) expected=RESTORE_DATABASE_APPLY_FAILED ;;
+      mount) expected=RESTORE_BACKUP_MOUNT_FAILED ;;
+      target) expected=RESTORE_TARGET_SAFETY_FAILED ;;
+      tooling) expected=RESTORE_TOOLING_FAILED ;;
+      unknown) expected=RESTORE_FAILED_UNKNOWN ;;
+    esac
+    case_dir="$TMP_DIR/classify-$error"
+    output="$TMP_DIR/classify-$error.out"
+    make_case "$case_dir"
+    if KSY_TEST_RESTORE_ERROR="$error" run_case "$case_dir" "$output"; then
+      fail "$error restore failure passed"
+    fi
+    grep -q "KSY_RESTORE_ACCEPT_FAILED $expected" "$output" || fail "$error classification missing"
+    ! grep -Eq 'Bad session key|synthetic failure|connection to server|valid archive|not a regular file|not found|unclassified' "$output" ||
+      fail "$error diagnostic leaked raw stderr"
+    [[ ! -e "$case_dir/restore.exists" ]] || fail "$error failure left disposable database"
+  done
 }
 
 test_rejects_ambiguous_newest_backup() {
@@ -128,6 +167,7 @@ test_rejects_existing_restore_without_dropping_it() {
 
 test_restores_verifies_and_drops_without_secret_leaks
 test_failure_still_drops_disposable_database
+test_redacts_and_classifies_restore_errors
 test_rejects_ambiguous_newest_backup
 test_rejects_public_env
 expect_verification_failure_cleans_up bad-counts KSY_TEST_BAD_RESTORE_COUNTS RESTORE_COUNTS_UNEXPECTED
