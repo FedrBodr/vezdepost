@@ -18,7 +18,7 @@ fingerprint() {
   else LC_ALL=C shasum -a 256 | awk '{print $1}'; fi
 }
 classify_restore_error() {
-  local diagnostic=$1
+  local diagnostic=$1 signals=''
   if grep -Eiq 'gpg: (decryption failed|public key decryption failed)|Bad session key|No secret key' "$diagnostic"; then
     printf 'RESTORE_DECRYPTION_FAILED\n'
   elif grep -Eiq 'pg_restore: .*valid archive|pg_restore: .*unsupported version|pg_restore: .*end of file' "$diagnostic"; then
@@ -53,10 +53,24 @@ classify_restore_error() {
     printf 'RESTORE_ENCRYPTED_BACKUP_FORMAT_INVALID\n'
   elif grep -Eiq 'gpg: .*problem with the agent|gpg: .*can.t connect to the agent|gpg: .*failed to create temporary file' "$diagnostic"; then
     printf 'RESTORE_DECRYPTION_RUNTIME_FAILED\n'
+  elif grep -Eiq 'gpg: .*handle plaintext failed' "$diagnostic"; then
+    printf 'RESTORE_DECRYPTION_OUTPUT_FAILED\n'
+  elif grep -Eiq 'gpg: .*key derivation failed' "$diagnostic"; then
+    printf 'RESTORE_DECRYPTION_KDF_FAILED\n'
+  elif grep -Eiq 'gpg: .*message was not integrity protected|gpg: .*BADMDC|gpg: .*invalid MDC' "$diagnostic"; then
+    printf 'RESTORE_ENCRYPTED_BACKUP_INTEGRITY_FAILED\n'
   elif grep -Eiq 'gpg: .*can.t open.*(No such file|not found)' "$diagnostic"; then
     printf 'RESTORE_BACKUP_MOUNT_FAILED\n'
   elif grep -Eiq '^gpg:' "$diagnostic"; then
-    printf 'RESTORE_DECRYPTION_TOOL_FAILED\n'
+    grep -Eiq 'encrypted data' "$diagnostic" && signals=encrypted_data
+    grep -Eiq 'encrypted with .*passphrase' "$diagnostic" && signals="${signals:+$signals,}passphrase"
+    grep -Eiq 'warning' "$diagnostic" && signals="${signals:+$signals,}warning"
+    grep -Eiq 'error' "$diagnostic" && signals="${signals:+$signals,}error"
+    grep -Eiq 'failed' "$diagnostic" && signals="${signals:+$signals,}failed"
+    grep -Eiq 'invalid' "$diagnostic" && signals="${signals:+$signals,}invalid"
+    grep -Eiq 'option|usage' "$diagnostic" && signals="${signals:+$signals,}invocation"
+    [[ -n "$signals" ]] || signals=none
+    printf 'RESTORE_DECRYPTION_TOOL_FAILED signals=%s\n' "$signals"
   elif grep -Eiq '^/bin/sh:|restore\.sh:' "$diagnostic"; then
     printf 'RESTORE_TOOLING_FAILED\n'
   else

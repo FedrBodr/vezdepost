@@ -51,6 +51,10 @@ elif [[ "$*" == *'infra/scripts/restore.sh'* ]]; then
       gpg-tty) printf 'gpg: cannot open /dev/tty: No such device or address\n' >&2 ;;
       gpg-format) printf 'gpg: no valid OpenPGP data found\n' >&2 ;;
       gpg-runtime) printf 'gpg: problem with the agent: General error\n' >&2 ;;
+      gpg-output) printf 'gpg: handle plaintext failed: General error\n' >&2 ;;
+      gpg-kdf) printf 'gpg: key derivation failed: Invalid value\n' >&2 ;;
+      gpg-integrity) printf 'gpg: WARNING: message was not integrity protected\n' >&2 ;;
+      gpg-generic) printf 'gpg: AES256.CFB encrypted data\ngpg: synthetic category\n' >&2 ;;
       unknown) printf 'synthetic unclassified failure\n' >&2 ;;
     esac
     exit 7
@@ -106,7 +110,7 @@ test_failure_still_drops_disposable_database() {
 
 test_redacts_and_classifies_restore_errors() {
   local error expected case_dir output
-  for error in decrypt archive connect apply mount target tooling shell pg-generic gpg-pipe gpg-tty gpg-format gpg-runtime unknown; do
+  for error in decrypt archive connect apply mount target tooling shell pg-generic gpg-pipe gpg-tty gpg-format gpg-runtime gpg-output gpg-kdf gpg-integrity gpg-generic unknown; do
     case "$error" in
       decrypt) expected=RESTORE_DECRYPTION_FAILED ;;
       archive) expected=RESTORE_ARCHIVE_INVALID ;;
@@ -121,6 +125,10 @@ test_redacts_and_classifies_restore_errors() {
       gpg-tty) expected=RESTORE_DECRYPTION_NONINTERACTIVE_FAILED ;;
       gpg-format) expected=RESTORE_ENCRYPTED_BACKUP_FORMAT_INVALID ;;
       gpg-runtime) expected=RESTORE_DECRYPTION_RUNTIME_FAILED ;;
+      gpg-output) expected=RESTORE_DECRYPTION_OUTPUT_FAILED ;;
+      gpg-kdf) expected=RESTORE_DECRYPTION_KDF_FAILED ;;
+      gpg-integrity) expected=RESTORE_ENCRYPTED_BACKUP_INTEGRITY_FAILED ;;
+      gpg-generic) expected='RESTORE_DECRYPTION_TOOL_FAILED signals=encrypted_data' ;;
       unknown) expected=RESTORE_FAILED_UNKNOWN ;;
     esac
     case_dir="$TMP_DIR/classify-$error"
