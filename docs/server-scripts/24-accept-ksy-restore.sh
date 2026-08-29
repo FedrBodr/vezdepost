@@ -45,6 +45,16 @@ classify_restore_error() {
     printf 'RESTORE_NETWORK_FAILED\n'
   elif grep -Eiq '^pg_restore:' "$diagnostic"; then
     printf 'RESTORE_DATABASE_APPLY_FAILED\n'
+  elif grep -Eiq 'gpg: .*write error: Broken pipe|gpg: .*filter_flush.*Broken pipe' "$diagnostic"; then
+    printf 'RESTORE_DECRYPTION_PIPE_BROKEN\n'
+  elif grep -Eiq 'gpg: .*cannot open.*/dev/tty|gpg: .*Inappropriate ioctl for device' "$diagnostic"; then
+    printf 'RESTORE_DECRYPTION_NONINTERACTIVE_FAILED\n'
+  elif grep -Eiq 'gpg: .*no valid OpenPGP data|gpg: .*invalid packet|gpg: .*premature eof' "$diagnostic"; then
+    printf 'RESTORE_ENCRYPTED_BACKUP_FORMAT_INVALID\n'
+  elif grep -Eiq 'gpg: .*problem with the agent|gpg: .*can.t connect to the agent|gpg: .*failed to create temporary file' "$diagnostic"; then
+    printf 'RESTORE_DECRYPTION_RUNTIME_FAILED\n'
+  elif grep -Eiq 'gpg: .*can.t open.*(No such file|not found)' "$diagnostic"; then
+    printf 'RESTORE_BACKUP_MOUNT_FAILED\n'
   elif grep -Eiq '^gpg:' "$diagnostic"; then
     printf 'RESTORE_DECRYPTION_TOOL_FAILED\n'
   elif grep -Eiq '^/bin/sh:|restore\.sh:' "$diagnostic"; then
@@ -127,12 +137,16 @@ RESTORE_CONFIRM=RESTORE_KSY_DEALS_DISPOSABLE
 export RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM
 restore_diagnostic=$(mktemp "${TMPDIR:-/tmp}/ksy-restore-diagnostic.XXXXXX") ||
   fail RESTORE_DIAGNOSTIC_CREATE_FAILED
-if ! "${compose[@]}" --profile maintenance run --rm --no-deps \
+set +e
+"${compose[@]}" --profile maintenance run --rm --no-deps \
   -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM \
-  backup /bin/sh infra/scripts/restore.sh >/dev/null 2>"$restore_diagnostic"; then
+  backup /bin/sh infra/scripts/restore.sh >/dev/null 2>"$restore_diagnostic"
+restore_status=$?
+set -e
+if [[ "$restore_status" != 0 ]]; then
   restore_failure=$(classify_restore_error "$restore_diagnostic")
   : > "$restore_diagnostic"
-  fail "$restore_failure"
+  fail "$restore_failure exit_code=$restore_status"
 fi
 : > "$restore_diagnostic"
 unset RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM POSTGRES_PASSWORD BACKUP_ENCRYPTION_PASSPHRASE
