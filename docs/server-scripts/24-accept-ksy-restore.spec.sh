@@ -45,6 +45,7 @@ elif [[ "$*" == *'infra/scripts/restore.sh'* ]]; then
       mount) printf 'BACKUP_FILE is not a regular file\n' >&2 ;;
       target) printf 'restore database must end with _restore\n' >&2 ;;
       tooling) printf '/bin/sh: infra/scripts/restore.sh: not found\n' >&2 ;;
+      shell) printf 'infra/scripts/restore.sh: set: line 3: illegal option -o pipefail\n' >&2 ;;
       unknown) printf 'synthetic unclassified failure\n' >&2 ;;
     esac
     exit 7
@@ -100,7 +101,7 @@ test_failure_still_drops_disposable_database() {
 
 test_redacts_and_classifies_restore_errors() {
   local error expected case_dir output
-  for error in decrypt archive connect apply mount target tooling unknown; do
+  for error in decrypt archive connect apply mount target tooling shell unknown; do
     case "$error" in
       decrypt) expected=RESTORE_DECRYPTION_FAILED ;;
       archive) expected=RESTORE_ARCHIVE_INVALID ;;
@@ -109,6 +110,7 @@ test_redacts_and_classifies_restore_errors() {
       mount) expected=RESTORE_BACKUP_MOUNT_FAILED ;;
       target) expected=RESTORE_TARGET_SAFETY_FAILED ;;
       tooling) expected=RESTORE_TOOLING_FAILED ;;
+      shell) expected=RESTORE_SHELL_INCOMPATIBLE ;;
       unknown) expected=RESTORE_FAILED_UNKNOWN ;;
     esac
     case_dir="$TMP_DIR/classify-$error"

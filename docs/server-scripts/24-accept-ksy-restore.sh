@@ -33,6 +33,22 @@ classify_restore_error() {
     printf 'RESTORE_TARGET_SAFETY_FAILED\n'
   elif grep -Eiq 'restore\.sh: (not found|Permission denied)|pg_restore: not found|gpg: not found' "$diagnostic"; then
     printf 'RESTORE_TOOLING_FAILED\n'
+  elif grep -Eiq 'set: .*illegal option.*pipefail|set: illegal option -o pipefail' "$diagnostic"; then
+    printf 'RESTORE_SHELL_INCOMPATIBLE\n'
+  elif grep -Eiq 'no such service|unknown (flag|shorthand flag)|requires .* argument|invalid compose project' "$diagnostic"; then
+    printf 'RESTORE_COMPOSE_INVOCATION_FAILED\n'
+  elif grep -Eiq 'permission denied|operation not permitted' "$diagnostic"; then
+    printf 'RESTORE_BACKUP_ACCESS_FAILED\n'
+  elif grep -Eiq 'no space left on device' "$diagnostic"; then
+    printf 'RESTORE_HOST_STORAGE_FAILED\n'
+  elif grep -Eiq 'network .* not found|connection refused' "$diagnostic"; then
+    printf 'RESTORE_NETWORK_FAILED\n'
+  elif grep -Eiq '^gpg:' "$diagnostic"; then
+    printf 'RESTORE_DECRYPTION_TOOL_FAILED\n'
+  elif grep -Eiq '^pg_restore:' "$diagnostic"; then
+    printf 'RESTORE_DATABASE_APPLY_FAILED\n'
+  elif grep -Eiq '^/bin/sh:|restore\.sh:' "$diagnostic"; then
+    printf 'RESTORE_TOOLING_FAILED\n'
   else
     printf 'RESTORE_FAILED_UNKNOWN\n'
   fi
