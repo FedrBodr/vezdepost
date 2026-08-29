@@ -149,12 +149,39 @@ RESTORE_DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432
 BACKUP_FILE="/backups/${backup_name}"
 RESTORE_CONFIRM=RESTORE_KSY_DEALS_DISPOSABLE
 export RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM
+restore_runner=''
+IFS= read -r -d '' restore_runner <<'RUNNER' || true
+# KSY_RESTORE_RUNNER_V2
+set -eu
+umask 077
+: "${RESTORE_DATABASE_URL:?}"
+: "${BACKUP_ENCRYPTION_PASSPHRASE:?}"
+: "${BACKUP_FILE:?}"
+: "${RESTORE_CONFIRM:?}"
+[ "$RESTORE_CONFIRM" = RESTORE_KSY_DEALS_DISPOSABLE ] || exit 31
+case "$BACKUP_FILE" in /backups/ksy-deals-*.dump.gpg) ;; *) exit 32 ;; esac
+[ -f "$BACKUP_FILE" ] || exit 33
+database_name=$(psql "$RESTORE_DATABASE_URL" --no-psqlrc --tuples-only --no-align --command 'SELECT current_database()')
+case "$database_name" in *_restore) ;; *) exit 34 ;; esac
+archive=$(mktemp /tmp/ksy-restore-archive.XXXXXX)
+trap 'rm -f "$archive"' EXIT HUP INT TERM
+if ! gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_ENCRYPTION_PASSPHRASE" \
+  --output "$archive" --decrypt "$BACKUP_FILE"; then
+  printf 'KSY_RESTORE_PHASE_DECRYPT\n' >&2
+  exit 41
+fi
+if ! pg_restore --clean --if-exists --exit-on-error --no-owner --no-privileges \
+  --dbname "$RESTORE_DATABASE_URL" "$archive"; then
+  printf 'KSY_RESTORE_PHASE_APPLY\n' >&2
+  exit 42
+fi
+RUNNER
 restore_diagnostic=$(mktemp "${TMPDIR:-/tmp}/ksy-restore-diagnostic.XXXXXX") ||
   fail RESTORE_DIAGNOSTIC_CREATE_FAILED
 set +e
 "${compose[@]}" --profile maintenance run --rm --no-deps \
   -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM \
-  backup /bin/sh infra/scripts/restore.sh >/dev/null 2>"$restore_diagnostic"
+  backup /bin/sh -c "$restore_runner" >/dev/null 2>"$restore_diagnostic"
 restore_status=$?
 set -e
 if [[ "$restore_status" != 0 ]]; then

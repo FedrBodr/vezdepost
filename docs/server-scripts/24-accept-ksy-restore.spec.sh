@@ -32,7 +32,7 @@ elif [[ "$*" == *'DROP DATABASE ksy_deals_restore WITH (FORCE)'* ]]; then
   rm -f "$RESTORE_EXISTS"
 elif [[ "$*" == *'SELECT 1 FROM pg_database'* ]]; then
   [[ -e "$RESTORE_EXISTS" ]] && printf '1\n' || true
-elif [[ "$*" == *'infra/scripts/restore.sh'* ]]; then
+elif [[ "$*" == *'KSY_RESTORE_RUNNER_V2'* ]]; then
   [[ "${RESTORE_DATABASE_URL:-}" == postgresql://ksy_deals:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@db:5432/ksy_deals_restore ]] || exit 4
   [[ "${BACKUP_FILE:-}" == /backups/ksy-deals-20260816T010000Z.dump.gpg ]] || exit 5
   [[ "${RESTORE_CONFIRM:-}" == RESTORE_KSY_DEALS_DISPOSABLE ]] || exit 6
@@ -88,13 +88,18 @@ test_restores_verifies_and_drops_without_secret_leaks() {
   local case_dir="$TMP_DIR/success" output="$TMP_DIR/success.out"
   make_case "$case_dir"
   run_case "$case_dir" "$output" || { cat "$output" >&2; fail 'success case failed'; }
-  grep -q 'KSY_RESTORE_ACCEPTED file=ksy-deals-20260816T010000Z.dump.gpg bytes=9 editions=2 observations=2 identities=MATCH drop=PASS' "$output" || fail 'acceptance evidence missing'
+  grep -q 'KSY_RESTORE_ACCEPTED file=ksy-deals-20260816T010000Z.dump.gpg bytes=9 editions=2 observations=2 identities=MATCH drop=PASS' "$output" || {
+    cat "$output" >&2
+    fail 'acceptance evidence missing'
+  }
   [[ ! -e "$case_dir/restore.exists" ]] || fail 'disposable database remains'
   grep -q 'CREATE DATABASE ksy_deals_restore' "$case_dir/docker.calls" || fail 'restore database not created'
   grep -q 'DROP DATABASE ksy_deals_restore WITH (FORCE)' "$case_dir/docker.calls" || fail 'restore database not dropped'
   grep -q -- '--dbname ksy_deals --no-psqlrc --tuples-only --no-align --command SELECT o.id' "$case_dir/docker.calls" || fail 'live identities not read'
   grep -q -- '--dbname ksy_deals_restore --no-psqlrc --tuples-only --no-align --command SELECT o.id' "$case_dir/docker.calls" || fail 'restore identities not read'
-  grep -q 'run --rm --no-deps -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM backup /bin/sh infra/scripts/restore.sh' "$case_dir/docker.calls" || fail 'image-contained restore missing'
+  grep -q 'run --rm --no-deps -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM backup /bin/sh -c' "$case_dir/docker.calls" || fail 'image-contained restore missing'
+  grep -q 'KSY_RESTORE_RUNNER_V2' "$case_dir/docker.calls" || fail 'spooled restore runner missing'
+  ! grep -Fq -- '--decrypt "$BACKUP_FILE" | pg_restore' "$case_dir/docker.calls" || fail 'unsafe streaming restore returned'
   for secret in aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb postgresql://; do
     ! grep -Fq "$secret" "$output" || fail "secret leaked to output: $secret"
     ! grep -Fq "$secret" "$case_dir/docker.calls" || fail "secret reached argv: $secret"
