@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SCRIPT="$SCRIPT_DIR/24-accept-ksy-restore.sh"
+INTEGRATION="$SCRIPT_DIR/24-accept-ksy-restore.integration.sh"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -199,6 +200,15 @@ test_static_post_format_invariant() {
     fail 'restore snapshot does not validate the complete post-format singleton enum'
 }
 
+test_real_integration_entrypoint_contract() {
+  [[ -x "$INTEGRATION" ]] || fail 'real restore integration entrypoint is missing'
+  grep -Fq '24-accept-ksy-restore.sh' "$INTEGRATION" || fail 'integration does not invoke the exact restore harness'
+  grep -Fq 'pg_dump --format=custom' "$INTEGRATION" || fail 'integration does not create a real custom-format dump'
+  grep -Fq 'gpg --batch' "$INTEGRATION" || fail 'integration does not create a real encrypted artifact'
+  grep -Fq 'DECRYPTION_FAILED' "$INTEGRATION" || fail 'integration does not verify corrupt-artifact classification'
+  ! grep -Eq 'docker (system|volume|container|image) prune' "$INTEGRATION" || fail 'integration contains broad Docker cleanup'
+}
+
 test_restores_complete_snapshot_and_drops_owned_database
 expect_stage_failure 41 DECRYPTION_FAILED
 expect_stage_failure 42 ARCHIVE_TOC_FAILED
@@ -216,5 +226,6 @@ test_cleanup_failure_is_safe_and_visible
 test_rejects_ambiguous_newest_backup_before_database_access
 test_static_target_safety
 test_static_post_format_invariant
+test_real_integration_entrypoint_contract
 bash -n "$SCRIPT"
 printf 'KSY restore acceptance tests passed\n'
