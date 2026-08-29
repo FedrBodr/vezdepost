@@ -137,7 +137,7 @@ done
 backup_name=$(basename "$newest")
 backup_bytes=$(wc -c < "$newest" | tr -d ' ')
 
-compose=(docker compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+compose=(docker --host unix:///var/run/docker.sock compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 read_counts() {
   local database=$1
   "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \

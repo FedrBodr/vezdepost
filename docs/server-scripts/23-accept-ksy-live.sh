@@ -148,7 +148,7 @@ safe_token "${PLATPRICES_API_KEY:-}" || fail PLATPRICES_API_KEY_INVALID
 PROXY_USERNAME=${BASH_REMATCH[1]}
 PROXY_PASSWORD=${BASH_REMATCH[2]}
 
-compose=(docker compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
+compose=(docker --host unix:///var/run/docker.sock compose --project-name ksy-deals --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 read_counts() {
   "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
     --no-psqlrc --tuples-only --no-align \
@@ -301,11 +301,11 @@ fi
 server_id=$("${compose[@]}" ps -q server)
 db_id=$("${compose[@]}" ps -q db)
 [[ -n "$server_id" && -n "$db_id" ]] || fail CONTAINER_ID_MISSING
-server_state=$(docker inspect --format '{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Health.Status}}|{{.HostConfig.Memory}}' "$server_id")
-db_state=$(docker inspect --format '{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Health.Status}}|{{.HostConfig.Memory}}' "$db_id")
+server_state=$(docker --host unix:///var/run/docker.sock inspect --format '{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Health.Status}}|{{.HostConfig.Memory}}' "$server_id")
+db_state=$(docker --host unix:///var/run/docker.sock inspect --format '{{.RestartCount}}|{{.State.OOMKilled}}|{{.State.Health.Status}}|{{.HostConfig.Memory}}' "$db_id")
 [[ "$server_state" == '0|false|healthy|1073741824' && "$db_state" == '0|false|healthy|536870912' ]] || fail CONTAINER_STATE_UNHEALTHY
-server_memory=$(docker stats --no-stream --format '{{.MemUsage}}' "$server_id" | cut -d/ -f1 | xargs)
-db_memory=$(docker stats --no-stream --format '{{.MemUsage}}' "$db_id" | cut -d/ -f1 | xargs)
+server_memory=$(docker --host unix:///var/run/docker.sock stats --no-stream --format '{{.MemUsage}}' "$server_id" | cut -d/ -f1 | xargs)
+db_memory=$(docker --host unix:///var/run/docker.sock stats --no-stream --format '{{.MemUsage}}' "$db_id" | cut -d/ -f1 | xargs)
 
 unset TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET
 final_editions=${final_counts%%|*}
