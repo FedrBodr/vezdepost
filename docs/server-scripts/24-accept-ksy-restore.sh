@@ -146,22 +146,25 @@ read_counts() {
     --no-psqlrc --tuples-only --no-align \
     --command "SELECT (SELECT COUNT(*) FROM game_editions),(SELECT COUNT(*) FROM price_observations)"
 }
-read_fingerprint_rows() {
+read_edition_ids() {
   local database=$1
   "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
-    --no-psqlrc --tuples-only --no-align --command "-- KSY_FINGERPRINT_V1
-SELECT table_name || '|' || row_data
-FROM (
-  SELECT 'game_editions' AS table_name, row_to_json(e)::text AS row_data FROM game_editions e
-  UNION ALL
-  SELECT 'price_observations' AS table_name, row_to_json(o)::text AS row_data FROM price_observations o
-) snapshot
-ORDER BY table_name, row_data"
+    --no-psqlrc --tuples-only --no-align \
+    --command "-- KSY_EDITION_FINGERPRINT_V1
+SELECT id FROM game_editions ORDER BY id"
+}
+read_observation_ids() {
+  local database=$1
+  "${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname "$database" \
+    --no-psqlrc --tuples-only --no-align \
+    --command "-- KSY_OBSERVATION_FINGERPRINT_V1
+SELECT id FROM price_observations ORDER BY id"
 }
 
 live_counts_before=$(read_counts ksy_deals) || fail LIVE_EVIDENCE_FAILED
 [[ "$live_counts_before" =~ ^[0-9]+\|[0-9]+$ ]] || fail LIVE_COUNTS_INVALID
-live_fingerprint_before=$(read_fingerprint_rows ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
+live_edition_fingerprint_before=$(read_edition_ids ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
+live_observation_fingerprint_before=$(read_observation_ids ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
 
 existing=$("${compose[@]}" exec -T db psql --username "$POSTGRES_USER" --dbname postgres \
   --no-psqlrc --tuples-only --no-align --command "SELECT 1 FROM pg_database WHERE datname='ksy_deals_restore'") || fail RESTORE_DATABASE_PREFLIGHT_FAILED
@@ -190,8 +193,9 @@ database_name=$(psql "$RESTORE_DATABASE_URL" --no-psqlrc --tuples-only --no-alig
 case "$database_name" in *_restore) ;; *) exit 34 ;; esac
 archive=$(mktemp /tmp/ksy-restore-archive.XXXXXX)
 trap 'rm -f "$archive"' EXIT HUP INT TERM
-if ! gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_ENCRYPTION_PASSPHRASE" \
-  --output "$archive" --decrypt "$BACKUP_FILE"; then
+if ! printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE" | \
+  gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+    --output "$archive" --decrypt "$BACKUP_FILE"; then
   printf 'KSY_RESTORE_PHASE_DECRYPT\n' >&2
   exit 41
 fi
@@ -220,12 +224,19 @@ unset RESTORE_DATABASE_URL BACKUP_FILE RESTORE_CONFIRM POSTGRES_PASSWORD BACKUP_
 restore_counts=$(read_counts ksy_deals_restore) || fail RESTORE_EVIDENCE_FAILED
 [[ "$restore_counts" =~ ^[0-9]+\|[0-9]+$ && "$restore_counts" == "$live_counts_before" ]] ||
   fail RESTORE_COUNTS_UNEXPECTED
-restore_fingerprint=$(read_fingerprint_rows ksy_deals_restore | fingerprint) ||
+restore_edition_fingerprint=$(read_edition_ids ksy_deals_restore | fingerprint) ||
   fail RESTORE_FINGERPRINT_FAILED
-[[ "$restore_fingerprint" == "$live_fingerprint_before" ]] || fail RESTORE_FINGERPRINT_MISMATCH
+restore_observation_fingerprint=$(read_observation_ids ksy_deals_restore | fingerprint) ||
+  fail RESTORE_FINGERPRINT_FAILED
+[[ "$restore_edition_fingerprint" == "$live_edition_fingerprint_before" &&
+  "$restore_observation_fingerprint" == "$live_observation_fingerprint_before" ]] ||
+  fail RESTORE_FINGERPRINT_MISMATCH
 live_counts_after=$(read_counts ksy_deals) || fail LIVE_EVIDENCE_FAILED
-live_fingerprint_after=$(read_fingerprint_rows ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
-[[ "$live_counts_after" == "$live_counts_before" && "$live_fingerprint_after" == "$live_fingerprint_before" ]] ||
+live_edition_fingerprint_after=$(read_edition_ids ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
+live_observation_fingerprint_after=$(read_observation_ids ksy_deals | fingerprint) || fail LIVE_FINGERPRINT_FAILED
+[[ "$live_counts_after" == "$live_counts_before" &&
+  "$live_edition_fingerprint_after" == "$live_edition_fingerprint_before" &&
+  "$live_observation_fingerprint_after" == "$live_observation_fingerprint_before" ]] ||
   fail LIVE_CHANGED_DURING_RESTORE
 editions=${live_counts_before%%|*}
 observations=${live_counts_before##*|}

@@ -64,13 +64,15 @@ elif [[ "$*" == *'KSY_RESTORE_RUNNER_V2'* ]]; then
     exit 7
   fi
   [[ "${KSY_TEST_RESTORE_FAIL:-0}" != 1 ]] || exit 7
-elif [[ "$*" == *'KSY_FINGERPRINT_V1'* ]]; then
+elif [[ "$*" == *'KSY_EDITION_FINGERPRINT_V1'* ]]; then
+  printf 'edition-identity-a\nedition-identity-b\n'
+elif [[ "$*" == *'KSY_OBSERVATION_FINGERPRINT_V1'* ]]; then
   if [[ "$*" == *'--dbname ksy_deals_restore'* && "${KSY_TEST_FINGERPRINT_MISMATCH:-0}" == 1 ]]; then
-    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-row-changed\n'
+    printf 'observation-identity-a\nobservation-identity-changed\n'
   elif [[ "$*" == *'--dbname ksy_deals '* && "${KSY_TEST_LIVE_CHANGED:-0}" == 1 && -e "$FINGERPRINT_READ" ]]; then
-    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-live-changed\n'
+    printf 'observation-identity-a\nobservation-live-changed\n'
   else
-    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-row-b\n'
+    printf 'observation-identity-a\nobservation-identity-b\n'
   fi
   [[ "$*" != *'--dbname ksy_deals '* ]] || : > "$FINGERPRINT_READ"
 elif [[ "$*" == *'--command SELECT (SELECT COUNT('* ]]; then
@@ -99,11 +101,16 @@ test_restores_verifies_and_drops_without_secret_leaks() {
   [[ ! -e "$case_dir/restore.exists" ]] || fail 'disposable database remains'
   grep -q 'CREATE DATABASE ksy_deals_restore' "$case_dir/docker.calls" || fail 'restore database not created'
   grep -q 'DROP DATABASE ksy_deals_restore WITH (FORCE)' "$case_dir/docker.calls" || fail 'restore database not dropped'
-  grep -q 'KSY_FINGERPRINT_V1' "$case_dir/docker.calls" || fail 'fingerprints not read'
+  grep -q 'KSY_EDITION_FINGERPRINT_V1' "$case_dir/docker.calls" || fail 'edition fingerprints not read'
+  grep -q 'KSY_OBSERVATION_FINGERPRINT_V1' "$case_dir/docker.calls" || fail 'observation fingerprints not read'
   grep -q 'run --rm --no-deps -e RESTORE_DATABASE_URL -e BACKUP_FILE -e RESTORE_CONFIRM backup /bin/sh -c' "$case_dir/docker.calls" || fail 'image-contained restore missing'
   grep -q 'KSY_RESTORE_RUNNER_V2' "$case_dir/docker.calls" || fail 'spooled restore runner missing'
+  grep -q -- '--passphrase-fd 0' "$case_dir/docker.calls" || fail 'private passphrase fd missing'
+  ! grep -Fq -- '--passphrase "$BACKUP_ENCRYPTION_PASSPHRASE"' "$case_dir/docker.calls" || fail 'passphrase remained in child argv'
   ! grep -Fq -- '--decrypt "$BACKUP_FILE" | pg_restore' "$case_dir/docker.calls" || fail 'unsafe streaming restore returned'
-  for secret in aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb postgresql://; do
+  for secret in aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb postgresql:// \
+    edition-identity-a edition-identity-b observation-identity-a observation-identity-b; do
     ! grep -Fq "$secret" "$output" || fail "secret leaked to output: $secret"
     ! grep -Fq "$secret" "$case_dir/docker.calls" || fail "secret reached argv: $secret"
   done

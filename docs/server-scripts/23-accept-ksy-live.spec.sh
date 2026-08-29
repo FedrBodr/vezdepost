@@ -90,11 +90,13 @@ if [[ "$*" == *'run --rm --no-deps server node apps/server/dist/src/provision-ap
     if [[ "${KSY_TEST_BAD_SECOND:-0}" == 1 ]]; then printf '{"confirmed":1,"existing":1,"mappingRequired":1}\n'; else printf '{"confirmed":0,"existing":2,"mappingRequired":1}\n'; fi
   fi
   printf 'x\n' >> "$PROVISION_CALLS"
-elif printf '%s' "$*" | grep -Fq 'KSY_FINGERPRINT_V1'; then
+elif printf '%s' "$*" | grep -Fq 'KSY_EDITION_FINGERPRINT_V1'; then
+  printf 'edition-identity-a\nedition-identity-b\n'
+elif printf '%s' "$*" | grep -Fq 'KSY_OBSERVATION_FINGERPRINT_V1'; then
   if [[ "${KSY_TEST_CHANGED_IDS:-0}" == 1 && "$(wc -l < "$PROVISION_CALLS" | tr -d ' ')" == 2 ]]; then
-    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-row-changed\n'
+    printf 'observation-identity-a\nobservation-identity-changed\n'
   else
-    printf 'game_editions|synthetic-row-a\nprice_observations|synthetic-row-b\n'
+    printf 'observation-identity-a\nobservation-identity-b\n'
   fi
 elif printf '%s' "$*" | grep -Fq -- '--command SELECT'; then
   if [[ "${KSY_TEST_MATURE:-0}" == 1 ]]; then printf '136|162\n'; elif [[ ! -s "$PROVISION_CALLS" ]]; then printf '0|0\n'; elif [[ "${KSY_TEST_EXTRA_ROWS:-0}" == 1 ]]; then printf '3|2\n'; else printf '2|2\n'; fi
@@ -137,7 +139,8 @@ test_accepts_without_leaking_secrets() {
   [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'watchlist CLI was not invoked twice'
   grep -q 'run --rm --no-deps server node apps/server/dist/src/provision-approved-watchlist-cli.js' "$case_dir/docker.calls" || fail 'image-contained CLI missing'
   for secret in telegram-token-secret aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-    platprices-live-api-key ksy_user_01 abcdefghijklmnopqrstuvwxyzABCDEFGH123456789 observation-a observation-b; do
+    platprices-live-api-key ksy_user_01 abcdefghijklmnopqrstuvwxyzABCDEFGH123456789 \
+    edition-identity-a edition-identity-b observation-identity-a observation-identity-b; do
     ! grep -Fq "$secret" "$output" || fail "secret or identity leaked: $secret"
     ! grep -Fq "$secret" "$case_dir/docker.calls" || fail "secret reached argv: $secret"
   done
@@ -146,7 +149,13 @@ test_accepts_without_leaking_secrets() {
   run_case "$case_dir" "$case_dir/rerun.out" routine || fail 'routine acceptance after image change failed'
   [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'rerun consumed provider requests'
   grep -q 'mode=routine editions=2 observations=2 fingerprints=STABLE provisioning=SKIPPED' "$case_dir/rerun.out" || fail 'routine evidence missing'
-  grep -q 'accepted_image=.*sha256:bbbbbbbb' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'routine state did not attest new image'
+  grep -q 'routine_image=.*sha256:bbbbbbbb' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'routine state did not attest new image'
+  [[ "$(wc -l < "$case_dir/opt/ksy-deals/live-acceptance.state" | tr -d ' ')" == 10 ]] || fail 'v2 state schema is not exact'
+  for key in state_version bootstrap_phase bootstrap_image bootstrap_observation_fingerprint \
+    routine_image routine_edition_count routine_observation_count routine_edition_fingerprint \
+    routine_observation_fingerprint routine_accepted_at; do
+    [[ "$(grep -c "^$key=" "$case_dir/opt/ksy-deals/live-acceptance.state")" == 1 ]] || fail "missing or duplicate state key: $key"
+  done
 }
 
 test_rejects_public_env() {
@@ -191,9 +200,16 @@ test_resumes_after_first_pass() {
   make_case "$case_dir"
   if KSY_TEST_FAIL_SECOND=1 run_case "$case_dir" "$output"; then fail 'forced second-pass failure passed'; fi
   grep -q 'KSY_LIVE_ACCEPT_FAILED SECOND_PROVISION_FAILED' "$output" || fail 'first-pass checkpoint failure missing'
-  grep -q '^phase=FIRST_PASS$' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'first-pass checkpoint missing'
+  grep -q '^bootstrap_phase=FIRST_PASS$' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'first-pass checkpoint missing'
+  cp "$case_dir/opt/ksy-deals/.env" "$case_dir/original.env"
+  sed -i.bak 's/sha256:aaaaaaaa/sha256:bbbbbbbb/' "$case_dir/opt/ksy-deals/.env"
+  rm -f "$case_dir/opt/ksy-deals/.env.bak"
+  if run_case "$case_dir" "$case_dir/wrong-image.out" bootstrap; then fail 'first pass resumed on another image'; fi
+  grep -q 'KSY_LIVE_ACCEPT_FAILED BOOTSTRAP_IMAGE_MISMATCH' "$case_dir/wrong-image.out" || fail 'wrong first-pass image failure'
+  [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 1 ]] || fail 'wrong-image resume provisioned'
+  cp "$case_dir/original.env" "$case_dir/opt/ksy-deals/.env"
   run_case "$case_dir" "$case_dir/resumed.out" || fail 'first-pass resume failed'
-  grep -q '^phase=COMPLETE$' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'complete checkpoint missing'
+  grep -q '^bootstrap_phase=COMPLETE$' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'complete checkpoint missing'
   [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'resume repeated the first pass'
 }
 
@@ -209,8 +225,9 @@ phase=COMPLETE
 stored_checksum=$checksum
 STATE
   chmod 600 "$case_dir/opt/ksy-deals/live-acceptance.state"
-  KSY_TEST_MATURE=1 run_case "$case_dir" "$output" routine || fail 'data-only legacy state was rejected'
+  if KSY_TEST_MATURE=1 run_case "$case_dir" "$output" routine; then fail 'unknown legacy state key passed'; fi
   [[ ! -e "$executed" ]] || fail 'state content was executed'
+  grep -q 'KSY_LIVE_ACCEPT_FAILED ACCEPTANCE_STATE_INVALID' "$output" || fail 'unknown state key returned wrong failure'
   grep -q 'ACCEPTANCE_STATE_OWNER_INVALID' "$SCRIPT" || fail 'production state owner check missing'
 }
 
@@ -225,7 +242,7 @@ test_rejects_symlink_state() {
 }
 
 test_routine_requires_completed_state_and_skips_provisioning() {
-  local case_dir="$TMP_DIR/routine" output="$TMP_DIR/routine.out" checksum
+  local case_dir="$TMP_DIR/routine" output="$TMP_DIR/routine.out" checksum state_checksum
   make_case "$case_dir"
   printf 'x\nx\n' > "$case_dir/provision.calls"
   if KSY_TEST_MATURE=1 run_case "$case_dir" "$output" routine; then fail 'routine without state passed'; fi
@@ -241,6 +258,12 @@ STATE
   grep -q 'mode=routine editions=136 observations=162 fingerprints=STABLE provisioning=SKIPPED' "$output" || fail 'mature routine evidence missing'
   [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'routine invoked provisioning'
   grep -q '^state_version=2$' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'legacy state was not migrated'
+  state_checksum=$(shasum -a 256 "$case_dir/opt/ksy-deals/live-acceptance.state" | awk '{print $1}')
+  if KSY_TEST_MATURE=1 KSY_TEST_BAD_STATE=1 run_case "$case_dir" "$TMP_DIR/routine-bad-resource.out" routine; then
+    fail 'routine with failed resource gate passed'
+  fi
+  [[ "$(shasum -a 256 "$case_dir/opt/ksy-deals/live-acceptance.state" | awk '{print $1}')" == "$state_checksum" ]] ||
+    fail 'failed resource gate changed durable acceptance state'
 }
 
 test_bootstrap_rejects_mature_database() {
@@ -249,6 +272,37 @@ test_bootstrap_rejects_mature_database() {
   if KSY_TEST_MATURE=1 run_case "$case_dir" "$output" bootstrap; then fail 'bootstrap accepted mature database'; fi
   grep -q 'KSY_LIVE_ACCEPT_FAILED INITIAL_DATABASE_NOT_EMPTY' "$output" || fail 'wrong mature bootstrap failure'
   [[ ! -s "$case_dir/provision.calls" ]] || fail 'mature bootstrap invoked provisioning'
+}
+
+test_routine_rejects_zero_counts() {
+  local case_dir="$TMP_DIR/routine-zero" output="$TMP_DIR/routine-zero.out" checksum
+  make_case "$case_dir"
+  checksum=$(printf 'legacy' | shasum -a 256 | awk '{print $1}')
+  cat > "$case_dir/opt/ksy-deals/live-acceptance.state" <<STATE
+stored_image=ghcr.io/fedrbodr/ksy-deals@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+phase=COMPLETE
+stored_checksum=$checksum
+STATE
+  chmod 600 "$case_dir/opt/ksy-deals/live-acceptance.state"
+  if run_case "$case_dir" "$output" routine; then fail 'routine accepted zero counts'; fi
+  grep -q 'KSY_LIVE_ACCEPT_FAILED ROUTINE_COUNTS_NOT_POSITIVE' "$output" || fail 'wrong zero-count failure'
+  [[ ! -s "$case_dir/curl.configs" ]] || fail 'zero-count routine reached external mutation'
+}
+
+test_resumes_valid_legacy_first_pass_only_on_same_image() {
+  local case_dir="$TMP_DIR/legacy-first" output="$TMP_DIR/legacy-first.out" checksum
+  make_case "$case_dir"
+  printf 'x\n' > "$case_dir/provision.calls"
+  checksum=$(printf 'observation-identity-a\nobservation-identity-b' | shasum -a 256 | awk '{print $1}')
+  cat > "$case_dir/opt/ksy-deals/live-acceptance.state" <<STATE
+stored_image=ghcr.io/fedrbodr/ksy-deals@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+phase=FIRST_PASS
+stored_checksum=$checksum
+STATE
+  chmod 600 "$case_dir/opt/ksy-deals/live-acceptance.state"
+  run_case "$case_dir" "$output" bootstrap || fail 'valid legacy first pass did not resume'
+  [[ "$(wc -l < "$case_dir/provision.calls" | tr -d ' ')" == 2 ]] || fail 'legacy first pass repeated provisioning'
+  grep -q '^bootstrap_phase=COMPLETE$' "$case_dir/opt/ksy-deals/live-acceptance.state" || fail 'legacy first pass did not migrate'
 }
 
 test_accepts_without_leaking_secrets
@@ -267,5 +321,7 @@ test_state_file_is_data_not_code
 test_rejects_symlink_state
 test_routine_requires_completed_state_and_skips_provisioning
 test_bootstrap_rejects_mature_database
+test_routine_rejects_zero_counts
+test_resumes_valid_legacy_first_pass_only_on_same_image
 bash -n "$SCRIPT"
 printf 'KSY live acceptance tests passed\n'
