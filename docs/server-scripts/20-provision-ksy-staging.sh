@@ -32,8 +32,10 @@ runtime_keys=(
   PLATPRICES_API_KEY PLATPRICES_BASE_URL PLATPRICES_REGION PLATPRICES_PROXY_URL
   BACKUP_ENCRYPTION_PASSPHRASE BACKUP_RETENTION_DAYS
 )
+optional_compose_keys=(FEED_TOKEN SITE_BASE_URL)
 
-for sensitive_key in "${required_keys[@]}" "${runtime_keys[@]}"; do
+for sensitive_key in "${required_keys[@]}" "${runtime_keys[@]}" \
+  "${optional_compose_keys[@]}"; do
   unset "$sensitive_key"
 done
 
