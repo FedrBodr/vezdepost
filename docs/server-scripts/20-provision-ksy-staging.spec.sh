@@ -206,6 +206,14 @@ invalid_proxy_batch() {
   valid_batch | awk '{ if ($0 ~ /^PLATPRICES_PROXY_URL/) print "PLATPRICES_PROXY_URL = http://user:short@185.158.249.84:3128"; else print }'
 }
 
+alternate_order_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_TELEGRAM_URL/) print "ORDER_TELEGRAM_URL = https://t.me/yar_neo"; else print }'
+}
+
+invite_order_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_TELEGRAM_URL/) print "ORDER_TELEGRAM_URL = https://t.me/+invite_token"; else print }'
+}
+
 empty_platprices_batch() {
   valid_batch | awk '{ if ($0 ~ /^PLATPRICES_API_KEY/) print "PLATPRICES_API_KEY =   "; else print }'
 }
@@ -283,7 +291,7 @@ run_reuse_case() {
   local image=${5:-$REUSE_IMAGE}
   local cp_fail_install=${6:-none}
   local stat_force_uid_mismatch=${7:-0}
-  local order_url_override=${8:-}
+  local order_url_override=${8:-$APPROVED_ORDER_URL}
   local bin_dir="$case_dir/bin"
   local arguments=(--reuse-existing-secrets)
   mkdir -p "$case_dir"
@@ -526,6 +534,8 @@ test_rejects_batch_safety_failures_before_mutation() {
   assert_rejection missing-key BATCH_MISSING_KEY missing_admin_batch
   assert_rejection empty-value BATCH_EMPTY_VALUE empty_platprices_batch
   assert_rejection invalid-proxy PLATPRICES_PROXY_URL_INVALID invalid_proxy_batch
+  assert_rejection alternate-order ORDER_TELEGRAM_URL_INVALID alternate_order_batch
+  assert_rejection invite-order ORDER_TELEGRAM_URL_INVALID invite_order_batch
 }
 
 test_rejects_missing_batch_key_despite_inherited_environment() {
@@ -945,6 +955,8 @@ assert_order_override_rejected_before_mutation() {
 }
 
 test_rejects_invalid_order_url_override_arguments_before_mutation() {
+  assert_order_override_rejected_before_mutation reuse-order-omitted \
+    --reuse-existing-secrets --image "$REUSE_IMAGE"
   assert_order_override_rejected_before_mutation reuse-order-bootstrap \
     --image "$REUSE_IMAGE" --order-telegram-url "$APPROVED_ORDER_URL"
   assert_order_override_rejected_before_mutation reuse-order-missing-value \

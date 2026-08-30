@@ -121,10 +121,12 @@ while (($#)); do
 done
 
 [[ "$image_seen" == 1 ]] || fail IMAGE_ARGUMENT_REQUIRED
-if [[ "$order_url_seen" == 1 ]]; then
-  [[ "$REUSE_EXISTING_SECRETS" == 1 &&
+if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
+  [[ "$order_url_seen" == 1 &&
     "$ORDER_TELEGRAM_URL_OVERRIDE" == "$APPROVED_ORDER_TELEGRAM_URL" ]] ||
     fail ORDER_TELEGRAM_URL_ARGUMENT_INVALID
+else
+  [[ "$order_url_seen" == 0 ]] || fail ORDER_TELEGRAM_URL_ARGUMENT_INVALID
 fi
 
 read_batch() {
@@ -384,7 +386,7 @@ else
   safe_token "$PLATPRICES_API_KEY" || fail PLATPRICES_API_KEY_INVALID
   [[ "$PLATPRICES_PROXY_URL" =~ ^http://[A-Za-z0-9_-]{8,32}:[A-Za-z0-9_-]{43,86}@185\.158\.249\.84:3128$ ]] ||
     fail PLATPRICES_PROXY_URL_INVALID
-  [[ "$ORDER_TELEGRAM_URL" =~ ^https://t\.me/([A-Za-z0-9_]{5,32}|\+[A-Za-z0-9_-]+)$ ]] ||
+  [[ "$ORDER_TELEGRAM_URL" == "$APPROVED_ORDER_TELEGRAM_URL" ]] ||
     fail ORDER_TELEGRAM_URL_INVALID
   [[ "$ADMIN_TELEGRAM_IDS" =~ ^([1-9][0-9]*),([1-9][0-9]*)$ ]] ||
     fail ADMIN_TELEGRAM_IDS_INVALID
