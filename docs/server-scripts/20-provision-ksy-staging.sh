@@ -35,9 +35,11 @@ runtime_keys=(
 )
 optional_compose_keys=(FEED_TOKEN SITE_BASE_URL)
 cover_compose_keys=(KSY_DEALS_COVER_HOST_DIR COVER_PUBLIC_BASE_URL)
+fixed_public_keys=(SITE_TELEGRAM_BOT_URL)
 
 for sensitive_key in "${required_keys[@]}" "${runtime_keys[@]}" \
-  "${optional_compose_keys[@]}" "${cover_compose_keys[@]}"; do
+  "${optional_compose_keys[@]}" "${cover_compose_keys[@]}" \
+  "${fixed_public_keys[@]}"; do
   unset "$sensitive_key"
 done
 
@@ -84,7 +86,8 @@ progress() {
     "$step" "$PROGRESS_TOTAL" "$phase" "$message"
 }
 
-APPROVED_ORDER_TELEGRAM_URL=https://t.me/ksy_deals_store_bot
+APPROVED_ORDER_TELEGRAM_URL=https://t.me/ksu_fifa
+APPROVED_SITE_TELEGRAM_BOT_URL=https://t.me/ksy_deals_store_bot
 REUSE_EXISTING_SECRETS=0
 KSY_DEALS_IMAGE=''
 ORDER_TELEGRAM_URL_OVERRIDE=''
@@ -325,13 +328,44 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
     ' "$ENV_FILE")
     [[ "$runtime_key_state" == 1:1:0 ]] || fail EXISTING_ENV_INVALID
   done
-  awk -v image="$KSY_DEALS_IMAGE" -v order="$ORDER_TELEGRAM_URL_OVERRIDE" '
+  site_key_state=$(LC_ALL=C awk '
+    BEGIN {
+      key = "SITE_TELEGRAM_BOT_URL"
+      assignment = "^[[:space:]]*(export[[:space:]]+)?" key "[[:space:]]*[=:]"
+      bare = "^[[:space:]]*(export[[:space:]]+)?" key "([[:space:]]*(#.*)?)?$"
+    }
+    $0 ~ assignment || $0 ~ bare {
+      if (index($0, key "=") != 1) {
+        noncanonical++
+        next
+      }
+      count++
+      value = substr($0, length(key) + 2)
+      if (value !~ /^[!-~]+$/ || value ~ /["\047]/ || value ~ /\$/ || index(value, "\\") > 0)
+        noncanonical++
+      else
+        nonempty++
+    }
+    END { print (count + 0) ":" (nonempty + 0) ":" (noncanonical + 0) }
+  ' "$ENV_FILE")
+  [[ "$site_key_state" == 0:0:0 || "$site_key_state" == 1:1:0 ]] ||
+    fail EXISTING_ENV_INVALID
+  awk -v image="$KSY_DEALS_IMAGE" -v order="$ORDER_TELEGRAM_URL_OVERRIDE" \
+    -v site="$APPROVED_SITE_TELEGRAM_BOT_URL" '
     /^KSY_DEALS_IMAGE=/ { print "KSY_DEALS_IMAGE=" image; next }
     order != "" && /^ORDER_TELEGRAM_URL=/ {
       print "ORDER_TELEGRAM_URL=" order
       next
     }
+    /^SITE_TELEGRAM_BOT_URL=/ {
+      if (!site_written) print "SITE_TELEGRAM_BOT_URL=" site
+      site_written = 1
+      next
+    }
     { print }
+    END {
+      if (!site_written) print "SITE_TELEGRAM_BOT_URL=" site
+    }
   ' "$ENV_FILE" > "$candidate_env"
   chmod 600 "$candidate_env"
 else
@@ -371,6 +405,7 @@ TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
 TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET
 TELEGRAM_WEBHOOK_URL=https://ksy-deals.fedrbodr.com/telegram/webhook
 ORDER_TELEGRAM_URL=$ORDER_TELEGRAM_URL
+SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_TELEGRAM_BOT_URL
 ADMIN_TELEGRAM_IDS=$ADMIN_TELEGRAM_IDS
 PLATPRICES_API_KEY=$PLATPRICES_API_KEY
 PLATPRICES_BASE_URL=https://platprices.com/api/v2
