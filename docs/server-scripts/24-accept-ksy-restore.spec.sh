@@ -206,6 +206,8 @@ test_real_integration_entrypoint_contract() {
   grep -Fq 'pg_dump --format=custom' "$INTEGRATION" || fail 'integration does not create a real custom-format dump'
   grep -Fq 'gpg --batch' "$INTEGRATION" || fail 'integration does not create a real encrypted artifact'
   grep -Fq 'DECRYPTION_FAILED' "$INTEGRATION" || fail 'integration does not verify corrupt-artifact classification'
+  grep -Fq -- '--build-arg VITE_BUILD_ID=ksy-restore-acceptance' "$INTEGRATION" ||
+    fail 'integration does not identify its KSY frontend build'
   ! grep -Eq 'docker (system|volume|container|image) prune' "$INTEGRATION" || fail 'integration contains broad Docker cleanup'
 }
 

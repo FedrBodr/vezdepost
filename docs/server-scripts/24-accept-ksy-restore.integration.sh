@@ -45,6 +45,7 @@ mkdir -p "$install_root" "$backup_dir"
 chmod 700 "$install_root" "$backup_dir"
 
 docker build --build-arg VITE_TELEGRAM_BOT_USERNAME=ksy_acceptance_bot \
+  --build-arg VITE_BUILD_ID=ksy-restore-acceptance \
   --file "$KSY_SOURCE/infra/Dockerfile" --tag "$image" "$KSY_SOURCE" >/dev/null
 image_created=1
 
