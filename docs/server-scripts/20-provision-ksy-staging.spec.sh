@@ -230,6 +230,7 @@ run_case() {
       KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
       bash "$SCRIPT" > "$output" 2>&1
@@ -243,6 +244,7 @@ run_case() {
       KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
       bash "$SCRIPT" --image "$image" > "$output" 2>&1
@@ -305,6 +307,7 @@ run_reuse_case() {
     KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
     bash "$SCRIPT" "${arguments[@]}" </dev/null > "$output" 2>&1
@@ -328,6 +331,7 @@ run_reuse_arguments_case() {
     KSY_PROVISION_TEST_DISK_USED_PERCENT=20 \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
     bash "$SCRIPT" "$@" </dev/null > "$output" 2>&1
@@ -464,6 +468,13 @@ test_provisions_idempotently_without_secret_leaks() {
     'PlatPrices proxy URL must have one definition'
   grep -Fxq "PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL" "$case_dir/opt/ksy-deals/.env" ||
     fail 'PlatPrices proxy URL was not materialized exactly'
+  grep -Fxq "KSY_DEALS_COVER_HOST_DIR=$case_dir/var/covers/ksy-deals" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'cover host directory was not materialized exactly'
+  grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$case_dir/opt/ksy-deals/.env" ||
+    fail 'cover public base URL was not materialized exactly'
+  [[ -d "$case_dir/var/covers/ksy-deals" ]] || fail 'cover host directory was not created'
+  assert_eq 755 "$(file_mode "$case_dir/var/covers/ksy-deals")" \
+    'cover host directory must be traversable by the non-root server'
   [[ -f "$case_dir/etc/caddy/sites/00-empty.caddy" ]] ||
     fail 'empty Caddy import placeholder was not created'
   [[ -f "$case_dir/network.created" ]] || fail 'caddy-edge was not created'
@@ -579,6 +590,7 @@ make_unprivileged_pty_script() {
   sed \
     -e 's/\[\[ "$TEST_MODE" == 1 || $EUID -eq 0 \]\] || fail ROOT_REQUIRED/true/' \
     -e 's/install -o root -g root -m /install -m /' \
+    -e 's/chown 1000:1000 "$KSY_COVER_DIR"/true/' \
     "$SCRIPT" > "$pty_script"
   chmod +x "$pty_script"
   printf '%s\n' "$pty_script"
@@ -608,6 +620,7 @@ run_pty_case() {
     NETWORK_MARKER="$case_dir/network.created" \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
   expect > "$output" 2>&1 <<'EXPECT' && return 0
@@ -630,7 +643,7 @@ exit $status
 EXPECT
   local status=$?
   printf 'PTY harness exited %s; transcript markers follow:\n' "$status" >&2
-  rg -n 'ECHO_OFF|Paste the twelve|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED' \
+  rg -n 'ECHO_OFF|Paste the twelve|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED|Operation not permitted|Permission denied' \
     "$output" >&2 || true
   return "$status"
 }
@@ -702,6 +715,7 @@ test_pty_signals_terminate_before_mutation() {
       NETWORK_MARKER="$case_dir/network.created" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
       expect > "$output" 2>&1 <<'EXPECT'
@@ -832,6 +846,30 @@ test_reuses_existing_secrets_without_prompting() {
     'routine reuse did not install exactly one requested image digest'
   grep -Fxq "PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL" "$root/.env" ||
     fail 'routine reuse did not preserve the PlatPrices proxy URL'
+  assert_synthetic_secrets_absent "$output"
+}
+
+test_reuse_upgrades_legacy_installation_with_cover_storage() {
+  local case_dir="$TMP_DIR/reuse-legacy-cover-upgrade"
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  write_existing_installation "$case_dir"
+  awk '!/^KSY_DEALS_COVER_HOST_DIR=/ && !/^COVER_PUBLIC_BASE_URL=/' "$root/.env" > \
+    "$case_dir/legacy.env"
+  cp "$case_dir/legacy.env" "$root/.env"
+  chmod 600 "$root/.env"
+
+  run_reuse_case "$case_dir" "$output" || fail 'legacy cover configuration was not upgraded'
+
+  assert_eq 1 "$(grep -c '^KSY_DEALS_COVER_HOST_DIR=' "$root/.env")" \
+    'cover host directory must have one definition after upgrade'
+  assert_eq 1 "$(grep -c '^COVER_PUBLIC_BASE_URL=' "$root/.env")" \
+    'cover public base URL must have one definition after upgrade'
+  grep -Fxq "KSY_DEALS_COVER_HOST_DIR=$case_dir/var/covers/ksy-deals" "$root/.env" ||
+    fail 'legacy upgrade installed the wrong cover host directory'
+  grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$root/.env" ||
+    fail 'legacy upgrade installed the wrong cover public URL'
+  [[ -d "$case_dir/var/covers/ksy-deals" ]] || fail 'legacy upgrade did not create cover storage'
   assert_synthetic_secrets_absent "$output"
 }
 
@@ -1214,6 +1252,7 @@ test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
 test_reuses_existing_secrets_without_prompting
+test_reuse_upgrades_legacy_installation_with_cover_storage
 test_routine_override_changes_only_image_and_order_url
 test_rejects_invalid_order_url_override_arguments_before_mutation
 test_clears_inherited_runtime_values_before_compose
