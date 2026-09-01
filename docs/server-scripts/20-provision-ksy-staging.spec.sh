@@ -30,7 +30,7 @@ make_stubs() {
   cat > "$bin_dir/docker" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 if [[ "$1" == pull && "${DOCKER_PULL_FAIL:-0}" == 1 ]]; then
@@ -45,7 +45,7 @@ STUB
   cat > "$bin_dir/curl" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$CURL_CALLS"
 [[ "${CURL_FAIL:-0}" != 1 ]]
@@ -53,7 +53,7 @@ STUB
   cat > "$bin_dir/mktemp" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 exec /usr/bin/mktemp "$@"
 STUB
@@ -110,6 +110,10 @@ valid_environment() {
   SESSION_COOKIE_KEY='2222222222222222222222222222222222222222222222222222222222222222'
   TELEGRAM_BOT_TOKEN='123456:test_bot-token'
   TELEGRAM_WEBHOOK_SECRET='3333333333333333333333333333333333333333333333333333333333333333'
+  ORDER_BOT_TOKEN='654321:order_bot-token'
+  ORDER_BOT_WEBHOOK_SECRET='5555555555555555555555555555555555555555555555555555555555555555'
+  ORDER_BOT_WEBHOOK_URL='https://ksy-deals.fedrbodr.com/telegram/order-webhook'
+  ORDER_OPERATOR_CHAT_ID='-1001234567890'
   ORDER_TELEGRAM_URL='https://t.me/ksy_orders'
   ADMIN_TELEGRAM_IDS='101,202'
   PLATPRICES_API_KEY='platprices_test-key'
@@ -125,6 +129,10 @@ inherited_application_environment() {
   export SESSION_COOKIE_KEY='2222222222222222222222222222222222222222222222222222222222222222'
   export TELEGRAM_BOT_TOKEN='123456:test_bot-token'
   export TELEGRAM_WEBHOOK_SECRET='3333333333333333333333333333333333333333333333333333333333333333'
+  export ORDER_BOT_TOKEN='654321:order_bot-token'
+  export ORDER_BOT_WEBHOOK_SECRET='5555555555555555555555555555555555555555555555555555555555555555'
+  export ORDER_BOT_WEBHOOK_URL='https://ksy-deals.fedrbodr.com/telegram/order-webhook'
+  export ORDER_OPERATOR_CHAT_ID='-1001234567890'
   export ORDER_TELEGRAM_URL='https://t.me/ksy_orders'
   export ADMIN_TELEGRAM_IDS='101,202'
   export PLATPRICES_API_KEY='platprices_test-key'
@@ -151,6 +159,10 @@ GHCR_READ_TOKEN = github-read-token-secret
 POSTGRES_PASSWORD = 1111111111111111111111111111111111111111111111111111111111111111
 TELEGRAM_BOT_TOKEN = 123456:test_bot-token
 TELEGRAM_WEBHOOK_SECRET = 3333333333333333333333333333333333333333333333333333333333333333
+ORDER_BOT_TOKEN = 654321:order_bot-token
+ORDER_BOT_WEBHOOK_SECRET = 5555555555555555555555555555555555555555555555555555555555555555
+ORDER_BOT_WEBHOOK_URL = https://ksy-deals.fedrbodr.com/telegram/order-webhook
+ORDER_OPERATOR_CHAT_ID = -1001234567890
 ADMIN_TELEGRAM_IDS = 101,202
 PLATPRICES_API_KEY = platprices_test-key
 PLATPRICES_PROXY_URL = http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128
@@ -167,6 +179,10 @@ PLATPRICES_PROXY_URL=http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456
 ADMIN_TELEGRAM_IDS = 101,202
 TELEGRAM_WEBHOOK_SECRET=3333333333333333333333333333333333333333333333333333333333333333
 TELEGRAM_BOT_TOKEN = 123456:test_bot-token
+ORDER_OPERATOR_CHAT_ID = -1001234567890
+ORDER_BOT_WEBHOOK_URL = https://ksy-deals.fedrbodr.com/telegram/order-webhook
+ORDER_BOT_WEBHOOK_SECRET = 5555555555555555555555555555555555555555555555555555555555555555
+ORDER_BOT_TOKEN = 654321:order_bot-token
 POSTGRES_PASSWORD=1111111111111111111111111111111111111111111111111111111111111111
 GHCR_READ_TOKEN = github-read-token-secret
 VITE_TELEGRAM_BOT_USERNAME=ksy_staging_bot
@@ -185,6 +201,10 @@ duplicate_proxy_batch() {
   valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "PLATPRICES_PROXY_URL = http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128"; print }'
 }
 
+duplicate_order_bot_batch() {
+  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "ORDER_BOT_TOKEN = 654321:order_bot-token"; print }'
+}
+
 unknown_key_batch() {
   valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "EXTRA_KEY = should-not-be-accepted"; print }'
 }
@@ -199,6 +219,34 @@ missing_admin_batch() {
 
 missing_proxy_batch() {
   valid_batch | awk '$0 !~ /^PLATPRICES_PROXY_URL/'
+}
+
+legacy_twelve_field_batch() {
+  valid_batch | awk '$0 !~ /^ORDER_BOT_TOKEN/ && $0 !~ /^ORDER_BOT_WEBHOOK_SECRET/ && $0 !~ /^ORDER_BOT_WEBHOOK_URL/ && $0 !~ /^ORDER_OPERATOR_CHAT_ID/'
+}
+
+missing_order_bot_token_batch() {
+  valid_batch | awk '$0 !~ /^ORDER_BOT_TOKEN/'
+}
+
+duplicate_bot_tokens_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_BOT_TOKEN/) print "ORDER_BOT_TOKEN = 123456:test_bot-token"; else print }'
+}
+
+duplicate_webhook_secrets_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_BOT_WEBHOOK_SECRET/) print "ORDER_BOT_WEBHOOK_SECRET = 3333333333333333333333333333333333333333333333333333333333333333"; else print }'
+}
+
+invalid_order_webhook_url_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_BOT_WEBHOOK_URL/) print "ORDER_BOT_WEBHOOK_URL = https://ksy-deals.fedrbodr.com/telegram/webhook"; else print }'
+}
+
+empty_order_webhook_secret_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_BOT_WEBHOOK_SECRET/) print "ORDER_BOT_WEBHOOK_SECRET ="; else print }'
+}
+
+invalid_order_operator_chat_id_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_OPERATOR_CHAT_ID/) print "ORDER_OPERATOR_CHAT_ID = -9991234567890"; else print }'
 }
 
 invalid_proxy_batch() {
@@ -362,6 +410,7 @@ assert_synthetic_secrets_absent() {
   local output=$1
   for secret in "$GHCR_READ_TOKEN" "$POSTGRES_PASSWORD" "$SESSION_COOKIE_KEY" \
     "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_WEBHOOK_SECRET" \
+    "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" \
     "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
     ! grep -Fq "$secret" "$output" || fail 'synthetic secret leaked to output'
   done
@@ -464,6 +513,18 @@ test_provisions_idempotently_without_secret_leaks() {
     'PlatPrices proxy URL must have one definition'
   grep -Fxq "PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL" "$case_dir/opt/ksy-deals/.env" ||
     fail 'PlatPrices proxy URL was not materialized exactly'
+  grep -Fxq "ORDER_BOT_TOKEN=$ORDER_BOT_TOKEN" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'order bot token was not materialized exactly'
+  grep -Fxq "ORDER_BOT_WEBHOOK_SECRET=$ORDER_BOT_WEBHOOK_SECRET" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'order bot webhook secret was not materialized exactly'
+  grep -Fxq "ORDER_BOT_WEBHOOK_URL=$ORDER_BOT_WEBHOOK_URL" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'order bot webhook URL was not materialized exactly'
+  grep -Fxq "ORDER_OPERATOR_CHAT_ID=$ORDER_OPERATOR_CHAT_ID" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'order operator chat ID was not materialized exactly'
+  grep -Fxq 'ORDER_TELEGRAM_URL=https://t.me/ksybuybot' "$case_dir/opt/ksy-deals/.env" ||
+    fail 'order Telegram URL was not fixed in the candidate runtime environment'
+  grep -Fxq 'SITE_TELEGRAM_BOT_URL=https://t.me/ksy_deals_store_bot' "$case_dir/opt/ksy-deals/.env" ||
+    fail 'site Telegram bot URL was not fixed in the candidate runtime environment'
   [[ -f "$case_dir/etc/caddy/sites/00-empty.caddy" ]] ||
     fail 'empty Caddy import placeholder was not created'
   [[ -f "$case_dir/network.created" ]] || fail 'caddy-edge was not created'
@@ -486,6 +547,7 @@ test_provisions_idempotently_without_secret_leaks() {
 
   for secret in "$GHCR_READ_TOKEN" "$POSTGRES_PASSWORD" "$SESSION_COOKIE_KEY" \
     "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_WEBHOOK_SECRET" \
+    "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" \
     "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
     ! grep -Fq "$secret" "$output" || fail 'secret leaked to output'
     ! grep -Fq "$secret" "$case_dir/opt/ksy-deals/deployment-evidence.json" ||
@@ -504,18 +566,35 @@ test_rejects_batch_safety_failures_before_mutation() {
   assert_rejection duplicate-key BATCH_DUPLICATE_KEY duplicate_order_batch
   assert_rejection duplicate-proxy BATCH_DUPLICATE_KEY duplicate_proxy_batch
   assert_rejection unknown-key BATCH_UNKNOWN_KEY unknown_key_batch
-  assert_rejection malformed-line 'BATCH_MALFORMED_LINE line=13' malformed_line_batch
+  assert_rejection malformed-line 'BATCH_MALFORMED_LINE line=17' malformed_line_batch
   assert_rejection missing-key BATCH_MISSING_KEY missing_admin_batch
   assert_rejection empty-value BATCH_EMPTY_VALUE empty_platprices_batch
   assert_rejection invalid-proxy PLATPRICES_PROXY_URL_INVALID invalid_proxy_batch
+}
+
+test_rejects_invalid_order_runtime_batch_before_mutation() {
+  valid_environment
+  assert_rejection legacy-twelve-field BATCH_MISSING_KEY legacy_twelve_field_batch
+  assert_rejection duplicate-order-bot BATCH_DUPLICATE_KEY duplicate_order_bot_batch
+  assert_rejection duplicate-bot-tokens TELEGRAM_BOT_TOKENS_DUPLICATE duplicate_bot_tokens_batch
+  assert_rejection duplicate-webhook-secrets TELEGRAM_WEBHOOK_SECRETS_DUPLICATE \
+    duplicate_webhook_secrets_batch
+  assert_rejection empty-order-webhook-secret BATCH_EMPTY_VALUE empty_order_webhook_secret_batch
+  assert_rejection invalid-order-webhook-url ORDER_BOT_WEBHOOK_URL_INVALID \
+    invalid_order_webhook_url_batch
+  assert_rejection invalid-order-operator-chat-id ORDER_OPERATOR_CHAT_ID_INVALID \
+    invalid_order_operator_chat_id_batch
 }
 
 test_rejects_missing_batch_key_despite_inherited_environment() {
   valid_environment
   inherited_application_environment
   assert_rejection missing-key-inherited-environment BATCH_MISSING_KEY missing_proxy_batch
+  assert_rejection missing-order-bot-key-inherited-environment BATCH_MISSING_KEY \
+    missing_order_bot_token_batch
   unset GHCR_USERNAME GHCR_READ_TOKEN VITE_TELEGRAM_BOT_USERNAME POSTGRES_PASSWORD \
     SESSION_COOKIE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL \
+    ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID \
     ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL BACKUP_ENCRYPTION_PASSPHRASE
 }
 
@@ -536,6 +615,7 @@ test_clears_inherited_application_secrets_before_any_child_process() {
   assert_synthetic_secrets_absent "$output"
   unset GHCR_USERNAME GHCR_READ_TOKEN VITE_TELEGRAM_BOT_USERNAME POSTGRES_PASSWORD \
     SESSION_COOKIE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL \
+    ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID \
     ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL BACKUP_ENCRYPTION_PASSPHRASE
 }
 
@@ -615,7 +695,7 @@ log_user 1
 set timeout 10
 spawn -noecho bash $env(PTY_SCRIPT) --image $env(PTY_IMAGE)
 expect {
-  -exact "Paste the twelve KSY secret assignments, then KSY_SECRETS_END:" {}
+  -exact "Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:" {}
   timeout { exit 124 }
   eof { exit 125 }
 }
@@ -630,7 +710,7 @@ exit $status
 EXPECT
   local status=$?
   printf 'PTY harness exited %s; transcript markers follow:\n' "$status" >&2
-  rg -n 'ECHO_OFF|Paste the twelve|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED' \
+  rg -n 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED' \
     "$output" >&2 || true
   return "$status"
 }
@@ -643,8 +723,8 @@ test_pty_prompt_follows_echo_off_and_normal_path_restores_echo() {
 
   local transcript
   transcript=$(<"$output")
-  if [[ "$transcript" != *'[ECHO_OFF]'*'Paste the twelve KSY secret assignments, then KSY_SECRETS_END:'* ]]; then
-    rg -n 'ECHO_OFF|Paste the twelve|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
+  if [[ "$transcript" != *'[ECHO_OFF]'*'Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:'* ]]; then
+    rg -n 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
     fail 'batch readiness prompt did not follow successful echo disable'
   fi
   grep -qx 'echo-restored' "$case_dir/bin/stty-events" ||
@@ -708,7 +788,7 @@ test_pty_signals_terminate_before_mutation() {
 log_user 1
 set timeout 5
 spawn -noecho bash $env(PTY_SCRIPT) --image $env(PTY_IMAGE)
-expect -exact "Paste the twelve KSY secret assignments, then KSY_SECRETS_END:"
+  expect -exact "Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:"
 if {$env(PTY_SIGNAL) == "INT"} {
   send -- "\003"
 } else {
@@ -973,6 +1053,16 @@ test_rejects_invalid_existing_env_without_mutation() {
   local case_dir root env_contents
   local alternate_image='ghcr.io/fedrbodr/ksy-deals@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
+  case_dir="$TMP_DIR/reuse-legacy-twelve-field"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '!/^ORDER_BOT_TOKEN=/ && !/^ORDER_BOT_WEBHOOK_SECRET=/ && !/^ORDER_BOT_WEBHOOK_URL=/ && !/^ORDER_OPERATOR_CHAT_ID=/' \
+    "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'legacy twelve-field environment invoked Docker'
+
   case_dir="$TMP_DIR/reuse-missing-proxy"
   write_existing_installation "$case_dir"
   root="$case_dir/opt/ksy-deals"
@@ -1128,6 +1218,21 @@ test_rejects_invalid_existing_env_without_mutation() {
   [[ ! -s "$case_dir/docker.calls" ]] || fail 'unsupported env framing invoked Docker'
 }
 
+test_rejects_missing_order_runtime_keys_in_existing_env_without_mutation() {
+  local runtime_key case_dir root
+  for runtime_key in ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL \
+    ORDER_OPERATOR_CHAT_ID; do
+    case_dir="$TMP_DIR/reuse-missing-$runtime_key"
+    write_existing_installation "$case_dir"
+    root="$case_dir/opt/ksy-deals"
+    awk -v key="$runtime_key" '$0 !~ ("^" key "=")' "$root/.env" > "$case_dir/invalid.env"
+    mv "$case_dir/invalid.env" "$root/.env"
+    chmod 600 "$root/.env"
+    assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+    [[ ! -s "$case_dir/docker.calls" ]] || fail "missing $runtime_key invoked Docker"
+  done
+}
+
 test_rejects_failed_existing_docker_auth_without_mutation() {
   local case_dir="$TMP_DIR/reuse-pull-failure"
   write_existing_installation "$case_dir"
@@ -1201,12 +1306,12 @@ test_reuse_rolls_back_evidence_install_failure() {
     reuse-evidence-install-failure evidence 2
 }
 
-test_bootstrap_contract_still_names_twelve_hidden_fields() {
+test_bootstrap_contract_names_sixteen_hidden_fields() {
   valid_environment
-  assert_eq 12 "$(valid_batch | awk -F= '/^[A-Z0-9_]+[[:space:]]*=/ { count++ } END { print count }')" \
-    'bootstrap fixture must provide twelve hidden assignments'
-  grep -Fq 'Paste the twelve KSY secret assignments, then KSY_SECRETS_END:' "$SCRIPT" ||
-    fail 'bootstrap prompt no longer names the twelve-field hidden batch'
+  assert_eq 16 "$(valid_batch | awk -F= '/^[A-Z0-9_]+[[:space:]]*=/ { count++ } END { print count }')" \
+    'bootstrap fixture must provide sixteen hidden assignments'
+  grep -Fq 'Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:' "$SCRIPT" ||
+    fail 'bootstrap prompt no longer names the sixteen-field hidden batch'
 }
 
 test_rejects_full_disk_before_mutation
@@ -1219,12 +1324,14 @@ test_rejects_invalid_order_url_override_arguments_before_mutation
 test_clears_inherited_runtime_values_before_compose
 test_rejects_unsafe_or_incomplete_existing_installations_without_mutation
 test_rejects_invalid_existing_env_without_mutation
+test_rejects_missing_order_runtime_keys_in_existing_env_without_mutation
 test_rejects_failed_existing_docker_auth_without_mutation
 test_reuse_restores_previous_installation_after_failed_readiness
 test_reuse_rolls_back_failure_between_compose_and_env_install
 test_reuse_rolls_back_evidence_install_failure
-test_bootstrap_contract_still_names_twelve_hidden_fields
+test_bootstrap_contract_names_sixteen_hidden_fields
 test_rejects_batch_safety_failures_before_mutation
+test_rejects_invalid_order_runtime_batch_before_mutation
 test_rejects_missing_batch_key_despite_inherited_environment
 test_clears_inherited_application_secrets_before_any_child_process
 test_rejects_missing_image_argument_before_mutation
