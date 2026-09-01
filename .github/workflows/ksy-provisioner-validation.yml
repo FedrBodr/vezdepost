@@ -1,0 +1,18 @@
+name: Temporary KSY provisioner validation
+
+on:
+  push:
+    branches:
+      - feat/ksy-16-field-provisioner
+
+jobs:
+  provisioner-spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PTY test dependency
+        run: sudo apt-get update && sudo apt-get install -y expect
+      - name: Validate shell syntax
+        run: bash -n docs/server-scripts/20-provision-ksy-staging.sh docs/server-scripts/20-provision-ksy-staging.spec.sh
+      - name: Run KSY provisioner specification
+        run: bash docs/server-scripts/20-provision-ksy-staging.spec.sh
