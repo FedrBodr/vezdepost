@@ -22,6 +22,7 @@ TRANSACTION_COMMITTED=0
 required_keys=(
   VITE_TELEGRAM_BOT_USERNAME GHCR_USERNAME GHCR_READ_TOKEN
   TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL
+  ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID
   ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY POSTGRES_PASSWORD
   SESSION_COOKIE_KEY BACKUP_ENCRYPTION_PASSPHRASE PLATPRICES_PROXY_URL
 )
@@ -29,7 +30,9 @@ runtime_keys=(
   KSY_DEALS_IMAGE KSY_DEALS_PORT KSY_DEALS_BACKUP_DIR
   POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL SESSION_COOKIE_KEY
   TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET TELEGRAM_WEBHOOK_URL
+  ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID
   ORDER_TELEGRAM_URL ADMIN_TELEGRAM_IDS
+  SITE_TELEGRAM_BOT_URL
   PLATPRICES_API_KEY PLATPRICES_BASE_URL PLATPRICES_REGION PLATPRICES_PROXY_URL
   BACKUP_ENCRYPTION_PASSPHRASE BACKUP_RETENTION_DAYS
 )
@@ -86,8 +89,9 @@ progress() {
     "$step" "$PROGRESS_TOTAL" "$phase" "$message"
 }
 
-APPROVED_ORDER_TELEGRAM_URL=https://t.me/ksu_fifa
+APPROVED_ORDER_TELEGRAM_URL=https://t.me/ksybuybot
 APPROVED_SITE_TELEGRAM_BOT_URL=https://t.me/ksy_deals_store_bot
+APPROVED_ORDER_BOT_WEBHOOK_URL=https://ksy-deals.fedrbodr.com/telegram/order-webhook
 REUSE_EXISTING_SECRETS=0
 KSY_DEALS_IMAGE=''
 ORDER_TELEGRAM_URL_OVERRIDE=''
@@ -142,7 +146,7 @@ read_batch() {
     trap 'exit 143' TERM
     stty -echo <&3 || fail TERMINAL_ECHO_DISABLE_FAILED
     BATCH_ECHO_DISABLED=1
-    printf 'Paste the twelve KSY secret assignments, then KSY_SECRETS_END:\n' >/dev/tty ||
+    printf 'Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:\n' >/dev/tty ||
       fail TTY_REQUIRED
     input_fd=3
   fi
@@ -330,27 +334,27 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
     ' "$ENV_FILE")
     [[ "$runtime_key_state" == 1:1:0 ]] || fail EXISTING_ENV_INVALID
   done
-  site_key_state=$(LC_ALL=C awk '
-    BEGIN {
-      key = "SITE_TELEGRAM_BOT_URL"
-      assignment = "^[[:space:]]*(export[[:space:]]+)?" key "[[:space:]]*[=:]"
-      bare = "^[[:space:]]*(export[[:space:]]+)?" key "([[:space:]]*(#.*)?)?$"
-    }
-    $0 ~ assignment || $0 ~ bare {
-      if (index($0, key "=") != 1) {
-        noncanonical++
-        next
-      }
-      count++
-      value = substr($0, length(key) + 2)
-      if (value !~ /^[!-~]+$/ || value ~ /["\047]/ || value ~ /\$/ || index(value, "\\") > 0)
-        noncanonical++
-      else
-        nonempty++
-    }
-    END { print (count + 0) ":" (nonempty + 0) ":" (noncanonical + 0) }
-  ' "$ENV_FILE")
-  [[ "$site_key_state" == 0:0:0 || "$site_key_state" == 1:1:0 ]] ||
+  existing_telegram_bot_token=$(sed -n 's/^TELEGRAM_BOT_TOKEN=//p' "$ENV_FILE")
+  existing_order_bot_token=$(sed -n 's/^ORDER_BOT_TOKEN=//p' "$ENV_FILE")
+  existing_telegram_webhook_secret=$(sed -n 's/^TELEGRAM_WEBHOOK_SECRET=//p' "$ENV_FILE")
+  existing_order_bot_webhook_secret=$(sed -n 's/^ORDER_BOT_WEBHOOK_SECRET=//p' "$ENV_FILE")
+  existing_order_bot_webhook_url=$(sed -n 's/^ORDER_BOT_WEBHOOK_URL=//p' "$ENV_FILE")
+  existing_order_operator_chat_id=$(sed -n 's/^ORDER_OPERATOR_CHAT_ID=//p' "$ENV_FILE")
+  existing_order_telegram_url=$(sed -n 's/^ORDER_TELEGRAM_URL=//p' "$ENV_FILE")
+  existing_site_telegram_bot_url=$(sed -n 's/^SITE_TELEGRAM_BOT_URL=//p' "$ENV_FILE")
+  safe_token "$existing_telegram_bot_token" || fail EXISTING_ENV_INVALID
+  safe_token "$existing_order_bot_token" || fail EXISTING_ENV_INVALID
+  [[ "$existing_telegram_bot_token" != "$existing_order_bot_token" ]] || fail EXISTING_ENV_INVALID
+  [[ -n "$existing_telegram_webhook_secret" && -n "$existing_order_bot_webhook_secret" ]] ||
+    fail EXISTING_ENV_INVALID
+  [[ "$existing_telegram_webhook_secret" != "$existing_order_bot_webhook_secret" ]] ||
+    fail EXISTING_ENV_INVALID
+  [[ "$existing_order_bot_webhook_url" == "$APPROVED_ORDER_BOT_WEBHOOK_URL" ]] ||
+    fail EXISTING_ENV_INVALID
+  [[ "$existing_order_operator_chat_id" =~ ^-100[0-9]+$ ]] || fail EXISTING_ENV_INVALID
+  [[ "$existing_order_telegram_url" == "$APPROVED_ORDER_TELEGRAM_URL" ]] ||
+    fail EXISTING_ENV_INVALID
+  [[ "$existing_site_telegram_bot_url" == "$APPROVED_SITE_TELEGRAM_BOT_URL" ]] ||
     fail EXISTING_ENV_INVALID
   awk -v image="$KSY_DEALS_IMAGE" -v order="$ORDER_TELEGRAM_URL_OVERRIDE" \
     -v site="$APPROVED_SITE_TELEGRAM_BOT_URL" '
@@ -383,6 +387,14 @@ else
   hex64 "$TELEGRAM_WEBHOOK_SECRET" || fail TELEGRAM_WEBHOOK_SECRET_INVALID
   hex64 "$BACKUP_ENCRYPTION_PASSPHRASE" || fail BACKUP_ENCRYPTION_PASSPHRASE_INVALID
   safe_token "$TELEGRAM_BOT_TOKEN" || fail TELEGRAM_BOT_TOKEN_INVALID
+  safe_token "$ORDER_BOT_TOKEN" || fail ORDER_BOT_TOKEN_INVALID
+  [[ "$TELEGRAM_BOT_TOKEN" != "$ORDER_BOT_TOKEN" ]] || fail TELEGRAM_BOT_TOKENS_DUPLICATE
+  safe_token "$ORDER_BOT_WEBHOOK_SECRET" || fail ORDER_BOT_WEBHOOK_SECRET_INVALID
+  [[ "$TELEGRAM_WEBHOOK_SECRET" != "$ORDER_BOT_WEBHOOK_SECRET" ]] ||
+    fail TELEGRAM_WEBHOOK_SECRETS_DUPLICATE
+  [[ "$ORDER_BOT_WEBHOOK_URL" == "$APPROVED_ORDER_BOT_WEBHOOK_URL" ]] ||
+    fail ORDER_BOT_WEBHOOK_URL_INVALID
+  [[ "$ORDER_OPERATOR_CHAT_ID" =~ ^-100[0-9]+$ ]] || fail ORDER_OPERATOR_CHAT_ID_INVALID
   safe_token "$PLATPRICES_API_KEY" || fail PLATPRICES_API_KEY_INVALID
   [[ "$PLATPRICES_PROXY_URL" =~ ^http://[A-Za-z0-9_-]{8,32}:[A-Za-z0-9_-]{43,86}@185\.158\.249\.84:3128$ ]] ||
     fail PLATPRICES_PROXY_URL_INVALID
@@ -406,7 +418,11 @@ SESSION_COOKIE_KEY=$SESSION_COOKIE_KEY
 TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
 TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET
 TELEGRAM_WEBHOOK_URL=https://ksy-deals.fedrbodr.com/telegram/webhook
-ORDER_TELEGRAM_URL=$ORDER_TELEGRAM_URL
+ORDER_BOT_TOKEN=$ORDER_BOT_TOKEN
+ORDER_BOT_WEBHOOK_SECRET=$ORDER_BOT_WEBHOOK_SECRET
+ORDER_BOT_WEBHOOK_URL=$ORDER_BOT_WEBHOOK_URL
+ORDER_OPERATOR_CHAT_ID=$ORDER_OPERATOR_CHAT_ID
+ORDER_TELEGRAM_URL=$APPROVED_ORDER_TELEGRAM_URL
 SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_TELEGRAM_BOT_URL
 ADMIN_TELEGRAM_IDS=$ADMIN_TELEGRAM_IDS
 PLATPRICES_API_KEY=$PLATPRICES_API_KEY
