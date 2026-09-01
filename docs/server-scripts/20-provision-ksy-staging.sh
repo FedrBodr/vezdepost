@@ -85,8 +85,8 @@ progress() {
     "$step" "$PROGRESS_TOTAL" "$phase" "$message"
 }
 
-APPROVED_ORDER_TELEGRAM_URL=https://t.me/ksy_deals_store_bot
-RUNTIME_ORDER_TELEGRAM_URL=https://t.me/ksybuybot
+APPROVED_ORDER_TELEGRAM_URL=https://t.me/ksybuybot
+APPROVED_SITE_TELEGRAM_BOT_URL=https://t.me/ksy_deals_store_bot
 APPROVED_ORDER_BOT_WEBHOOK_URL=https://ksy-deals.fedrbodr.com/telegram/order-webhook
 REUSE_EXISTING_SECRETS=0
 KSY_DEALS_IMAGE=''
@@ -316,6 +316,8 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
   existing_order_bot_webhook_secret=$(sed -n 's/^ORDER_BOT_WEBHOOK_SECRET=//p' "$ENV_FILE")
   existing_order_bot_webhook_url=$(sed -n 's/^ORDER_BOT_WEBHOOK_URL=//p' "$ENV_FILE")
   existing_order_operator_chat_id=$(sed -n 's/^ORDER_OPERATOR_CHAT_ID=//p' "$ENV_FILE")
+  existing_order_telegram_url=$(sed -n 's/^ORDER_TELEGRAM_URL=//p' "$ENV_FILE")
+  existing_site_telegram_bot_url=$(sed -n 's/^SITE_TELEGRAM_BOT_URL=//p' "$ENV_FILE")
   safe_token "$existing_telegram_bot_token" || fail EXISTING_ENV_INVALID
   safe_token "$existing_order_bot_token" || fail EXISTING_ENV_INVALID
   [[ "$existing_telegram_bot_token" != "$existing_order_bot_token" ]] || fail EXISTING_ENV_INVALID
@@ -326,6 +328,10 @@ if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
   [[ "$existing_order_bot_webhook_url" == "$APPROVED_ORDER_BOT_WEBHOOK_URL" ]] ||
     fail EXISTING_ENV_INVALID
   [[ "$existing_order_operator_chat_id" =~ ^-100[0-9]+$ ]] || fail EXISTING_ENV_INVALID
+  [[ "$existing_order_telegram_url" == "$APPROVED_ORDER_TELEGRAM_URL" ]] ||
+    fail EXISTING_ENV_INVALID
+  [[ "$existing_site_telegram_bot_url" == "$APPROVED_SITE_TELEGRAM_BOT_URL" ]] ||
+    fail EXISTING_ENV_INVALID
   awk -v image="$KSY_DEALS_IMAGE" -v order="$ORDER_TELEGRAM_URL_OVERRIDE" '
     /^KSY_DEALS_IMAGE=/ { print "KSY_DEALS_IMAGE=" image; next }
     order != "" && /^ORDER_TELEGRAM_URL=/ {
@@ -383,8 +389,8 @@ ORDER_BOT_TOKEN=$ORDER_BOT_TOKEN
 ORDER_BOT_WEBHOOK_SECRET=$ORDER_BOT_WEBHOOK_SECRET
 ORDER_BOT_WEBHOOK_URL=$ORDER_BOT_WEBHOOK_URL
 ORDER_OPERATOR_CHAT_ID=$ORDER_OPERATOR_CHAT_ID
-ORDER_TELEGRAM_URL=$RUNTIME_ORDER_TELEGRAM_URL
-SITE_TELEGRAM_BOT_URL=$APPROVED_ORDER_TELEGRAM_URL
+ORDER_TELEGRAM_URL=$APPROVED_ORDER_TELEGRAM_URL
+SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_TELEGRAM_BOT_URL
 ADMIN_TELEGRAM_IDS=$ADMIN_TELEGRAM_IDS
 PLATPRICES_API_KEY=$PLATPRICES_API_KEY
 PLATPRICES_BASE_URL=https://platprices.com/api/v2

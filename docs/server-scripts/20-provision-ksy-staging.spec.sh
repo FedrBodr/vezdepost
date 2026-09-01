@@ -5,7 +5,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SCRIPT="$SCRIPT_DIR/20-provision-ksy-staging.sh"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
-APPROVED_ORDER_URL='https://t.me/ksy_deals_store_bot'
+APPROVED_ORDER_URL='https://t.me/ksybuybot'
 
 fail() {
   echo "FAIL: $*" >&2
@@ -410,7 +410,8 @@ assert_synthetic_secrets_absent() {
   local output=$1
   for secret in "$GHCR_READ_TOKEN" "$POSTGRES_PASSWORD" "$SESSION_COOKIE_KEY" \
     "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_WEBHOOK_SECRET" \
-    "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" \
+    "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" "$ORDER_BOT_WEBHOOK_URL" \
+    "$ORDER_OPERATOR_CHAT_ID" \
     "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
     ! grep -Fq "$secret" "$output" || fail 'synthetic secret leaked to output'
   done
@@ -547,7 +548,8 @@ test_provisions_idempotently_without_secret_leaks() {
 
   for secret in "$GHCR_READ_TOKEN" "$POSTGRES_PASSWORD" "$SESSION_COOKIE_KEY" \
     "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_WEBHOOK_SECRET" \
-    "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" \
+    "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" "$ORDER_BOT_WEBHOOK_URL" \
+    "$ORDER_OPERATOR_CHAT_ID" \
     "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
     ! grep -Fq "$secret" "$output" || fail 'secret leaked to output'
     ! grep -Fq "$secret" "$case_dir/opt/ksy-deals/deployment-evidence.json" ||
@@ -895,7 +897,7 @@ test_reuses_existing_secrets_without_prompting() {
     fail 'routine reuse unexpectedly failed'
   fi
 
-  ! grep -Fq 'Paste the twelve KSY secret assignments' "$output" ||
+  ! grep -Fq 'Paste the sixteen KSY secret assignments' "$output" ||
     fail 'routine reuse emitted the hidden bootstrap prompt'
   grep -q 'phase=secrets message="Reusing existing secret configuration"' "$output" ||
     fail 'routine reuse did not report its secret phase'
@@ -935,7 +937,7 @@ test_routine_override_changes_only_image_and_order_url() {
     fail 'routine order URL override did not install the requested image'
   grep -Fxq "ORDER_TELEGRAM_URL=$APPROVED_ORDER_URL" "$root/.env" ||
     fail 'routine order URL override did not install the approved URL'
-  ! grep -Fq 'Paste the twelve KSY secret assignments' "$output" ||
+  ! grep -Fq 'Paste the sixteen KSY secret assignments' "$output" ||
     fail 'routine order URL override emitted the hidden bootstrap prompt'
   ! grep -q '^login ' "$case_dir/docker.calls" ||
     fail 'routine order URL override replaced existing Docker authentication'
@@ -1233,6 +1235,30 @@ test_rejects_missing_order_runtime_keys_in_existing_env_without_mutation() {
   done
 }
 
+test_rejects_noncanonical_existing_order_urls_without_mutation() {
+  local case_dir root
+
+  case_dir="$TMP_DIR/reuse-alternate-order-url"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '{ if (/^ORDER_TELEGRAM_URL=/) print "ORDER_TELEGRAM_URL=https://t.me/ksy_orders"; else print }' \
+    "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'alternate order URL invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-alternate-site-bot-url"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '{ if (/^SITE_TELEGRAM_BOT_URL=/) print "SITE_TELEGRAM_BOT_URL=https://t.me/ksybuybot"; else print }' \
+    "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'alternate site bot URL invoked Docker'
+}
+
 test_rejects_failed_existing_docker_auth_without_mutation() {
   local case_dir="$TMP_DIR/reuse-pull-failure"
   write_existing_installation "$case_dir"
@@ -1325,6 +1351,7 @@ test_clears_inherited_runtime_values_before_compose
 test_rejects_unsafe_or_incomplete_existing_installations_without_mutation
 test_rejects_invalid_existing_env_without_mutation
 test_rejects_missing_order_runtime_keys_in_existing_env_without_mutation
+test_rejects_noncanonical_existing_order_urls_without_mutation
 test_rejects_failed_existing_docker_auth_without_mutation
 test_reuse_restores_previous_installation_after_failed_readiness
 test_reuse_rolls_back_failure_between_compose_and_env_install
