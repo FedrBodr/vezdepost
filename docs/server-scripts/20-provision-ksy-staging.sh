@@ -26,6 +26,7 @@ required_keys=(
   ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID
   ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY POSTGRES_PASSWORD
   SESSION_COOKIE_KEY BACKUP_ENCRYPTION_PASSPHRASE PLATPRICES_PROXY_URL
+  FEED_TOKEN
 )
 runtime_keys=(
   KSY_DEALS_IMAGE KSY_DEALS_PORT KSY_DEALS_BACKUP_DIR
@@ -35,9 +36,10 @@ runtime_keys=(
   ORDER_TELEGRAM_URL ADMIN_TELEGRAM_IDS
   SITE_TELEGRAM_BOT_URL
   PLATPRICES_API_KEY PLATPRICES_BASE_URL PLATPRICES_REGION PLATPRICES_PROXY_URL
+  FEED_TOKEN
   BACKUP_ENCRYPTION_PASSPHRASE BACKUP_RETENTION_DAYS
 )
-optional_compose_keys=(FEED_TOKEN SITE_BASE_URL)
+optional_compose_keys=(SITE_BASE_URL)
 storage_compose_keys=(KSY_DEALS_BANNER_DIR KSY_DEALS_COVER_HOST_DIR COVER_PUBLIC_BASE_URL)
 fixed_public_keys=(SITE_TELEGRAM_BOT_URL)
 
@@ -94,9 +96,11 @@ APPROVED_ORDER_TELEGRAM_URL=https://t.me/ksybuybot
 APPROVED_SITE_TELEGRAM_BOT_URL=https://t.me/ksy_deals_store_bot
 APPROVED_ORDER_BOT_WEBHOOK_URL=https://ksy-deals.fedrbodr.com/telegram/order-webhook
 REUSE_EXISTING_SECRETS=0
+SECRETS_STDIN=0
 KSY_DEALS_IMAGE=''
 ORDER_TELEGRAM_URL_OVERRIDE=''
 reuse_seen=0
+stdin_seen=0
 image_seen=0
 order_url_seen=0
 
@@ -106,6 +110,12 @@ while (($#)); do
       [[ "$reuse_seen" == 0 ]] || fail IMAGE_ARGUMENT_REQUIRED
       reuse_seen=1
       REUSE_EXISTING_SECRETS=1
+      shift
+      ;;
+    --secrets-stdin)
+      [[ "$stdin_seen" == 0 ]] || fail SECRETS_STDIN_ARGUMENT_INVALID
+      stdin_seen=1
+      SECRETS_STDIN=1
       shift
       ;;
     --order-telegram-url)
@@ -126,6 +136,8 @@ while (($#)); do
 done
 
 [[ "$image_seen" == 1 ]] || fail IMAGE_ARGUMENT_REQUIRED
+[[ "$REUSE_EXISTING_SECRETS" == 0 || "$SECRETS_STDIN" == 0 ]] ||
+  fail SECRETS_STDIN_ARGUMENT_INVALID
 if [[ "$REUSE_EXISTING_SECRETS" == 1 ]]; then
   [[ "$order_url_seen" == 1 &&
     "$ORDER_TELEGRAM_URL_OVERRIDE" == "$APPROVED_ORDER_TELEGRAM_URL" ]] ||
@@ -141,13 +153,15 @@ read_batch() {
   local terminated=0
   local seen_keys=''
 
-  if [[ "$TEST_MODE" != 1 ]]; then
+  if [[ "$SECRETS_STDIN" == 1 ]]; then
+    input_fd=0
+  elif [[ "$TEST_MODE" != 1 ]]; then
     exec 3</dev/tty || fail TTY_REQUIRED
     trap 'exit 130' INT
     trap 'exit 143' TERM
     stty -echo <&3 || fail TERMINAL_ECHO_DISABLE_FAILED
     BATCH_ECHO_DISABLED=1
-    printf 'Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:\n' >/dev/tty ||
+    printf 'Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:\n' >/dev/tty ||
       fail TTY_REQUIRED
     input_fd=3
   fi
@@ -234,10 +248,24 @@ install_private() {
   local source=$1
   local target=$2
   if [[ "$TEST_MODE" == 1 ]]; then
-    cp "$source" "$target"
+    cp "$source" "$target" || return
     chmod 600 "$target"
   else
     install -o root -g root -m 600 "$source" "$target"
+  fi
+}
+
+install_env_atomic() {
+  local source=$1
+  local temporary
+  temporary=$(mktemp "$KSY_ROOT/.env.tmp.XXXXXX") || return 1
+  if ! install_private "$source" "$temporary"; then
+    rm -f "$temporary"
+    return 1
+  fi
+  if ! mv -f "$temporary" "$ENV_FILE"; then
+    rm -f "$temporary"
+    return 1
   fi
 }
 
@@ -397,6 +425,7 @@ else
     fail ORDER_BOT_WEBHOOK_URL_INVALID
   [[ "$ORDER_OPERATOR_CHAT_ID" =~ ^-100[0-9]+$ ]] || fail ORDER_OPERATOR_CHAT_ID_INVALID
   safe_token "$PLATPRICES_API_KEY" || fail PLATPRICES_API_KEY_INVALID
+  safe_token "$FEED_TOKEN" || fail FEED_TOKEN_INVALID
   [[ "$PLATPRICES_PROXY_URL" =~ ^http://[A-Za-z0-9_-]{8,32}:[A-Za-z0-9_-]{43,86}@185\.158\.249\.84:3128$ ]] ||
     fail PLATPRICES_PROXY_URL_INVALID
   [[ "$ORDER_TELEGRAM_URL" == "$APPROVED_ORDER_TELEGRAM_URL" ]] ||
@@ -430,6 +459,7 @@ PLATPRICES_API_KEY=$PLATPRICES_API_KEY
 PLATPRICES_BASE_URL=https://platprices.com/api/v2
 PLATPRICES_REGION=ua
 PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL
+FEED_TOKEN=$FEED_TOKEN
 BACKUP_ENCRYPTION_PASSPHRASE=$BACKUP_ENCRYPTION_PASSPHRASE
 BACKUP_RETENTION_DAYS=14
 ENV
@@ -462,7 +492,7 @@ fi
 
 rollback() {
   if [[ "$had_previous" == 1 ]]; then
-    install_private "$WORK_DIR/previous.env" "$ENV_FILE"
+    install_env_atomic "$WORK_DIR/previous.env"
     install_public "$WORK_DIR/previous-compose.yml" "$COMPOSE_FILE"
     local previous=(docker compose --project-name ksy-deals --progress plain --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
     "${previous[@]}" config --quiet >/dev/null 2>&1 &&
@@ -501,7 +531,7 @@ fi
 docker network inspect caddy-edge >/dev/null 2>&1 ||
   docker network create caddy-edge >/dev/null
 install_public "$STAGED_COMPOSE" "$COMPOSE_FILE"
-install_private "$candidate_env" "$ENV_FILE"
+install_env_atomic "$candidate_env"
 
 compose=(docker compose --project-name ksy-deals --progress plain --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 

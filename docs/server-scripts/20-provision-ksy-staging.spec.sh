@@ -65,7 +65,7 @@ exit 97
 STUB
   cat > "$bin_dir/cp" <<'STUB'
 #!/usr/bin/env bash
-if [[ "${CP_FAIL_INSTALL:-none}" == env && $# == 2 && "$1" == */ksy.env && "$2" == */.env ]]; then
+if [[ "${CP_FAIL_INSTALL:-none}" == env && $# == 2 && "$1" == */ksy.env ]]; then
   exit 98
 fi
 if [[ "${CP_FAIL_INSTALL:-none}" == evidence && $# == 2 && "$1" == */deployment-evidence.json && "$2" == */deployment-evidence.json ]]; then
@@ -121,6 +121,7 @@ valid_environment() {
   ADMIN_TELEGRAM_IDS='101,202'
   PLATPRICES_API_KEY='platprices_test-key'
   PLATPRICES_PROXY_URL='http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128'
+  FEED_TOKEN='feed-token-secret'
   BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
 }
 
@@ -140,6 +141,7 @@ inherited_application_environment() {
   export ADMIN_TELEGRAM_IDS='101,202'
   export PLATPRICES_API_KEY='platprices_test-key'
   export PLATPRICES_PROXY_URL='http://inherited1:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128'
+  export FEED_TOKEN='inherited-feed-token-sentinel'
   export BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
 }
 
@@ -170,6 +172,7 @@ ORDER_OPERATOR_CHAT_ID = -1001234567890
 ADMIN_TELEGRAM_IDS = 101,202
 PLATPRICES_API_KEY = platprices_test-key
 PLATPRICES_PROXY_URL = http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128
+FEED_TOKEN = feed-token-secret
 BACKUP_ENCRYPTION_PASSPHRASE = 4444444444444444444444444444444444444444444444444444444444444444
 KSY_SECRETS_END
 BATCH
@@ -180,6 +183,7 @@ out_of_order_batch() {
 BACKUP_ENCRYPTION_PASSPHRASE    =    4444444444444444444444444444444444444444444444444444444444444444
 PLATPRICES_API_KEY=platprices_test-key
 PLATPRICES_PROXY_URL=http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128
+FEED_TOKEN=feed-token-secret
 ADMIN_TELEGRAM_IDS = 101,202
 TELEGRAM_WEBHOOK_SECRET=3333333333333333333333333333333333333333333333333333333333333333
 TELEGRAM_BOT_TOKEN = 123456:test_bot-token
@@ -223,6 +227,30 @@ missing_admin_batch() {
 
 missing_proxy_batch() {
   valid_batch | awk '$0 !~ /^PLATPRICES_PROXY_URL/'
+}
+
+missing_feed_token_batch() {
+  valid_batch | awk '$0 !~ /^FEED_TOKEN/'
+}
+
+duplicate_feed_token_batch() {
+  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "FEED_TOKEN = feed-token-secret"; print }'
+}
+
+unknown_stdin_key_batch() {
+  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "UNKNOWN_STDIN_KEY = rejected"; print }'
+}
+
+malformed_stdin_batch() {
+  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "malformed stdin assignment"; print }'
+}
+
+empty_feed_token_batch() {
+  valid_batch | awk '{ if ($0 ~ /^FEED_TOKEN/) print "FEED_TOKEN ="; else print }'
+}
+
+unterminated_stdin_batch() {
+  valid_batch | awk '$0 != "KSY_SECRETS_END"'
 }
 
 legacy_twelve_field_batch() {
@@ -311,6 +339,57 @@ run_case() {
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
       bash "$SCRIPT" --image "$image" > "$output" 2>&1
   fi
+}
+
+run_stdin_case() {
+  local case_dir=$1
+  local output=$2
+  local batch_fn=${3:-valid_batch}
+  local image=${4:-$VALID_IMAGE}
+  local bin_dir="$case_dir/bin"
+  mkdir -p "$case_dir"
+  make_stubs "$bin_dir"
+  : > "$case_dir/docker.calls"
+  : > "$case_dir/curl.calls"
+
+  "$batch_fn" | PATH="$bin_dir:$PATH" \
+    DOCKER_CALLS="$case_dir/docker.calls" \
+    CURL_CALLS="$case_dir/curl.calls" \
+    NETWORK_MARKER="$case_dir/network.created" \
+    KSY_PROVISION_TEST_MODE=1 \
+    KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
+    KSY_ROOT="$case_dir/opt/ksy-deals" \
+    KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_BANNER_DIR="$case_dir/var/banners/ksy-deals" \
+    KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
+    CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
+    STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
+    bash "$SCRIPT" --secrets-stdin --image "$image" > "$output" 2>&1
+}
+
+run_stdin_arguments_case() {
+  local case_dir=$1
+  local output=$2
+  shift 2
+  local bin_dir="$case_dir/bin"
+  mkdir -p "$case_dir"
+  make_stubs "$bin_dir"
+  : > "$case_dir/docker.calls"
+  : > "$case_dir/curl.calls"
+
+  PATH="$bin_dir:$PATH" \
+    DOCKER_CALLS="$case_dir/docker.calls" \
+    CURL_CALLS="$case_dir/curl.calls" \
+    NETWORK_MARKER="$case_dir/network.created" \
+    KSY_PROVISION_TEST_MODE=1 \
+    KSY_PROVISION_TEST_DISK_USED_PERCENT=20 \
+    KSY_ROOT="$case_dir/opt/ksy-deals" \
+    KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_BANNER_DIR="$case_dir/var/banners/ksy-deals" \
+    KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
+    CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
+    STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
+    bash "$SCRIPT" "$@" </dev/null > "$output" 2>&1
 }
 
 file_sha256() {
@@ -443,7 +522,8 @@ assert_synthetic_secrets_absent() {
     "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_WEBHOOK_SECRET" \
     "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" "$ORDER_BOT_WEBHOOK_URL" \
     "$ORDER_OPERATOR_CHAT_ID" \
-    "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
+    "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$FEED_TOKEN" \
+    "$BACKUP_ENCRYPTION_PASSPHRASE"; do
     assert_value_absent "$secret" "$output" 'synthetic secret leaked to output'
   done
 }
@@ -657,7 +737,7 @@ test_rejects_batch_safety_failures_before_mutation() {
   assert_rejection duplicate-key BATCH_DUPLICATE_KEY duplicate_order_batch
   assert_rejection duplicate-proxy BATCH_DUPLICATE_KEY duplicate_proxy_batch
   assert_rejection unknown-key BATCH_UNKNOWN_KEY unknown_key_batch
-  assert_rejection malformed-line 'BATCH_MALFORMED_LINE line=17' malformed_line_batch
+  assert_rejection malformed-line 'BATCH_MALFORMED_LINE line=18' malformed_line_batch
   assert_rejection missing-key BATCH_MISSING_KEY missing_admin_batch
   assert_rejection empty-value BATCH_EMPTY_VALUE empty_platprices_batch
   assert_rejection invalid-proxy PLATPRICES_PROXY_URL_INVALID invalid_proxy_batch
@@ -791,7 +871,7 @@ log_user 1
 set timeout 10
 spawn -noecho bash $env(PTY_SCRIPT) --image $env(PTY_IMAGE)
 expect {
-  -exact "Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:" {}
+  -exact "Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:" {}
   timeout { exit 124 }
   eof { exit 125 }
 }
@@ -806,7 +886,7 @@ exit $status
 EXPECT
   local status=$?
   printf 'PTY harness exited %s; transcript markers follow:\n' "$status" >&2
-  grep -nE 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED|Operation not permitted|Permission denied' \
+  grep -nE 'ECHO_OFF|Paste the seventeen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED|Operation not permitted|Permission denied' \
     "$output" >&2 || true
   return "$status"
 }
@@ -819,8 +899,8 @@ test_pty_prompt_follows_echo_off_and_normal_path_restores_echo() {
 
   local transcript
   transcript=$(<"$output")
-  if [[ "$transcript" != *'[ECHO_OFF]'*'Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:'* ]]; then
-    grep -nE 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
+  if [[ "$transcript" != *'[ECHO_OFF]'*'Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:'* ]]; then
+    grep -nE 'ECHO_OFF|Paste the seventeen|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
     fail 'batch readiness prompt did not follow successful echo disable'
   fi
   grep -qx 'echo-restored' "$case_dir/bin/stty-events" ||
@@ -886,7 +966,7 @@ test_pty_signals_terminate_before_mutation() {
 log_user 1
 set timeout 5
 spawn -noecho bash $env(PTY_SCRIPT) --image $env(PTY_IMAGE)
-  expect -exact "Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:"
+  expect -exact "Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:"
 if {$env(PTY_SIGNAL) == "INT"} {
   send -- "\003"
 } else {
@@ -994,7 +1074,7 @@ test_reuses_existing_secrets_without_prompting() {
     fail 'routine reuse unexpectedly failed'
   fi
 
-  ! grep -Fq 'Paste the sixteen KSY secret assignments' "$output" ||
+  ! grep -Fq 'Paste the seventeen KSY secret assignments' "$output" ||
     fail 'routine reuse emitted the hidden bootstrap prompt'
   grep -q 'phase=secrets message="Reusing existing secret configuration"' "$output" ||
     fail 'routine reuse did not report its secret phase'
@@ -1069,7 +1149,7 @@ test_routine_override_changes_only_image_and_order_url() {
     fail 'routine order URL override did not install the approved URL'
   grep -Fxq "SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_BOT_URL" "$root/.env" ||
     fail 'routine order URL override did not install the approved site bot URL'
-  ! grep -Fq 'Paste the sixteen KSY secret assignments' "$output" ||
+  ! grep -Fq 'Paste the seventeen KSY secret assignments' "$output" ||
     fail 'routine order URL override emitted the hidden bootstrap prompt'
   ! grep -q '^login ' "$case_dir/docker.calls" ||
     fail 'routine order URL override replaced existing Docker authentication'
@@ -1466,6 +1546,7 @@ assert_routine_transaction_failure_restores_previous_installation() {
   [[ "$(grep -c 'compose --project-name ksy-deals .* up -d server' "$case_dir/docker.calls")" -ge "$minimum_server_starts" ]] ||
     fail "$case_name did not restart the previous server"
   assert_synthetic_secrets_absent "$output"
+  assert_no_env_install_sibling "$root"
 }
 
 test_reuse_rolls_back_failure_between_compose_and_env_install() {
@@ -1478,12 +1559,109 @@ test_reuse_rolls_back_evidence_install_failure() {
     reuse-evidence-install-failure evidence 2
 }
 
-test_bootstrap_contract_names_sixteen_hidden_fields() {
+assert_no_env_install_sibling() {
+  local root=$1
+  [[ -d "$root" ]] || return 0
+  ! find "$root" -maxdepth 1 -name '.env.tmp.*' -print -quit | grep -q . ||
+    fail 'atomic env install left a sibling temporary file'
+}
+
+assert_stdin_rejection() {
+  local case_name=$1
+  local expected=$2
+  local batch_fn=$3
+  local case_dir="$TMP_DIR/$case_name"
+  local output="$case_dir/output"
+  mkdir -p "$case_dir"
+  write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+
+  if run_stdin_case "$case_dir" "$output" "$batch_fn"; then
+    fail "$case_name was accepted"
+  fi
+  grep -q "KSY_PROVISION_FAILED $expected" "$output" ||
+    fail "$case_name did not report $expected"
+  [[ ! -e "$case_dir/opt/ksy-deals/.env" ]] ||
+    fail "$case_name created .env after rejection"
+  [[ ! -s "$case_dir/docker.calls" ]] ||
+    fail "$case_name ran Docker after rejection"
+  assert_synthetic_secrets_absent "$output"
+  assert_no_env_install_sibling "$case_dir/opt/ksy-deals"
+}
+
+test_stdin_mode_provisions_seventeen_fields_without_tty_or_leaks() {
+  local case_dir="$TMP_DIR/stdin-success"
+  local output="$case_dir/output"
+  local root="$case_dir/opt/ksy-deals"
+  local expected_feed_token
+  mkdir -p "$case_dir"
   valid_environment
-  assert_eq 16 "$(valid_batch | awk -F= '/^[A-Z0-9_]+[[:space:]]*=/ { count++ } END { print count }')" \
-    'bootstrap fixture must provide sixteen hidden assignments'
-  grep -Fq 'Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:' "$SCRIPT" ||
-    fail 'bootstrap prompt no longer names the sixteen-field hidden batch'
+  expected_feed_token=$FEED_TOKEN
+  inherited_application_environment
+  write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+  : > "$case_dir/child.env"
+
+  CHILD_ENV_CAPTURE="$case_dir/child.env" \
+    run_stdin_case "$case_dir" "$output"
+
+  grep -Fxq "FEED_TOKEN=$expected_feed_token" "$root/.env" ||
+    fail 'stdin mode did not materialize FEED_TOKEN in the runtime env'
+  ! grep -Fq 'Paste the seventeen KSY secret assignments' "$output" ||
+    fail 'stdin mode attempted to use the interactive terminal prompt'
+  ! grep -Fq 'TTY_REQUIRED' "$output" ||
+    fail 'stdin mode required a terminal'
+  [[ ! -s "$case_dir/child.env" ]] ||
+    fail 'a stdin-mode child process inherited a secret'
+  assert_value_absent "$expected_feed_token" "$case_dir/docker.calls" \
+    'FEED_TOKEN leaked to Docker argv'
+  assert_value_absent "$expected_feed_token" "$output" \
+    'FEED_TOKEN leaked to stdout or stderr'
+  assert_synthetic_secrets_absent "$output"
+  assert_value_absent "$expected_feed_token" "$root/deployment-evidence.json" \
+    'FEED_TOKEN leaked to deployment evidence'
+  assert_no_env_install_sibling "$root"
+  unset GHCR_USERNAME GHCR_READ_TOKEN VITE_TELEGRAM_BOT_USERNAME POSTGRES_PASSWORD \
+    SESSION_COOKIE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL \
+    ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID \
+    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL FEED_TOKEN \
+    BACKUP_ENCRYPTION_PASSPHRASE
+}
+
+test_stdin_mode_rejects_reuse_conflicts_and_duplicate_flag_before_mutation() {
+  local case_name case_dir output
+  for case_name in stdin-reuse-conflict stdin-duplicate-flag; do
+    case_dir="$TMP_DIR/$case_name"
+    output="$case_dir/output"
+    valid_environment
+    write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+    if [[ "$case_name" == stdin-reuse-conflict ]]; then
+      run_stdin_arguments_case "$case_dir" "$output" --secrets-stdin \
+        --reuse-existing-secrets --image "$VALID_IMAGE" || true
+    else
+      run_stdin_arguments_case "$case_dir" "$output" --secrets-stdin \
+        --secrets-stdin --image "$VALID_IMAGE" || true
+    fi
+    grep -q '^KSY_PROVISION_FAILED SECRETS_STDIN_ARGUMENT_INVALID$' "$output" ||
+      fail "$case_name did not reject the stdin argument conflict"
+    [[ ! -s "$case_dir/docker.calls" ]] || fail "$case_name invoked Docker"
+  done
+}
+
+test_stdin_mode_rejects_batch_safety_failures_before_mutation() {
+  valid_environment
+  assert_stdin_rejection stdin-duplicate BATCH_DUPLICATE_KEY duplicate_feed_token_batch
+  assert_stdin_rejection stdin-unknown BATCH_UNKNOWN_KEY unknown_stdin_key_batch
+  assert_stdin_rejection stdin-missing BATCH_MISSING_KEY missing_feed_token_batch
+  assert_stdin_rejection stdin-malformed 'BATCH_MALFORMED_LINE line=18' malformed_stdin_batch
+  assert_stdin_rejection stdin-empty BATCH_EMPTY_VALUE empty_feed_token_batch
+  assert_stdin_rejection stdin-unterminated BATCH_TERMINATOR_REQUIRED unterminated_stdin_batch
+}
+
+test_bootstrap_contract_names_seventeen_hidden_fields() {
+  valid_environment
+  assert_eq 17 "$(valid_batch | awk -F= '/^[A-Z0-9_]+[[:space:]]*=/ { count++ } END { print count }')" \
+    'bootstrap fixture must provide seventeen hidden assignments'
+  grep -Fq 'Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:' "$SCRIPT" ||
+    fail 'bootstrap prompt no longer names the seventeen-field hidden batch'
 }
 
 test_rejects_full_disk_before_mutation
@@ -1505,7 +1683,10 @@ test_rejects_failed_existing_docker_auth_without_mutation
 test_reuse_restores_previous_installation_after_failed_readiness
 test_reuse_rolls_back_failure_between_compose_and_env_install
 test_reuse_rolls_back_evidence_install_failure
-test_bootstrap_contract_names_sixteen_hidden_fields
+test_stdin_mode_provisions_seventeen_fields_without_tty_or_leaks
+test_stdin_mode_rejects_reuse_conflicts_and_duplicate_flag_before_mutation
+test_stdin_mode_rejects_batch_safety_failures_before_mutation
+test_bootstrap_contract_names_seventeen_hidden_fields
 test_rejects_batch_safety_failures_before_mutation
 test_rejects_invalid_order_runtime_batch_before_mutation
 test_rejects_missing_batch_key_despite_inherited_environment
