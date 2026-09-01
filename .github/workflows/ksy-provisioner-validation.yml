@@ -15,9 +15,4 @@ jobs:
       - name: Validate shell syntax
         run: bash -n docs/server-scripts/20-provision-ksy-staging.sh docs/server-scripts/20-provision-ksy-staging.spec.sh
       - name: Run KSY provisioner specification
-        run: |
-          exec 9>trace.log
-          status=0
-          BASH_XTRACEFD=9 bash -x docs/server-scripts/20-provision-ksy-staging.spec.sh || status=$?
-          tail -n 250 trace.log
-          exit "$status"
+        run: bash docs/server-scripts/20-provision-ksy-staging.spec.sh
