@@ -977,11 +977,7 @@ test_reuses_existing_secrets_without_prompting() {
   local root="$case_dir/opt/ksy-deals"
   local pull_line compose_line
   write_existing_installation "$case_dir"
-  awk '!/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > "$case_dir/legacy.env"
-  mv "$case_dir/legacy.env" "$root/.env"
-  chmod 600 "$root/.env"
-  awk '!/^KSY_DEALS_IMAGE=/ && !/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > \
-    "$case_dir/env-without-public-runtime.before"
+  awk '!/^KSY_DEALS_IMAGE=/' "$root/.env" > "$case_dir/env-without-image.before"
 
   if ! run_reuse_case "$case_dir" "$output"; then
     if grep -q '^KSY_PROVISION_FAILED IMAGE_ARGUMENT_REQUIRED$' "$output"; then
@@ -1000,17 +996,15 @@ test_reuses_existing_secrets_without_prompting() {
     fail 'routine reuse did not pull the exact digest before Compose accessed installed files'
   ! grep -q '^login ' "$case_dir/docker.calls" ||
     fail 'routine reuse unexpectedly replaced existing Docker authentication'
-  awk '!/^KSY_DEALS_IMAGE=/ && !/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > \
-    "$case_dir/env-without-public-runtime.after"
-  cmp -s "$case_dir/env-without-public-runtime.before" \
-    "$case_dir/env-without-public-runtime.after" ||
-    fail 'routine reuse changed a non-public env byte'
+  awk '!/^KSY_DEALS_IMAGE=/' "$root/.env" > "$case_dir/env-without-image.after"
+  cmp -s "$case_dir/env-without-image.before" "$case_dir/env-without-image.after" ||
+    fail 'routine reuse changed a non-image env byte'
   assert_eq 1 "$(grep -c "^KSY_DEALS_IMAGE=$REUSE_IMAGE$" "$root/.env")" \
     'routine reuse did not install exactly one requested image digest'
   grep -Fxq "PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL" "$root/.env" ||
     fail 'routine reuse did not preserve the PlatPrices proxy URL'
   grep -Fxq "SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_BOT_URL" "$root/.env" ||
-    fail 'routine reuse did not migrate the approved site Telegram bot URL'
+    fail 'routine reuse did not preserve the approved site Telegram bot URL'
   assert_eq 1 "$(grep -c '^SITE_TELEGRAM_BOT_URL=' "$root/.env")" \
     'routine reuse did not install exactly one site Telegram bot URL'
   assert_synthetic_secrets_absent "$output"
@@ -1384,6 +1378,15 @@ test_rejects_noncanonical_existing_order_urls_without_mutation() {
   chmod 600 "$root/.env"
   assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
   [[ ! -s "$case_dir/docker.calls" ]] || fail 'alternate site bot URL invoked Docker'
+
+  case_dir="$TMP_DIR/reuse-missing-site-bot-url"
+  write_existing_installation "$case_dir"
+  root="$case_dir/opt/ksy-deals"
+  awk '!/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > "$case_dir/invalid.env"
+  mv "$case_dir/invalid.env" "$root/.env"
+  chmod 600 "$root/.env"
+  assert_reuse_rejection_unchanged "$case_dir" EXISTING_ENV_INVALID
+  [[ ! -s "$case_dir/docker.calls" ]] || fail 'missing site bot URL invoked Docker'
 }
 
 test_rejects_failed_existing_docker_auth_without_mutation() {
