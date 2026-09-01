@@ -406,6 +406,21 @@ assert_reuse_rejection_unchanged() {
   assert_synthetic_secrets_absent "$output"
 }
 
+assert_value_absent() {
+  local value=$1
+  local file=$2
+  local leak_message=$3
+  local grep_status
+
+  if grep -Fq "$value" "$file"; then
+    fail "$leak_message"
+  else
+    grep_status=$?
+    [[ "$grep_status" == 1 ]] ||
+      fail "$leak_message (grep failed with status $grep_status)"
+  fi
+}
+
 assert_synthetic_secrets_absent() {
   local output=$1
   for secret in "$GHCR_READ_TOKEN" "$POSTGRES_PASSWORD" "$SESSION_COOKIE_KEY" \
@@ -413,8 +428,50 @@ assert_synthetic_secrets_absent() {
     "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" "$ORDER_BOT_WEBHOOK_URL" \
     "$ORDER_OPERATOR_CHAT_ID" \
     "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
-    ! grep -Fq "$secret" "$output" || fail 'synthetic secret leaked to output'
+    assert_value_absent "$secret" "$output" 'synthetic secret leaked to output'
   done
+}
+
+test_synthetic_leak_assertion_rejects_grep_errors() {
+  local directory="$TMP_DIR/leak-assertion-directory"
+  valid_environment
+  mkdir -p "$directory"
+  if ( assert_synthetic_secrets_absent "$directory" ); then
+    fail 'leak assertion accepted a grep execution error as absence'
+  fi
+}
+
+test_value_absence_assertion_distinguishes_grep_statuses() {
+  local absent_file="$TMP_DIR/leak-assertion-absent"
+  local present_file="$TMP_DIR/leak-assertion-present"
+  local directory="$TMP_DIR/leak-assertion-error"
+  local assertion_status assertion_output
+  : > "$absent_file"
+  printf 'sentinel\n' > "$present_file"
+  mkdir -p "$directory"
+
+  set +e
+  assertion_output=$( ( assert_value_absent sentinel "$absent_file" 'leak detected' ) 2>&1 )
+  assertion_status=$?
+  set -e
+  assert_eq 0 "$assertion_status" 'grep status 1 must count as absence'
+  assert_eq '' "$assertion_output" 'absence must not produce a failure message'
+
+  set +e
+  assertion_output=$( ( assert_value_absent sentinel "$present_file" 'leak detected' ) 2>&1 )
+  assertion_status=$?
+  set -e
+  assert_eq 1 "$assertion_status" 'grep status 0 must fail as a leak'
+  [[ "$assertion_output" == *'FAIL: leak detected'* ]] ||
+    fail 'grep status 0 did not report a leak'
+
+  set +e
+  assertion_output=$( ( assert_value_absent sentinel "$directory" 'leak detected' ) 2>&1 )
+  assertion_status=$?
+  set -e
+  assert_eq 1 "$assertion_status" 'grep execution errors must fail the test'
+  [[ "$assertion_output" == *'grep failed with status 2'* ]] ||
+    fail 'grep execution errors did not report their status'
 }
 
 assert_progress_contract() {
@@ -551,9 +608,9 @@ test_provisions_idempotently_without_secret_leaks() {
     "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" "$ORDER_BOT_WEBHOOK_URL" \
     "$ORDER_OPERATOR_CHAT_ID" \
     "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
-    ! grep -Fq "$secret" "$output" || fail 'secret leaked to output'
-    ! grep -Fq "$secret" "$case_dir/opt/ksy-deals/deployment-evidence.json" ||
-      fail 'secret leaked to deployment evidence'
+    assert_value_absent "$secret" "$output" 'secret leaked to output'
+    assert_value_absent "$secret" "$case_dir/opt/ksy-deals/deployment-evidence.json" \
+      'secret leaked to deployment evidence'
   done
   grep -q '"loopbackLive":true' "$case_dir/opt/ksy-deals/deployment-evidence.json" ||
     fail 'safe liveness evidence is missing'
@@ -1341,6 +1398,8 @@ test_bootstrap_contract_names_sixteen_hidden_fields() {
 }
 
 test_rejects_full_disk_before_mutation
+test_synthetic_leak_assertion_rejects_grep_errors
+test_value_absence_assertion_distinguishes_grep_statuses
 test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
