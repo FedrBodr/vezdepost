@@ -31,7 +31,7 @@ make_stubs() {
   cat > "$bin_dir/docker" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 if [[ "$1" == pull && "${DOCKER_PULL_FAIL:-0}" == 1 ]]; then
@@ -46,7 +46,7 @@ STUB
   cat > "$bin_dir/curl" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$CURL_CALLS"
 [[ "${CURL_FAIL:-0}" != 1 ]]
@@ -54,7 +54,7 @@ STUB
   cat > "$bin_dir/mktemp" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 exec /usr/bin/mktemp "$@"
 STUB
@@ -98,6 +98,8 @@ services:
     image: ${KSY_DEALS_IMAGE}
   server:
     image: ${KSY_DEALS_IMAGE}
+    volumes:
+      - ${KSY_DEALS_BANNER_DIR:?set KSY_DEALS_BANNER_DIR}:/banners:ro
 YAML
 }
 
@@ -144,6 +146,7 @@ inherited_application_environment() {
 inherited_runtime_environment() {
   export KSY_DEALS_IMAGE='ghcr.io/fedrbodr/ksy-deals@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
   export KSY_DEALS_BACKUP_DIR='/tmp/attacker-controlled-backups'
+  export KSY_DEALS_BANNER_DIR='/tmp/attacker-controlled-banners'
   export DATABASE_URL='postgresql://attacker:attacker@attacker.invalid:5432/attacker'
   export BACKUP_RETENTION_DAYS='999'
   export FEED_TOKEN='inherited-feed-token-sentinel'
@@ -287,6 +290,7 @@ run_case() {
       KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_BANNER_DIR="$case_dir/var/banners/ksy-deals" \
       KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
@@ -301,6 +305,7 @@ run_case() {
       KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_BANNER_DIR="$case_dir/var/banners/ksy-deals" \
       KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
@@ -364,6 +369,7 @@ run_reuse_case() {
     KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_BANNER_DIR="$case_dir/var/banners/ksy-deals" \
     KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
@@ -388,6 +394,7 @@ run_reuse_arguments_case() {
     KSY_PROVISION_TEST_DISK_USED_PERCENT=20 \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_BANNER_DIR="$case_dir/var/banners/ksy-deals" \
     KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
@@ -423,15 +430,11 @@ assert_value_absent() {
   local value=$1
   local file=$2
   local leak_message=$3
-  local grep_status
+  local content
 
-  if grep -Fq "$value" "$file"; then
-    fail "$leak_message"
-  else
-    grep_status=$?
-    [[ "$grep_status" == 1 ]] ||
-      fail "$leak_message (grep failed with status $grep_status)"
-  fi
+  [[ -f "$file" && -r "$file" ]] || fail "$leak_message (scan input unavailable)"
+  content=$(<"$file") || fail "$leak_message (scan read failed)"
+  [[ "$content" != *"$value"* ]] || fail "$leak_message"
 }
 
 assert_synthetic_secrets_absent() {
@@ -445,46 +448,44 @@ assert_synthetic_secrets_absent() {
   done
 }
 
-test_synthetic_leak_assertion_rejects_grep_errors() {
-  local directory="$TMP_DIR/leak-assertion-directory"
+test_synthetic_leak_assertion_rejects_scan_errors() {
+  local missing_file="$TMP_DIR/leak-assertion-missing"
   valid_environment
-  mkdir -p "$directory"
-  if ( assert_synthetic_secrets_absent "$directory" ); then
-    fail 'leak assertion accepted a grep execution error as absence'
+  if ( assert_synthetic_secrets_absent "$missing_file" ); then
+    fail 'leak assertion accepted a scan error as absence'
   fi
 }
 
-test_value_absence_assertion_distinguishes_grep_statuses() {
+test_value_absence_assertion_distinguishes_scan_results() {
   local absent_file="$TMP_DIR/leak-assertion-absent"
   local present_file="$TMP_DIR/leak-assertion-present"
-  local directory="$TMP_DIR/leak-assertion-error"
+  local missing_file="$TMP_DIR/leak-assertion-error"
   local assertion_status assertion_output
   : > "$absent_file"
   printf 'sentinel\n' > "$present_file"
-  mkdir -p "$directory"
 
   set +e
   assertion_output=$( ( assert_value_absent sentinel "$absent_file" 'leak detected' ) 2>&1 )
   assertion_status=$?
   set -e
-  assert_eq 0 "$assertion_status" 'grep status 1 must count as absence'
+  assert_eq 0 "$assertion_status" 'absent value must pass the scan'
   assert_eq '' "$assertion_output" 'absence must not produce a failure message'
 
   set +e
   assertion_output=$( ( assert_value_absent sentinel "$present_file" 'leak detected' ) 2>&1 )
   assertion_status=$?
   set -e
-  assert_eq 1 "$assertion_status" 'grep status 0 must fail as a leak'
+  assert_eq 1 "$assertion_status" 'present value must fail as a leak'
   [[ "$assertion_output" == *'FAIL: leak detected'* ]] ||
-    fail 'grep status 0 did not report a leak'
+    fail 'present value did not report a leak'
 
   set +e
-  assertion_output=$( ( assert_value_absent sentinel "$directory" 'leak detected' ) 2>&1 )
+  assertion_output=$( ( assert_value_absent sentinel "$missing_file" 'leak detected' ) 2>&1 )
   assertion_status=$?
   set -e
-  assert_eq 1 "$assertion_status" 'grep execution errors must fail the test'
-  [[ "$assertion_output" == *'grep failed with status 2'* ]] ||
-    fail 'grep execution errors did not report their status'
+  assert_eq 1 "$assertion_status" 'scan errors must fail the test'
+  [[ "$assertion_output" == *'scan input unavailable'* ]] ||
+    fail 'scan errors did not report unavailable input'
 }
 
 assert_progress_contract() {
@@ -602,10 +603,15 @@ test_provisions_idempotently_without_secret_leaks() {
     fail 'order Telegram URL was not fixed in the candidate runtime environment'
   grep -Fxq 'SITE_TELEGRAM_BOT_URL=https://t.me/ksy_deals_store_bot' "$case_dir/opt/ksy-deals/.env" ||
     fail 'site Telegram bot URL was not fixed in the candidate runtime environment'
+  grep -Fxq "KSY_DEALS_BANNER_DIR=$case_dir/var/banners/ksy-deals" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'banner host directory was not materialized exactly'
   grep -Fxq "KSY_DEALS_COVER_HOST_DIR=$case_dir/var/covers/ksy-deals" "$case_dir/opt/ksy-deals/.env" ||
     fail 'cover host directory was not materialized exactly'
   grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$case_dir/opt/ksy-deals/.env" ||
     fail 'cover public base URL was not materialized exactly'
+  [[ -d "$case_dir/var/banners/ksy-deals" ]] || fail 'banner host directory was not created'
+  assert_eq 755 "$(file_mode "$case_dir/var/banners/ksy-deals")" \
+    'banner host directory must be traversable by the non-root server'
   [[ -d "$case_dir/var/covers/ksy-deals" ]] || fail 'cover host directory was not created'
   assert_eq 755 "$(file_mode "$case_dir/var/covers/ksy-deals")" \
     'cover host directory must be traversable by the non-root server'
@@ -776,6 +782,7 @@ run_pty_case() {
     NETWORK_MARKER="$case_dir/network.created" \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_BANNER_DIR="$case_dir/var/banners/ksy-deals" \
     KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
@@ -799,7 +806,7 @@ exit $status
 EXPECT
   local status=$?
   printf 'PTY harness exited %s; transcript markers follow:\n' "$status" >&2
-  rg -n 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED|Operation not permitted|Permission denied' \
+  grep -nE 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED|Operation not permitted|Permission denied' \
     "$output" >&2 || true
   return "$status"
 }
@@ -813,7 +820,7 @@ test_pty_prompt_follows_echo_off_and_normal_path_restores_echo() {
   local transcript
   transcript=$(<"$output")
   if [[ "$transcript" != *'[ECHO_OFF]'*'Paste the sixteen KSY secret assignments, then KSY_SECRETS_END:'* ]]; then
-    rg -n 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
+    grep -nE 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
     fail 'batch readiness prompt did not follow successful echo disable'
   fi
   grep -qx 'echo-restored' "$case_dir/bin/stty-events" ||
@@ -871,6 +878,7 @@ test_pty_signals_terminate_before_mutation() {
       NETWORK_MARKER="$case_dir/network.created" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_BANNER_DIR="$case_dir/var/banners/ksy-deals" \
       KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
@@ -1010,26 +1018,31 @@ test_reuses_existing_secrets_without_prompting() {
   assert_synthetic_secrets_absent "$output"
 }
 
-test_reuse_upgrades_legacy_installation_with_cover_storage() {
-  local case_dir="$TMP_DIR/reuse-legacy-cover-upgrade"
+test_reuse_upgrades_legacy_installation_with_storage_paths() {
+  local case_dir="$TMP_DIR/reuse-legacy-storage-upgrade"
   local output="$case_dir/reuse.output"
   local root="$case_dir/opt/ksy-deals"
   write_existing_installation "$case_dir"
-  awk '!/^KSY_DEALS_COVER_HOST_DIR=/ && !/^COVER_PUBLIC_BASE_URL=/' "$root/.env" > \
+  awk '!/^KSY_DEALS_BANNER_DIR=/ && !/^KSY_DEALS_COVER_HOST_DIR=/ && !/^COVER_PUBLIC_BASE_URL=/' "$root/.env" > \
     "$case_dir/legacy.env"
   cp "$case_dir/legacy.env" "$root/.env"
   chmod 600 "$root/.env"
 
-  run_reuse_case "$case_dir" "$output" || fail 'legacy cover configuration was not upgraded'
+  run_reuse_case "$case_dir" "$output" || fail 'legacy storage configuration was not upgraded'
 
+  assert_eq 1 "$(grep -c '^KSY_DEALS_BANNER_DIR=' "$root/.env")" \
+    'banner host directory must have one definition after upgrade'
   assert_eq 1 "$(grep -c '^KSY_DEALS_COVER_HOST_DIR=' "$root/.env")" \
     'cover host directory must have one definition after upgrade'
   assert_eq 1 "$(grep -c '^COVER_PUBLIC_BASE_URL=' "$root/.env")" \
     'cover public base URL must have one definition after upgrade'
+  grep -Fxq "KSY_DEALS_BANNER_DIR=$case_dir/var/banners/ksy-deals" "$root/.env" ||
+    fail 'legacy upgrade installed the wrong banner host directory'
   grep -Fxq "KSY_DEALS_COVER_HOST_DIR=$case_dir/var/covers/ksy-deals" "$root/.env" ||
     fail 'legacy upgrade installed the wrong cover host directory'
   grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$root/.env" ||
     fail 'legacy upgrade installed the wrong cover public URL'
+  [[ -d "$case_dir/var/banners/ksy-deals" ]] || fail 'legacy upgrade did not create banner storage'
   [[ -d "$case_dir/var/covers/ksy-deals" ]] || fail 'legacy upgrade did not create cover storage'
   assert_synthetic_secrets_absent "$output"
 }
@@ -1109,10 +1122,11 @@ test_clears_inherited_runtime_values_before_compose() {
   local case_dir="$TMP_DIR/reuse-inherited-runtime-sanitized"
   local output="$case_dir/reuse.output"
   local root="$case_dir/opt/ksy-deals"
-  local expected_database_url expected_backup_dir expected_retention
+  local expected_database_url expected_backup_dir expected_banner_dir expected_retention
   write_existing_installation "$case_dir"
   expected_database_url=$(grep '^DATABASE_URL=' "$root/.env")
   expected_backup_dir=$(grep '^KSY_DEALS_BACKUP_DIR=' "$root/.env")
+  expected_banner_dir="KSY_DEALS_BANNER_DIR=$case_dir/var/banners/ksy-deals"
   expected_retention=$(grep '^BACKUP_RETENTION_DAYS=' "$root/.env")
   : > "$case_dir/child.env"
   inherited_runtime_environment
@@ -1128,9 +1142,11 @@ test_clears_inherited_runtime_values_before_compose() {
     fail 'inherited DATABASE_URL replaced the verified live value'
   grep -Fxq "$expected_backup_dir" "$root/.env" ||
     fail 'inherited backup directory replaced the verified live value'
+  grep -Fxq "$expected_banner_dir" "$root/.env" ||
+    fail 'inherited banner directory replaced the fixed provisioned value'
   grep -Fxq "$expected_retention" "$root/.env" ||
     fail 'inherited backup retention replaced the verified live value'
-  unset KSY_DEALS_IMAGE KSY_DEALS_BACKUP_DIR DATABASE_URL BACKUP_RETENTION_DAYS \
+  unset KSY_DEALS_IMAGE KSY_DEALS_BACKUP_DIR KSY_DEALS_BANNER_DIR DATABASE_URL BACKUP_RETENTION_DAYS \
     FEED_TOKEN SITE_BASE_URL
 }
 
@@ -1471,13 +1487,13 @@ test_bootstrap_contract_names_sixteen_hidden_fields() {
 }
 
 test_rejects_full_disk_before_mutation
-test_synthetic_leak_assertion_rejects_grep_errors
-test_value_absence_assertion_distinguishes_grep_statuses
+test_synthetic_leak_assertion_rejects_scan_errors
+test_value_absence_assertion_distinguishes_scan_results
 test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
 test_reuses_existing_secrets_without_prompting
-test_reuse_upgrades_legacy_installation_with_cover_storage
+test_reuse_upgrades_legacy_installation_with_storage_paths
 test_routine_override_changes_only_image_and_order_url
 test_rejects_invalid_order_url_override_arguments_before_mutation
 test_clears_inherited_runtime_values_before_compose

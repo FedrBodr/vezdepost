@@ -7,6 +7,7 @@ umask 077
 
 KSY_ROOT=${KSY_ROOT:-/opt/ksy-deals}
 KSY_BACKUP_DIR=${KSY_BACKUP_DIR:-/var/backups/ksy-deals}
+KSY_BANNER_DIR=${KSY_BANNER_DIR:-/var/banners/ksy-deals}
 KSY_COVER_DIR=${KSY_COVER_DIR:-/var/covers/ksy-deals}
 CADDY_SITES_DIR=${CADDY_SITES_DIR:-/etc/caddy/sites}
 STAGED_COMPOSE=${STAGED_COMPOSE:-/tmp/ksy-deals-docker-compose.yml}
@@ -37,11 +38,11 @@ runtime_keys=(
   BACKUP_ENCRYPTION_PASSPHRASE BACKUP_RETENTION_DAYS
 )
 optional_compose_keys=(FEED_TOKEN SITE_BASE_URL)
-cover_compose_keys=(KSY_DEALS_COVER_HOST_DIR COVER_PUBLIC_BASE_URL)
+storage_compose_keys=(KSY_DEALS_BANNER_DIR KSY_DEALS_COVER_HOST_DIR COVER_PUBLIC_BASE_URL)
 fixed_public_keys=(SITE_TELEGRAM_BOT_URL)
 
 for sensitive_key in "${required_keys[@]}" "${runtime_keys[@]}" \
-  "${optional_compose_keys[@]}" "${cover_compose_keys[@]}" \
+  "${optional_compose_keys[@]}" "${storage_compose_keys[@]}" \
   "${fixed_public_keys[@]}"; do
   unset "$sensitive_key"
 done
@@ -435,6 +436,7 @@ ENV
   chmod 600 "$candidate_env"
 fi
 
+ensure_fixed_assignment KSY_DEALS_BANNER_DIR "$KSY_BANNER_DIR" "$candidate_env"
 ensure_fixed_assignment KSY_DEALS_COVER_HOST_DIR "$KSY_COVER_DIR" "$candidate_env"
 ensure_fixed_assignment COVER_PUBLIC_BASE_URL \
   https://ksy-deals.fedrbodr.com/covers/ "$candidate_env"
@@ -482,11 +484,12 @@ else
 fi
 
 MUTATION_STARTED=1
+banner_parent=$(dirname "$KSY_BANNER_DIR")
 cover_parent=$(dirname "$KSY_COVER_DIR")
-mkdir -p "$KSY_ROOT" "$KSY_BACKUP_DIR" "$cover_parent" "$KSY_COVER_DIR" \
-  "$CADDY_SITES_DIR"
+mkdir -p "$KSY_ROOT" "$KSY_BACKUP_DIR" "$banner_parent" "$KSY_BANNER_DIR" \
+  "$cover_parent" "$KSY_COVER_DIR" "$CADDY_SITES_DIR"
 chmod 700 "$KSY_ROOT" "$KSY_BACKUP_DIR"
-chmod 755 "$cover_parent" "$KSY_COVER_DIR"
+chmod 755 "$banner_parent" "$KSY_BANNER_DIR" "$cover_parent" "$KSY_COVER_DIR"
 if [[ "$TEST_MODE" != 1 ]]; then
   chown 1000:1000 "$KSY_COVER_DIR"
 fi
