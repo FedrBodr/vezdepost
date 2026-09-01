@@ -31,7 +31,7 @@ make_stubs() {
   cat > "$bin_dir/docker" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|TELEGRAM_BROADCAST_CHANNEL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$DOCKER_CALLS"
 if [[ "$1" == pull && "${DOCKER_PULL_FAIL:-0}" == 1 ]]; then
@@ -46,7 +46,7 @@ STUB
   cat > "$bin_dir/curl" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|TELEGRAM_BROADCAST_CHANNEL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 printf '%s\n' "$*" >> "$CURL_CALLS"
 [[ "${CURL_FAIL:-0}" != 1 ]]
@@ -54,7 +54,7 @@ STUB
   cat > "$bin_dir/mktemp" <<'STUB'
 #!/usr/bin/env bash
 if [[ -n "${CHILD_ENV_CAPTURE:-}" ]]; then
-  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
+  env | grep -E '^(KSY_DEALS_IMAGE|KSY_DEALS_BACKUP_DIR|KSY_DEALS_BANNER_DIR|DATABASE_URL|BACKUP_RETENTION_DAYS|FEED_TOKEN|SITE_BASE_URL|SITE_TELEGRAM_BOT_URL|TELEGRAM_BROADCAST_CHANNEL|VITE_TELEGRAM_BOT_USERNAME|GHCR_USERNAME|GHCR_READ_TOKEN|TELEGRAM_BOT_TOKEN|TELEGRAM_WEBHOOK_SECRET|ORDER_BOT_TOKEN|ORDER_BOT_WEBHOOK_SECRET|ORDER_BOT_WEBHOOK_URL|ORDER_OPERATOR_CHAT_ID|ORDER_TELEGRAM_URL|ADMIN_TELEGRAM_IDS|PLATPRICES_API_KEY|PLATPRICES_PROXY_URL|POSTGRES_PASSWORD|SESSION_COOKIE_KEY|BACKUP_ENCRYPTION_PASSPHRASE)=' >> "$CHILD_ENV_CAPTURE" || true
 fi
 exec /usr/bin/mktemp "$@"
 STUB
@@ -121,6 +121,7 @@ valid_environment() {
   ADMIN_TELEGRAM_IDS='101,202'
   PLATPRICES_API_KEY='platprices_test-key'
   PLATPRICES_PROXY_URL='http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128'
+  TELEGRAM_BROADCAST_CHANNEL='fedrbodr_tests'
   FEED_TOKEN='feed-token-secret'
   BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
 }
@@ -141,6 +142,7 @@ inherited_application_environment() {
   export ADMIN_TELEGRAM_IDS='101,202'
   export PLATPRICES_API_KEY='platprices_test-key'
   export PLATPRICES_PROXY_URL='http://inherited1:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128'
+  export TELEGRAM_BROADCAST_CHANNEL='inherited_broadcast_sentinel'
   export FEED_TOKEN='inherited-feed-token-sentinel'
   export BACKUP_ENCRYPTION_PASSPHRASE='4444444444444444444444444444444444444444444444444444444444444444'
 }
@@ -172,6 +174,7 @@ ORDER_OPERATOR_CHAT_ID = -1001234567890
 ADMIN_TELEGRAM_IDS = 101,202
 PLATPRICES_API_KEY = platprices_test-key
 PLATPRICES_PROXY_URL = http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128
+TELEGRAM_BROADCAST_CHANNEL = fedrbodr_tests
 FEED_TOKEN = feed-token-secret
 BACKUP_ENCRYPTION_PASSPHRASE = 4444444444444444444444444444444444444444444444444444444444444444
 KSY_SECRETS_END
@@ -183,6 +186,7 @@ out_of_order_batch() {
 BACKUP_ENCRYPTION_PASSPHRASE    =    4444444444444444444444444444444444444444444444444444444444444444
 PLATPRICES_API_KEY=platprices_test-key
 PLATPRICES_PROXY_URL=http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128
+TELEGRAM_BROADCAST_CHANNEL=fedrbodr_tests
 FEED_TOKEN=feed-token-secret
 ADMIN_TELEGRAM_IDS = 101,202
 TELEGRAM_WEBHOOK_SECRET=3333333333333333333333333333333333333333333333333333333333333333
@@ -233,6 +237,10 @@ missing_feed_token_batch() {
   valid_batch | awk '$0 !~ /^FEED_TOKEN/'
 }
 
+missing_broadcast_channel_batch() {
+  valid_batch | awk '$0 !~ /^TELEGRAM_BROADCAST_CHANNEL/'
+}
+
 duplicate_feed_token_batch() {
   valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "FEED_TOKEN = feed-token-secret"; print }'
 }
@@ -247,6 +255,10 @@ malformed_stdin_batch() {
 
 empty_feed_token_batch() {
   valid_batch | awk '{ if ($0 ~ /^FEED_TOKEN/) print "FEED_TOKEN ="; else print }'
+}
+
+invalid_broadcast_channel_batch() {
+  valid_batch | awk '{ if ($0 ~ /^TELEGRAM_BROADCAST_CHANNEL/) print "TELEGRAM_BROADCAST_CHANNEL = https://t.me/not-a-username"; else print }'
 }
 
 unterminated_stdin_batch() {
@@ -679,6 +691,8 @@ test_provisions_idempotently_without_secret_leaks() {
     fail 'order bot webhook URL was not materialized exactly'
   grep -Fxq "ORDER_OPERATOR_CHAT_ID=$ORDER_OPERATOR_CHAT_ID" "$case_dir/opt/ksy-deals/.env" ||
     fail 'order operator chat ID was not materialized exactly'
+  grep -Fxq "TELEGRAM_BROADCAST_CHANNEL=$TELEGRAM_BROADCAST_CHANNEL" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'broadcast channel was not materialized exactly'
   grep -Fxq 'ORDER_TELEGRAM_URL=https://t.me/ksybuybot' "$case_dir/opt/ksy-deals/.env" ||
     fail 'order Telegram URL was not fixed in the candidate runtime environment'
   grep -Fxq 'SITE_TELEGRAM_BOT_URL=https://t.me/ksy_deals_store_bot' "$case_dir/opt/ksy-deals/.env" ||
@@ -719,7 +733,8 @@ test_provisions_idempotently_without_secret_leaks() {
     "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_WEBHOOK_SECRET" \
     "$ORDER_BOT_TOKEN" "$ORDER_BOT_WEBHOOK_SECRET" "$ORDER_BOT_WEBHOOK_URL" \
     "$ORDER_OPERATOR_CHAT_ID" \
-    "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$BACKUP_ENCRYPTION_PASSPHRASE"; do
+    "$PLATPRICES_API_KEY" "$PLATPRICES_PROXY_URL" "$FEED_TOKEN" \
+    "$BACKUP_ENCRYPTION_PASSPHRASE"; do
     assert_value_absent "$secret" "$output" 'secret leaked to output'
     assert_value_absent "$secret" "$case_dir/opt/ksy-deals/deployment-evidence.json" \
       'secret leaked to deployment evidence'
@@ -737,10 +752,12 @@ test_rejects_batch_safety_failures_before_mutation() {
   assert_rejection duplicate-key BATCH_DUPLICATE_KEY duplicate_order_batch
   assert_rejection duplicate-proxy BATCH_DUPLICATE_KEY duplicate_proxy_batch
   assert_rejection unknown-key BATCH_UNKNOWN_KEY unknown_key_batch
-  assert_rejection malformed-line 'BATCH_MALFORMED_LINE line=18' malformed_line_batch
+  assert_rejection malformed-line 'BATCH_MALFORMED_LINE line=19' malformed_line_batch
   assert_rejection missing-key BATCH_MISSING_KEY missing_admin_batch
   assert_rejection empty-value BATCH_EMPTY_VALUE empty_platprices_batch
   assert_rejection invalid-proxy PLATPRICES_PROXY_URL_INVALID invalid_proxy_batch
+  assert_rejection invalid-broadcast-channel TELEGRAM_BROADCAST_CHANNEL_INVALID \
+    invalid_broadcast_channel_batch
   assert_rejection alternate-order ORDER_TELEGRAM_URL_INVALID alternate_order_batch
   assert_rejection invite-order ORDER_TELEGRAM_URL_INVALID invite_order_batch
 }
@@ -768,7 +785,8 @@ test_rejects_missing_batch_key_despite_inherited_environment() {
   unset GHCR_USERNAME GHCR_READ_TOKEN VITE_TELEGRAM_BOT_USERNAME POSTGRES_PASSWORD \
     SESSION_COOKIE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL \
     ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID \
-    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL BACKUP_ENCRYPTION_PASSPHRASE
+    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL TELEGRAM_BROADCAST_CHANNEL \
+    FEED_TOKEN BACKUP_ENCRYPTION_PASSPHRASE
 }
 
 test_clears_inherited_application_secrets_before_any_child_process() {
@@ -789,7 +807,8 @@ test_clears_inherited_application_secrets_before_any_child_process() {
   unset GHCR_USERNAME GHCR_READ_TOKEN VITE_TELEGRAM_BOT_USERNAME POSTGRES_PASSWORD \
     SESSION_COOKIE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL \
     ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID \
-    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL BACKUP_ENCRYPTION_PASSPHRASE
+    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL TELEGRAM_BROADCAST_CHANNEL \
+    FEED_TOKEN BACKUP_ENCRYPTION_PASSPHRASE
 }
 
 make_pty_stty_stub() {
@@ -871,7 +890,7 @@ log_user 1
 set timeout 10
 spawn -noecho bash $env(PTY_SCRIPT) --image $env(PTY_IMAGE)
 expect {
-  -exact "Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:" {}
+  -exact "Paste the eighteen KSY secret assignments, then KSY_SECRETS_END:" {}
   timeout { exit 124 }
   eof { exit 125 }
 }
@@ -886,7 +905,7 @@ exit $status
 EXPECT
   local status=$?
   printf 'PTY harness exited %s; transcript markers follow:\n' "$status" >&2
-  grep -nE 'ECHO_OFF|Paste the seventeen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED|Operation not permitted|Permission denied' \
+  grep -nE 'ECHO_OFF|Paste the eighteen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED|Operation not permitted|Permission denied' \
     "$output" >&2 || true
   return "$status"
 }
@@ -899,8 +918,8 @@ test_pty_prompt_follows_echo_off_and_normal_path_restores_echo() {
 
   local transcript
   transcript=$(<"$output")
-  if [[ "$transcript" != *'[ECHO_OFF]'*'Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:'* ]]; then
-    grep -nE 'ECHO_OFF|Paste the seventeen|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
+  if [[ "$transcript" != *'[ECHO_OFF]'*'Paste the eighteen KSY secret assignments, then KSY_SECRETS_END:'* ]]; then
+    grep -nE 'ECHO_OFF|Paste the eighteen|KSY_PROVISION_(FAILED|PROVISIONED)' "$output" >&2 || true
     fail 'batch readiness prompt did not follow successful echo disable'
   fi
   grep -qx 'echo-restored' "$case_dir/bin/stty-events" ||
@@ -966,7 +985,7 @@ test_pty_signals_terminate_before_mutation() {
 log_user 1
 set timeout 5
 spawn -noecho bash $env(PTY_SCRIPT) --image $env(PTY_IMAGE)
-  expect -exact "Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:"
+  expect -exact "Paste the eighteen KSY secret assignments, then KSY_SECRETS_END:"
 if {$env(PTY_SIGNAL) == "INT"} {
   send -- "\003"
 } else {
@@ -1074,7 +1093,7 @@ test_reuses_existing_secrets_without_prompting() {
     fail 'routine reuse unexpectedly failed'
   fi
 
-  ! grep -Fq 'Paste the seventeen KSY secret assignments' "$output" ||
+  ! grep -Fq 'Paste the eighteen KSY secret assignments' "$output" ||
     fail 'routine reuse emitted the hidden bootstrap prompt'
   grep -q 'phase=secrets message="Reusing existing secret configuration"' "$output" ||
     fail 'routine reuse did not report its secret phase'
@@ -1149,7 +1168,7 @@ test_routine_override_changes_only_image_and_order_url() {
     fail 'routine order URL override did not install the approved URL'
   grep -Fxq "SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_BOT_URL" "$root/.env" ||
     fail 'routine order URL override did not install the approved site bot URL'
-  ! grep -Fq 'Paste the seventeen KSY secret assignments' "$output" ||
+  ! grep -Fq 'Paste the eighteen KSY secret assignments' "$output" ||
     fail 'routine order URL override emitted the hidden bootstrap prompt'
   ! grep -q '^login ' "$case_dir/docker.calls" ||
     fail 'routine order URL override replaced existing Docker authentication'
@@ -1588,7 +1607,7 @@ assert_stdin_rejection() {
   assert_no_env_install_sibling "$case_dir/opt/ksy-deals"
 }
 
-test_stdin_mode_provisions_seventeen_fields_without_tty_or_leaks() {
+test_stdin_mode_provisions_eighteen_fields_without_tty_or_leaks() {
   local case_dir="$TMP_DIR/stdin-success"
   local output="$case_dir/output"
   local root="$case_dir/opt/ksy-deals"
@@ -1605,7 +1624,7 @@ test_stdin_mode_provisions_seventeen_fields_without_tty_or_leaks() {
 
   grep -Fxq "FEED_TOKEN=$expected_feed_token" "$root/.env" ||
     fail 'stdin mode did not materialize FEED_TOKEN in the runtime env'
-  ! grep -Fq 'Paste the seventeen KSY secret assignments' "$output" ||
+  ! grep -Fq 'Paste the eighteen KSY secret assignments' "$output" ||
     fail 'stdin mode attempted to use the interactive terminal prompt'
   ! grep -Fq 'TTY_REQUIRED' "$output" ||
     fail 'stdin mode required a terminal'
@@ -1622,7 +1641,7 @@ test_stdin_mode_provisions_seventeen_fields_without_tty_or_leaks() {
   unset GHCR_USERNAME GHCR_READ_TOKEN VITE_TELEGRAM_BOT_USERNAME POSTGRES_PASSWORD \
     SESSION_COOKIE_KEY TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET ORDER_TELEGRAM_URL \
     ORDER_BOT_TOKEN ORDER_BOT_WEBHOOK_SECRET ORDER_BOT_WEBHOOK_URL ORDER_OPERATOR_CHAT_ID \
-    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL FEED_TOKEN \
+    ADMIN_TELEGRAM_IDS PLATPRICES_API_KEY PLATPRICES_PROXY_URL TELEGRAM_BROADCAST_CHANNEL FEED_TOKEN \
     BACKUP_ENCRYPTION_PASSPHRASE
 }
 
@@ -1651,17 +1670,18 @@ test_stdin_mode_rejects_batch_safety_failures_before_mutation() {
   assert_stdin_rejection stdin-duplicate BATCH_DUPLICATE_KEY duplicate_feed_token_batch
   assert_stdin_rejection stdin-unknown BATCH_UNKNOWN_KEY unknown_stdin_key_batch
   assert_stdin_rejection stdin-missing BATCH_MISSING_KEY missing_feed_token_batch
-  assert_stdin_rejection stdin-malformed 'BATCH_MALFORMED_LINE line=18' malformed_stdin_batch
+  assert_stdin_rejection stdin-missing-broadcast BATCH_MISSING_KEY missing_broadcast_channel_batch
+  assert_stdin_rejection stdin-malformed 'BATCH_MALFORMED_LINE line=19' malformed_stdin_batch
   assert_stdin_rejection stdin-empty BATCH_EMPTY_VALUE empty_feed_token_batch
   assert_stdin_rejection stdin-unterminated BATCH_TERMINATOR_REQUIRED unterminated_stdin_batch
 }
 
-test_bootstrap_contract_names_seventeen_hidden_fields() {
+test_bootstrap_contract_names_eighteen_hidden_fields() {
   valid_environment
-  assert_eq 17 "$(valid_batch | awk -F= '/^[A-Z0-9_]+[[:space:]]*=/ { count++ } END { print count }')" \
-    'bootstrap fixture must provide seventeen hidden assignments'
-  grep -Fq 'Paste the seventeen KSY secret assignments, then KSY_SECRETS_END:' "$SCRIPT" ||
-    fail 'bootstrap prompt no longer names the seventeen-field hidden batch'
+  assert_eq 18 "$(valid_batch | awk -F= '/^[A-Z0-9_]+[[:space:]]*=/ { count++ } END { print count }')" \
+    'bootstrap fixture must provide eighteen hidden assignments'
+  grep -Fq 'Paste the eighteen KSY secret assignments, then KSY_SECRETS_END:' "$SCRIPT" ||
+    fail 'bootstrap prompt no longer names the eighteen-field hidden batch'
 }
 
 test_rejects_full_disk_before_mutation
@@ -1683,10 +1703,10 @@ test_rejects_failed_existing_docker_auth_without_mutation
 test_reuse_restores_previous_installation_after_failed_readiness
 test_reuse_rolls_back_failure_between_compose_and_env_install
 test_reuse_rolls_back_evidence_install_failure
-test_stdin_mode_provisions_seventeen_fields_without_tty_or_leaks
+test_stdin_mode_provisions_eighteen_fields_without_tty_or_leaks
 test_stdin_mode_rejects_reuse_conflicts_and_duplicate_flag_before_mutation
 test_stdin_mode_rejects_batch_safety_failures_before_mutation
-test_bootstrap_contract_names_seventeen_hidden_fields
+test_bootstrap_contract_names_eighteen_hidden_fields
 test_rejects_batch_safety_failures_before_mutation
 test_rejects_invalid_order_runtime_batch_before_mutation
 test_rejects_missing_batch_key_despite_inherited_environment
