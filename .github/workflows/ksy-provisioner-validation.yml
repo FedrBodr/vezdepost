@@ -15,4 +15,4 @@ jobs:
       - name: Validate shell syntax
         run: bash -n docs/server-scripts/20-provision-ksy-staging.sh docs/server-scripts/20-provision-ksy-staging.spec.sh
       - name: Run KSY provisioner specification
-        run: bash docs/server-scripts/20-provision-ksy-staging.spec.sh
+        run: bash -x docs/server-scripts/20-provision-ksy-staging.spec.sh
