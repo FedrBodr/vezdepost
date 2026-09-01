@@ -6,6 +6,7 @@ SCRIPT="$SCRIPT_DIR/20-provision-ksy-staging.sh"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 APPROVED_ORDER_URL='https://t.me/ksybuybot'
+APPROVED_SITE_BOT_URL='https://t.me/ksy_deals_store_bot'
 
 fail() {
   echo "FAIL: $*" >&2
@@ -114,7 +115,7 @@ valid_environment() {
   ORDER_BOT_WEBHOOK_SECRET='5555555555555555555555555555555555555555555555555555555555555555'
   ORDER_BOT_WEBHOOK_URL='https://ksy-deals.fedrbodr.com/telegram/order-webhook'
   ORDER_OPERATOR_CHAT_ID='-1001234567890'
-  ORDER_TELEGRAM_URL='https://t.me/ksy_orders'
+  ORDER_TELEGRAM_URL="$APPROVED_ORDER_URL"
   ADMIN_TELEGRAM_IDS='101,202'
   PLATPRICES_API_KEY='platprices_test-key'
   PLATPRICES_PROXY_URL='http://ksy_user_01:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128'
@@ -133,7 +134,7 @@ inherited_application_environment() {
   export ORDER_BOT_WEBHOOK_SECRET='5555555555555555555555555555555555555555555555555555555555555555'
   export ORDER_BOT_WEBHOOK_URL='https://ksy-deals.fedrbodr.com/telegram/order-webhook'
   export ORDER_OPERATOR_CHAT_ID='-1001234567890'
-  export ORDER_TELEGRAM_URL='https://t.me/ksy_orders'
+  export ORDER_TELEGRAM_URL="$APPROVED_ORDER_URL"
   export ADMIN_TELEGRAM_IDS='101,202'
   export PLATPRICES_API_KEY='platprices_test-key'
   export PLATPRICES_PROXY_URL='http://inherited1:abcdefghijklmnopqrstuvwxyzABCDEFGH123456789@185.158.249.84:3128'
@@ -153,7 +154,7 @@ valid_batch() {
   cat <<'BATCH'
 SESSION_COOKIE_KEY = 2222222222222222222222222222222222222222222222222222222222222222
 GHCR_USERNAME = FedrBodr
-ORDER_TELEGRAM_URL = https://t.me/ksy_orders
+ORDER_TELEGRAM_URL = https://t.me/ksu_fifa
 VITE_TELEGRAM_BOT_USERNAME = ksy_staging_bot
 GHCR_READ_TOKEN = github-read-token-secret
 POSTGRES_PASSWORD = 1111111111111111111111111111111111111111111111111111111111111111
@@ -186,7 +187,7 @@ ORDER_BOT_TOKEN = 654321:order_bot-token
 POSTGRES_PASSWORD=1111111111111111111111111111111111111111111111111111111111111111
 GHCR_READ_TOKEN = github-read-token-secret
 VITE_TELEGRAM_BOT_USERNAME=ksy_staging_bot
-ORDER_TELEGRAM_URL    = https://t.me/ksy_orders
+ORDER_TELEGRAM_URL    = https://t.me/ksu_fifa
 GHCR_USERNAME=FedrBodr
 SESSION_COOKIE_KEY = 2222222222222222222222222222222222222222222222222222222222222222
 KSY_SECRETS_END
@@ -194,7 +195,7 @@ BATCH
 }
 
 duplicate_order_batch() {
-  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "ORDER_TELEGRAM_URL = https://t.me/ksy_orders"; print }'
+  valid_batch | awk '{ if ($0 == "KSY_SECRETS_END") print "ORDER_TELEGRAM_URL = https://t.me/ksu_fifa"; print }'
 }
 
 duplicate_proxy_batch() {
@@ -253,6 +254,14 @@ invalid_proxy_batch() {
   valid_batch | awk '{ if ($0 ~ /^PLATPRICES_PROXY_URL/) print "PLATPRICES_PROXY_URL = http://user:short@185.158.249.84:3128"; else print }'
 }
 
+alternate_order_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_TELEGRAM_URL/) print "ORDER_TELEGRAM_URL = https://t.me/yar_neo"; else print }'
+}
+
+invite_order_batch() {
+  valid_batch | awk '{ if ($0 ~ /^ORDER_TELEGRAM_URL/) print "ORDER_TELEGRAM_URL = https://t.me/+invite_token"; else print }'
+}
+
 empty_platprices_batch() {
   valid_batch | awk '{ if ($0 ~ /^PLATPRICES_API_KEY/) print "PLATPRICES_API_KEY =   "; else print }'
 }
@@ -278,6 +287,7 @@ run_case() {
       KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
       bash "$SCRIPT" > "$output" 2>&1
@@ -291,6 +301,7 @@ run_case() {
       KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
       bash "$SCRIPT" --image "$image" > "$output" 2>&1
@@ -328,7 +339,7 @@ run_reuse_case() {
   local image=${5:-$REUSE_IMAGE}
   local cp_fail_install=${6:-none}
   local stat_force_uid_mismatch=${7:-0}
-  local order_url_override=${8:-}
+  local order_url_override=${8:-$APPROVED_ORDER_URL}
   local bin_dir="$case_dir/bin"
   local arguments=(--reuse-existing-secrets)
   mkdir -p "$case_dir"
@@ -353,6 +364,7 @@ run_reuse_case() {
     KSY_PROVISION_TEST_DISK_USED_PERCENT="${KSY_PROVISION_TEST_DISK_USED_PERCENT:-20}" \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
     bash "$SCRIPT" "${arguments[@]}" </dev/null > "$output" 2>&1
@@ -376,6 +388,7 @@ run_reuse_arguments_case() {
     KSY_PROVISION_TEST_DISK_USED_PERCENT=20 \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
     bash "$SCRIPT" "$@" </dev/null > "$output" 2>&1
@@ -569,6 +582,12 @@ test_provisions_idempotently_without_secret_leaks() {
     'database URL must have one definition'
   assert_eq 1 "$(grep -c '^PLATPRICES_PROXY_URL=' "$case_dir/opt/ksy-deals/.env")" \
     'PlatPrices proxy URL must have one definition'
+  assert_eq 1 "$(grep -c '^SITE_TELEGRAM_BOT_URL=' "$case_dir/opt/ksy-deals/.env")" \
+    'site Telegram bot URL must have one definition'
+  grep -Fxq "ORDER_TELEGRAM_URL=$APPROVED_ORDER_URL" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'approved order Telegram URL was not materialized exactly'
+  grep -Fxq "SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_BOT_URL" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'approved site Telegram bot URL was not materialized exactly'
   grep -Fxq "PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL" "$case_dir/opt/ksy-deals/.env" ||
     fail 'PlatPrices proxy URL was not materialized exactly'
   grep -Fxq "ORDER_BOT_TOKEN=$ORDER_BOT_TOKEN" "$case_dir/opt/ksy-deals/.env" ||
@@ -583,6 +602,13 @@ test_provisions_idempotently_without_secret_leaks() {
     fail 'order Telegram URL was not fixed in the candidate runtime environment'
   grep -Fxq 'SITE_TELEGRAM_BOT_URL=https://t.me/ksy_deals_store_bot' "$case_dir/opt/ksy-deals/.env" ||
     fail 'site Telegram bot URL was not fixed in the candidate runtime environment'
+  grep -Fxq "KSY_DEALS_COVER_HOST_DIR=$case_dir/var/covers/ksy-deals" "$case_dir/opt/ksy-deals/.env" ||
+    fail 'cover host directory was not materialized exactly'
+  grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$case_dir/opt/ksy-deals/.env" ||
+    fail 'cover public base URL was not materialized exactly'
+  [[ -d "$case_dir/var/covers/ksy-deals" ]] || fail 'cover host directory was not created'
+  assert_eq 755 "$(file_mode "$case_dir/var/covers/ksy-deals")" \
+    'cover host directory must be traversable by the non-root server'
   [[ -f "$case_dir/etc/caddy/sites/00-empty.caddy" ]] ||
     fail 'empty Caddy import placeholder was not created'
   [[ -f "$case_dir/network.created" ]] || fail 'caddy-edge was not created'
@@ -629,6 +655,8 @@ test_rejects_batch_safety_failures_before_mutation() {
   assert_rejection missing-key BATCH_MISSING_KEY missing_admin_batch
   assert_rejection empty-value BATCH_EMPTY_VALUE empty_platprices_batch
   assert_rejection invalid-proxy PLATPRICES_PROXY_URL_INVALID invalid_proxy_batch
+  assert_rejection alternate-order ORDER_TELEGRAM_URL_INVALID alternate_order_batch
+  assert_rejection invite-order ORDER_TELEGRAM_URL_INVALID invite_order_batch
 }
 
 test_rejects_invalid_order_runtime_batch_before_mutation() {
@@ -718,6 +746,7 @@ make_unprivileged_pty_script() {
   sed \
     -e 's/\[\[ "$TEST_MODE" == 1 || $EUID -eq 0 \]\] || fail ROOT_REQUIRED/true/' \
     -e 's/install -o root -g root -m /install -m /' \
+    -e 's/chown 1000:1000 "$KSY_COVER_DIR"/true/' \
     "$SCRIPT" > "$pty_script"
   chmod +x "$pty_script"
   printf '%s\n' "$pty_script"
@@ -747,6 +776,7 @@ run_pty_case() {
     NETWORK_MARKER="$case_dir/network.created" \
     KSY_ROOT="$case_dir/opt/ksy-deals" \
     KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+    KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
     CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
     STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
   expect > "$output" 2>&1 <<'EXPECT' && return 0
@@ -769,7 +799,7 @@ exit $status
 EXPECT
   local status=$?
   printf 'PTY harness exited %s; transcript markers follow:\n' "$status" >&2
-  rg -n 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED' \
+  rg -n 'ECHO_OFF|Paste the sixteen|KSY_PROVISION_(FAILED|PROVISIONED)|ROOT_REQUIRED|TTY_REQUIRED|Operation not permitted|Permission denied' \
     "$output" >&2 || true
   return "$status"
 }
@@ -841,6 +871,7 @@ test_pty_signals_terminate_before_mutation() {
       NETWORK_MARKER="$case_dir/network.created" \
       KSY_ROOT="$case_dir/opt/ksy-deals" \
       KSY_BACKUP_DIR="$case_dir/var/backups/ksy-deals" \
+      KSY_COVER_DIR="$case_dir/var/covers/ksy-deals" \
       CADDY_SITES_DIR="$case_dir/etc/caddy/sites" \
       STAGED_COMPOSE="$case_dir/tmp/release/docker-compose.yml" \
       expect > "$output" 2>&1 <<'EXPECT'
@@ -946,6 +977,11 @@ test_reuses_existing_secrets_without_prompting() {
   local root="$case_dir/opt/ksy-deals"
   local pull_line compose_line
   write_existing_installation "$case_dir"
+  awk '!/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > "$case_dir/legacy.env"
+  mv "$case_dir/legacy.env" "$root/.env"
+  chmod 600 "$root/.env"
+  awk '!/^KSY_DEALS_IMAGE=/ && !/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > \
+    "$case_dir/env-without-public-runtime.before"
 
   if ! run_reuse_case "$case_dir" "$output"; then
     if grep -q '^KSY_PROVISION_FAILED IMAGE_ARGUMENT_REQUIRED$' "$output"; then
@@ -964,13 +1000,43 @@ test_reuses_existing_secrets_without_prompting() {
     fail 'routine reuse did not pull the exact digest before Compose accessed installed files'
   ! grep -q '^login ' "$case_dir/docker.calls" ||
     fail 'routine reuse unexpectedly replaced existing Docker authentication'
-  awk '!/^KSY_DEALS_IMAGE=/' "$root/.env" > "$case_dir/env-without-image.after"
-  cmp -s "$case_dir/env-without-image.before" "$case_dir/env-without-image.after" ||
-    fail 'routine reuse changed a non-image env byte'
+  awk '!/^KSY_DEALS_IMAGE=/ && !/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > \
+    "$case_dir/env-without-public-runtime.after"
+  cmp -s "$case_dir/env-without-public-runtime.before" \
+    "$case_dir/env-without-public-runtime.after" ||
+    fail 'routine reuse changed a non-public env byte'
   assert_eq 1 "$(grep -c "^KSY_DEALS_IMAGE=$REUSE_IMAGE$" "$root/.env")" \
     'routine reuse did not install exactly one requested image digest'
   grep -Fxq "PLATPRICES_PROXY_URL=$PLATPRICES_PROXY_URL" "$root/.env" ||
     fail 'routine reuse did not preserve the PlatPrices proxy URL'
+  grep -Fxq "SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_BOT_URL" "$root/.env" ||
+    fail 'routine reuse did not migrate the approved site Telegram bot URL'
+  assert_eq 1 "$(grep -c '^SITE_TELEGRAM_BOT_URL=' "$root/.env")" \
+    'routine reuse did not install exactly one site Telegram bot URL'
+  assert_synthetic_secrets_absent "$output"
+}
+
+test_reuse_upgrades_legacy_installation_with_cover_storage() {
+  local case_dir="$TMP_DIR/reuse-legacy-cover-upgrade"
+  local output="$case_dir/reuse.output"
+  local root="$case_dir/opt/ksy-deals"
+  write_existing_installation "$case_dir"
+  awk '!/^KSY_DEALS_COVER_HOST_DIR=/ && !/^COVER_PUBLIC_BASE_URL=/' "$root/.env" > \
+    "$case_dir/legacy.env"
+  cp "$case_dir/legacy.env" "$root/.env"
+  chmod 600 "$root/.env"
+
+  run_reuse_case "$case_dir" "$output" || fail 'legacy cover configuration was not upgraded'
+
+  assert_eq 1 "$(grep -c '^KSY_DEALS_COVER_HOST_DIR=' "$root/.env")" \
+    'cover host directory must have one definition after upgrade'
+  assert_eq 1 "$(grep -c '^COVER_PUBLIC_BASE_URL=' "$root/.env")" \
+    'cover public base URL must have one definition after upgrade'
+  grep -Fxq "KSY_DEALS_COVER_HOST_DIR=$case_dir/var/covers/ksy-deals" "$root/.env" ||
+    fail 'legacy upgrade installed the wrong cover host directory'
+  grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$root/.env" ||
+    fail 'legacy upgrade installed the wrong cover public URL'
+  [[ -d "$case_dir/var/covers/ksy-deals" ]] || fail 'legacy upgrade did not create cover storage'
   assert_synthetic_secrets_absent "$output"
 }
 
@@ -979,21 +1045,23 @@ test_routine_override_changes_only_image_and_order_url() {
   local output="$case_dir/reuse.output"
   local root="$case_dir/opt/ksy-deals"
   write_existing_installation "$case_dir"
-  awk '!/^KSY_DEALS_IMAGE=/ && !/^ORDER_TELEGRAM_URL=/' "$root/.env" > \
-    "$case_dir/env-without-image-or-order.before"
+  awk '!/^KSY_DEALS_IMAGE=/ && !/^ORDER_TELEGRAM_URL=/ && !/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > \
+    "$case_dir/env-without-public-runtime.before"
 
   run_reuse_case "$case_dir" "$output" 0 0 "$REUSE_IMAGE" none 0 "$APPROVED_ORDER_URL" ||
     fail 'routine order URL override unexpectedly failed'
 
-  awk '!/^KSY_DEALS_IMAGE=/ && !/^ORDER_TELEGRAM_URL=/' "$root/.env" > \
-    "$case_dir/env-without-image-or-order.after"
-  cmp -s "$case_dir/env-without-image-or-order.before" \
-    "$case_dir/env-without-image-or-order.after" ||
+  awk '!/^KSY_DEALS_IMAGE=/ && !/^ORDER_TELEGRAM_URL=/ && !/^SITE_TELEGRAM_BOT_URL=/' "$root/.env" > \
+    "$case_dir/env-without-public-runtime.after"
+  cmp -s "$case_dir/env-without-public-runtime.before" \
+    "$case_dir/env-without-public-runtime.after" ||
     fail 'routine order URL override changed an unrelated env byte'
   grep -Fxq "KSY_DEALS_IMAGE=$REUSE_IMAGE" "$root/.env" ||
     fail 'routine order URL override did not install the requested image'
   grep -Fxq "ORDER_TELEGRAM_URL=$APPROVED_ORDER_URL" "$root/.env" ||
     fail 'routine order URL override did not install the approved URL'
+  grep -Fxq "SITE_TELEGRAM_BOT_URL=$APPROVED_SITE_BOT_URL" "$root/.env" ||
+    fail 'routine order URL override did not install the approved site bot URL'
   ! grep -Fq 'Paste the sixteen KSY secret assignments' "$output" ||
     fail 'routine order URL override emitted the hidden bootstrap prompt'
   ! grep -q '^login ' "$case_dir/docker.calls" ||
@@ -1026,6 +1094,8 @@ assert_order_override_rejected_before_mutation() {
 }
 
 test_rejects_invalid_order_url_override_arguments_before_mutation() {
+  assert_order_override_rejected_before_mutation reuse-order-omitted \
+    --reuse-existing-secrets --image "$REUSE_IMAGE"
   assert_order_override_rejected_before_mutation reuse-order-bootstrap \
     --image "$REUSE_IMAGE" --order-telegram-url "$APPROVED_ORDER_URL"
   assert_order_override_rejected_before_mutation reuse-order-missing-value \
@@ -1404,6 +1474,7 @@ test_rejects_mutable_image_before_mutation
 test_provisions_idempotently_without_secret_leaks
 test_restores_previous_installation_after_failed_readiness
 test_reuses_existing_secrets_without_prompting
+test_reuse_upgrades_legacy_installation_with_cover_storage
 test_routine_override_changes_only_image_and_order_url
 test_rejects_invalid_order_url_override_arguments_before_mutation
 test_clears_inherited_runtime_values_before_compose
