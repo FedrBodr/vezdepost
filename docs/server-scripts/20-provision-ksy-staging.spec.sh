@@ -703,6 +703,8 @@ test_provisions_idempotently_without_secret_leaks() {
     fail 'cover host directory was not materialized exactly'
   grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$case_dir/opt/ksy-deals/.env" ||
     fail 'cover public base URL was not materialized exactly'
+  grep -Fxq 'ORDER_DONE_TOPIC_ID=10' "$case_dir/opt/ksy-deals/.env" ||
+    fail 'order done topic ID was not materialized exactly'
   [[ -d "$case_dir/var/banners/ksy-deals" ]] || fail 'banner host directory was not created'
   assert_eq 755 "$(file_mode "$case_dir/var/banners/ksy-deals")" \
     'banner host directory must be traversable by the non-root server'
@@ -1122,8 +1124,8 @@ test_reuse_upgrades_legacy_installation_with_storage_paths() {
   local output="$case_dir/reuse.output"
   local root="$case_dir/opt/ksy-deals"
   write_existing_installation "$case_dir"
-  awk '!/^KSY_DEALS_BANNER_DIR=/ && !/^KSY_DEALS_COVER_HOST_DIR=/ && !/^COVER_PUBLIC_BASE_URL=/' "$root/.env" > \
-    "$case_dir/legacy.env"
+  awk '!/^KSY_DEALS_BANNER_DIR=/ && !/^KSY_DEALS_COVER_HOST_DIR=/ && !/^COVER_PUBLIC_BASE_URL=/ && !/^ORDER_DONE_TOPIC_ID=/' \
+    "$root/.env" > "$case_dir/legacy.env"
   cp "$case_dir/legacy.env" "$root/.env"
   chmod 600 "$root/.env"
 
@@ -1135,12 +1137,16 @@ test_reuse_upgrades_legacy_installation_with_storage_paths() {
     'cover host directory must have one definition after upgrade'
   assert_eq 1 "$(grep -c '^COVER_PUBLIC_BASE_URL=' "$root/.env")" \
     'cover public base URL must have one definition after upgrade'
+  assert_eq 1 "$(grep -c '^ORDER_DONE_TOPIC_ID=' "$root/.env")" \
+    'order done topic ID must have one definition after upgrade'
   grep -Fxq "KSY_DEALS_BANNER_DIR=$case_dir/var/banners/ksy-deals" "$root/.env" ||
     fail 'legacy upgrade installed the wrong banner host directory'
   grep -Fxq "KSY_DEALS_COVER_HOST_DIR=$case_dir/var/covers/ksy-deals" "$root/.env" ||
     fail 'legacy upgrade installed the wrong cover host directory'
   grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$root/.env" ||
     fail 'legacy upgrade installed the wrong cover public URL'
+  grep -Fxq 'ORDER_DONE_TOPIC_ID=10' "$root/.env" ||
+    fail 'legacy upgrade installed the wrong order done topic ID'
   [[ -d "$case_dir/var/banners/ksy-deals" ]] || fail 'legacy upgrade did not create banner storage'
   [[ -d "$case_dir/var/covers/ksy-deals" ]] || fail 'legacy upgrade did not create cover storage'
   assert_synthetic_secrets_absent "$output"

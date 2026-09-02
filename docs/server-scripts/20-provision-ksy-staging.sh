@@ -473,6 +473,7 @@ ensure_fixed_assignment KSY_DEALS_BANNER_DIR "$KSY_BANNER_DIR" "$candidate_env"
 ensure_fixed_assignment KSY_DEALS_COVER_HOST_DIR "$KSY_COVER_DIR" "$candidate_env"
 ensure_fixed_assignment COVER_PUBLIC_BASE_URL \
   https://ksy-deals.fedrbodr.com/covers/ "$candidate_env"
+ensure_fixed_assignment ORDER_DONE_TOPIC_ID 10 "$candidate_env"
 
 had_previous=0
 rollback_image=''
