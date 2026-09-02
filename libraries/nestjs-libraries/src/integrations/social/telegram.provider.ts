@@ -37,14 +37,7 @@ type TelegramBotClient = Pick<
   | 'sendDocument'
   | 'sendMediaGroup'
   | 'getChatMember'
-> & {
-  // sendRichMessage landed in Bot API 10.1, after the pinned
-  // node-telegram-bot-api release; callApi forwards to it directly.
-  callApi: (
-    method: 'sendRichMessage',
-    payload: { chat_id: string; rich_message: string }
-  ) => Promise<{ message_id: number }>;
-};
+>;
 
 export class TelegramProvider extends SocialAbstract implements SocialProvider {
   constructor(private readonly botClient: TelegramBotClient = telegramBot) {
@@ -314,7 +307,15 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     if (files.length && !telegramRichMediaEligible(files)) {
       return null;
     }
-    const response = await this.botClient.callApi('sendRichMessage', {
+    // sendRichMessage landed in Bot API 10.1, after the pinned
+    // node-telegram-bot-api release; callApi forwards to it directly.
+    const richClient = this.botClient as unknown as {
+      callApi: (
+        method: 'sendRichMessage',
+        payload: { chat_id: string; rich_message: string }
+      ) => Promise<{ message_id?: number }>;
+    };
+    const response = await richClient.callApi('sendRichMessage', {
       chat_id: accessToken,
       rich_message: JSON.stringify({ html }),
     });
