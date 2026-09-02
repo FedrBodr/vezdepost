@@ -37,7 +37,14 @@ type TelegramBotClient = Pick<
   | 'sendDocument'
   | 'sendMediaGroup'
   | 'getChatMember'
->;
+> & {
+  // sendRichMessage landed in Bot API 10.1, after the pinned
+  // node-telegram-bot-api release; callApi forwards to it directly.
+  callApi: (
+    method: 'sendRichMessage',
+    payload: { chat_id: string; rich_message: string }
+  ) => Promise<{ message_id: number }>;
+};
 
 export class TelegramProvider extends SocialAbstract implements SocialProvider {
   constructor(private readonly botClient: TelegramBotClient = telegramBot) {
@@ -307,30 +314,12 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     if (files.length && !telegramRichMediaEligible(files)) {
       return null;
     }
-    const token = process.env.TELEGRAM_TOKEN;
-    if (!token) {
-      return null;
-    }
-    const response = await fetch(
-      `https://api.telegram.org/bot${token}/sendRichMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: accessToken,
-          rich_message: JSON.stringify({ html }),
-        }),
-      }
-    );
-    const data: any = await response.json();
-    if (!response.ok || !data?.ok) {
-      throw new Error(
-        data?.description ||
-          `Telegram rich message failed with status ${response.status}`
-      );
-    }
-    return typeof data.result?.message_id === 'number'
-      ? data.result.message_id
+    const response = await this.botClient.callApi('sendRichMessage', {
+      chat_id: accessToken,
+      rich_message: JSON.stringify({ html }),
+    });
+    return typeof response?.message_id === 'number'
+      ? response.message_id
       : null;
   }
 

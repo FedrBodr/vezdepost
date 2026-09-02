@@ -126,11 +126,11 @@ describe('PostActivity platform formatting', () => {
       [
         expect.objectContaining({
           message:
-            '<h1>Title</h1>\n\n<p><b>Body</b> <a href="https://x.test">Link</a></p>',
+            '<img src="https://media.test/photo.jpg"/>\n\n<h1>Title</h1>\n\n<p><b>Body</b> <a href="https://x.test">Link</a></p>',
           fields: expect.objectContaining({
             body: expect.objectContaining({
               value:
-                '<h1>Title</h1>\n\n<p><b>Body</b> <a href="https://x.test">Link</a></p>',
+                '<img src="https://media.test/photo.jpg"/>\n\n<h1>Title</h1>\n\n<p><b>Body</b> <a href="https://x.test">Link</a></p>',
             }),
             caption: expect.objectContaining({
               value: 'Title\n\n<b>Body</b> Link',

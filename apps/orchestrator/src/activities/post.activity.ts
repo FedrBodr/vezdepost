@@ -283,7 +283,7 @@ export class PostActivity {
           const analysis = analyzePlatformContentV2({
             canonicalHtml: post.content,
             settings,
-            media: media.map(({ type }) => ({ type })),
+            media,
             capability: capabilities,
             convertMentionFunction: provider.mentionFormat,
           });

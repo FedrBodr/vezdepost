@@ -51,6 +51,10 @@ const makeBot = () => {
   const calls: string[] = [];
   let albumNumber = 0;
   const bot = {
+    callApi: vi.fn(async (_method: 'sendRichMessage', payload: unknown) => {
+      calls.push(`rich:${JSON.stringify(payload)}`);
+      return { message_id: 77 };
+    }),
     sendPhoto: vi.fn(
       async (
         _chat: string,
@@ -89,30 +93,12 @@ const makeBot = () => {
 describe('TelegramProvider media captions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.unstubAllGlobals();
     vi.stubEnv('TELEGRAM_TOKEN', 'test-token');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new Error('rich transport unavailable');
-      })
-    );
   });
 
   describe('rich messages', () => {
-    const richResponse = (messageId = 77) =>
-      ({
-        ok: true,
-        json: async () => ({
-          ok: true,
-          result: { message_id: messageId },
-        }),
-      } as any);
-
     it('sends the main post through sendRichMessage and skips legacy transports', async () => {
-      const fetchMock = vi.fn(async () => richResponse());
-      vi.stubGlobal('fetch', fetchMock);
-      const { bot } = makeBot();
+      const { calls, bot } = makeBot();
       const provider = new TelegramProvider(bot as any);
 
       const result = await provider.post(
@@ -121,13 +107,8 @@ describe('TelegramProvider media captions', () => {
         details('<p>Hello <b>world</b></p>', [])
       );
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(
-        'https://api.telegram.org/bottest-token/sendRichMessage'
-      );
-      expect(init.method).toBe('POST');
-      expect(JSON.parse(init.body)).toEqual({
+      expect(bot.callApi).toHaveBeenCalledTimes(1);
+      expect(bot.callApi).toHaveBeenCalledWith('sendRichMessage', {
         chat_id: '-1001',
         rich_message: JSON.stringify({ html: '<p>Hello <b>world</b></p>' }),
       });
@@ -138,6 +119,7 @@ describe('TelegramProvider media captions', () => {
 
     it('falls back to the legacy transport when the rich call fails', async () => {
       const { bot } = makeBot();
+      bot.callApi.mockRejectedValue(new Error('rich rejected'));
       const provider = new TelegramProvider(bot as any);
 
       const result = await provider.post(
@@ -156,8 +138,6 @@ describe('TelegramProvider media captions', () => {
     });
 
     it('falls back to the legacy transport for local-file media', async () => {
-      const fetchMock = vi.fn(async () => richResponse());
-      vi.stubGlobal('fetch', fetchMock);
       const { calls, bot } = makeBot();
       const provider = new TelegramProvider(bot as any);
 
@@ -169,14 +149,12 @@ describe('TelegramProvider media captions', () => {
         ])
       );
 
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(bot.callApi).not.toHaveBeenCalled();
       expect(calls).toEqual(['photo:caption']);
       expect(bot.sendPhoto).toHaveBeenCalled();
     });
 
     it('keeps the legacy transport for comments', async () => {
-      const fetchMock = vi.fn(async () => richResponse());
-      vi.stubGlobal('fetch', fetchMock);
       const { bot } = makeBot();
       const provider = new TelegramProvider(bot as any);
 
@@ -188,29 +166,32 @@ describe('TelegramProvider media captions', () => {
         details('reply', []),
         {} as any
       );
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(bot.callApi).not.toHaveBeenCalled();
     });
   });
 
-  it('sends a 4096-character text-only post as one complete message', async () => {
+  it('sends a 4096-character text-only post as one rich message', async () => {
     const { bot } = makeBot();
     const provider = new TelegramProvider(bot as any);
     const text = 'x'.repeat(4096);
 
     const result = await provider.post('channel', '-1001', details(text, []));
 
-    expect(bot.sendMessage).toHaveBeenCalledTimes(1);
-    expect(bot.sendMessage).toHaveBeenCalledWith('-1001', text, {
-      parse_mode: 'HTML',
+    expect(bot.callApi).toHaveBeenCalledTimes(1);
+    expect(bot.callApi).toHaveBeenCalledWith('sendRichMessage', {
+      chat_id: '-1001',
+      rich_message: JSON.stringify({ html: text }),
     });
+    expect(bot.sendMessage).not.toHaveBeenCalled();
     expect(bot.sendPhoto).not.toHaveBeenCalled();
     expect(bot.sendMediaGroup).not.toHaveBeenCalled();
-    expect(result[0].postId).toBe('42');
-    expect(result[0].releaseURL).toContain('/42');
+    expect(result[0].postId).toBe('77');
+    expect(result[0].releaseURL).toContain('/77');
   });
 
   it('safely normalizes text again before Telegram HTML parse mode', async () => {
     const { bot } = makeBot();
+    bot.callApi.mockRejectedValue(new Error('rich rejected'));
     const provider = new TelegramProvider(bot as any);
 
     await provider.post(
