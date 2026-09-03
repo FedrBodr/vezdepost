@@ -704,7 +704,11 @@ test_provisions_idempotently_without_secret_leaks() {
   grep -Fxq 'COVER_PUBLIC_BASE_URL=https://ksy-deals.fedrbodr.com/covers/' "$case_dir/opt/ksy-deals/.env" ||
     fail 'cover public base URL was not materialized exactly'
   grep -Fxq 'ORDER_DONE_TOPIC_ID=10' "$case_dir/opt/ksy-deals/.env" ||
-    fail 'order done topic ID was not materialized exactly'
+    fail 'ORDER_DONE_TOPIC_ID missing from provisioned env'
+  grep -Fxq 'AUTOPOST_DEALS_ENABLED=true' "$case_dir/opt/ksy-deals/.env" ||
+    fail 'AUTOPOST_DEALS_ENABLED was not enabled in provisioned env'
+  grep -Fxq 'AUTOPOST_DEALS_HOUR=10' "$case_dir/opt/ksy-deals/.env" ||
+    fail 'AUTOPOST_DEALS_HOUR was not set in provisioned env'
   [[ -d "$case_dir/var/banners/ksy-deals" ]] || fail 'banner host directory was not created'
   assert_eq 755 "$(file_mode "$case_dir/var/banners/ksy-deals")" \
     'banner host directory must be traversable by the non-root server'
