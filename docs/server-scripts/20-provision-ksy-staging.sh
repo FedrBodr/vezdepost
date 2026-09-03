@@ -475,7 +475,7 @@ ensure_fixed_assignment COVER_PUBLIC_BASE_URL \
   https://ksy-deals.fedrbodr.com/covers/ "$candidate_env"
 ensure_fixed_assignment ORDER_DONE_TOPIC_ID 10 "$candidate_env"
 ensure_fixed_assignment AUTOPOST_DEALS_ENABLED true "$candidate_env"
-ensure_fixed_assignment AUTOPOST_DEALS_HOUR 10 "$candidate_env"
+ensure_fixed_assignment AUTOPOST_DEALS_HOUR 11 "$candidate_env"
 
 had_previous=0
 rollback_image=''

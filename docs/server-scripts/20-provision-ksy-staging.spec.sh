@@ -707,7 +707,7 @@ test_provisions_idempotently_without_secret_leaks() {
     fail 'ORDER_DONE_TOPIC_ID missing from provisioned env'
   grep -Fxq 'AUTOPOST_DEALS_ENABLED=true' "$case_dir/opt/ksy-deals/.env" ||
     fail 'AUTOPOST_DEALS_ENABLED was not enabled in provisioned env'
-  grep -Fxq 'AUTOPOST_DEALS_HOUR=10' "$case_dir/opt/ksy-deals/.env" ||
+  grep -Fxq 'AUTOPOST_DEALS_HOUR=11' "$case_dir/opt/ksy-deals/.env" ||
     fail 'AUTOPOST_DEALS_HOUR was not set in provisioned env'
   [[ -d "$case_dir/var/banners/ksy-deals" ]] || fail 'banner host directory was not created'
   assert_eq 755 "$(file_mode "$case_dir/var/banners/ksy-deals")" \
