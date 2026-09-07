@@ -18,6 +18,7 @@ import {
   TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
 } from '@gitroom/helpers/utils/telegram.constraints';
 import { telegramRichMediaEligible } from '@gitroom/helpers/utils/telegram.rich.normalization';
+import { callTelegramApi } from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
 
 const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
 // Added to support local storage posting
@@ -307,21 +308,22 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     if (files.length && !telegramRichMediaEligible(files)) {
       return null;
     }
+    const token = process.env.TELEGRAM_TOKEN;
+    if (!token) {
+      return null;
+    }
     // sendRichMessage landed in Bot API 10.1, after the pinned
-    // node-telegram-bot-api release; callApi forwards to it directly.
-    const richClient = this.botClient as unknown as {
-      callApi: (
-        method: 'sendRichMessage',
-        payload: { chat_id: string; rich_message: string }
-      ) => Promise<{ message_id?: number }>;
-    };
-    const response = await richClient.callApi('sendRichMessage', {
-      chat_id: accessToken,
-      rich_message: JSON.stringify({ html }),
-    });
-    return typeof response?.message_id === 'number'
-      ? response.message_id
-      : null;
+    // node-telegram-bot-api release; call the API directly on the same
+    // classic https stack the library itself uses.
+    const result = await callTelegramApi<{ message_id?: number }>(
+      token,
+      'sendRichMessage',
+      {
+        chat_id: accessToken,
+        rich_message: JSON.stringify({ html }),
+      }
+    );
+    return typeof result?.message_id === 'number' ? result.message_id : null;
   }
 
   private async sendMainPost(
