@@ -45,7 +45,8 @@ export class LoadToolsService {
     return new Agent({
       id: 'postiz',
       name: 'postiz',
-      description: 'Agent that helps manage and schedule social media posts for users',
+      description:
+        'Agent that helps manage and schedule social media posts for users',
       instructions: ({ requestContext }) => {
         const ui: string = requestContext.get('ui' as never);
         return `
@@ -78,7 +79,7 @@ export class LoadToolsService {
       - Before scheduling a post, always make sure you ask the user confirmation by providing all the details of the post (text, images, videos, date, time, social media platform, account).
       - Between tools, we will reference things like: [output:name] and [input:name] to set the information right.
       - When outputting a date for the user, make sure it's human readable with time
-      - The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, li, ul, p (you can\'t have u and strong together), don't use a "code" box
+      - The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, i, s, li, ul, ol, blockquote, p (you can\'t have u and strong together; each li must be inside ul or ol), don\'t use a "code" box
       ${renderArray(
         [
           'If the user confirm, ask if they would like to get a modal with populated content without scheduling the post yet or if they want to schedule it right away.',
