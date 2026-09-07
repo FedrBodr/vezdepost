@@ -91,7 +91,7 @@ If the tools return errors, you would need to rerun it with the right parameters
                     content: z
                       .string()
                       .describe(
-                        "The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, i, s, li, ul, ol, blockquote, p (you can't have u and strong together; each li must be inside ul or ol)"
+                        "The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, em, i, s, li, ul, ol, p (you can't have u and strong together; each li must be inside ul or ol). Only use tags the destination platform supports."
                       ),
                     attachments: z
                       .array(attachmentUrl)
