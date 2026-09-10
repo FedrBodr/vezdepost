@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { CustomFieldsInstructionsDefinition } from './social.integrations.interface';
 import { BlueskyProvider } from './bluesky.provider';
 import { DevToProvider } from './dev.to.provider';
 import { HashnodeProvider } from './hashnode.provider';
@@ -20,6 +22,23 @@ const providers = [
   new VkGroupProvider(),
   new WordpressProvider(),
 ];
+
+const locale = (language: 'en' | 'ru') =>
+  JSON.parse(
+    readFileSync(
+      `libraries/react-shared-libraries/src/translation/locales/${language}/translation.json`,
+      'utf8'
+    )
+  ) as Record<string, string>;
+
+const guideStrings = (guide: CustomFieldsInstructionsDefinition) =>
+  [
+    guide.title,
+    ...guide.items,
+    guide.note,
+    guide.notRequired,
+    guide.warning,
+  ].filter((value): value is string => Boolean(value));
 
 describe('manual social connection guides', () => {
   it.each(providers)('$name publishes an always-visible guide', (provider) => {
@@ -44,5 +63,30 @@ describe('manual social connection guides', () => {
       'no longer supports'
     );
     expect(nostr.customFieldsInstructions?.warning).toContain('private key');
+  });
+
+  it('ships every guide sentence and dedicated field label in English and Russian', () => {
+    const english = locale('en');
+    const russian = locale('ru');
+    const strings = providers.flatMap((provider) =>
+      guideStrings(provider.customFieldsInstructions!)
+    );
+
+    for (const value of strings) {
+      expect(english[value], `missing English copy: ${value}`).toBe(value);
+      expect(russian[value], `missing Russian copy: ${value}`).toBeTruthy();
+      expect(russian[value], `untranslated Russian copy: ${value}`).not.toBe(
+        value
+      );
+    }
+
+    expect(english.label_bluesky_app_password).toBe('App Password');
+    expect(russian.label_bluesky_app_password).toBe('Пароль приложения');
+    expect(english.label_wordpress_application_password).toBe(
+      'Application Password'
+    );
+    expect(russian.label_wordpress_application_password).toBe(
+      'Пароль приложения'
+    );
   });
 });
