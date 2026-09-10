@@ -1,40 +1,59 @@
 'use client';
 
 import '@neynar/react/dist/style.css';
-import React, { FC, useMemo, useState, useCallback, useEffect } from 'react';
+import React, { FC, useCallback, useState } from 'react';
 import { Web3ProviderInterface } from '@gitroom/frontend/components/launches/web3/web3.provider.interface';
-import { useVariables } from '@gitroom/react/helpers/variable.context';
-import { TopTitle } from '@gitroom/frontend/components/launches/helpers/top.title.component';
-import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
-import {
-  NeynarAuthButton,
-  NeynarContextProvider,
-  Theme,
-  useNeynarContext,
-} from '@neynar/react';
-import { INeynarAuthenticatedUser } from '@neynar/react/dist/types/common';
 import { ButtonCaster } from '@gitroom/frontend/components/auth/providers/farcaster.provider';
-export const WrapcasterProvider: FC<Web3ProviderInterface> = (props) => {
-  const [_, state] = props.nonce.split('||');
-  const modal = useModals();
-  const [hide, setHide] = useState(false);
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
+
+export const WrapcasterProvider: FC<Web3ProviderInterface> = ({
+  nonce,
+  onComplete,
+}) => {
+  const t = useT();
+  const [, state] = nonce.split('||');
+  const [connecting, setConnecting] = useState(false);
+
   const auth = useCallback(
     (code: string) => {
-      setHide(true);
-      return props.onComplete(code, state);
+      setConnecting(true);
+      return onComplete(code, state);
     },
-    [state]
+    [onComplete, state]
   );
+
   return (
-    <div className="justify-center items-center flex">
-      {hide ? (
-        <div className="justify-center items-center flex -mt-[90px]">
+    <div className="flex items-center justify-center">
+      {connecting ? (
+        <div className="-mt-[90px] flex items-center justify-center">
           <LoadingComponent width={100} height={100} />
         </div>
       ) : (
-        <div className="justify-center items-center py-[20px] flex-col w-[500px]">
-          <div>Click on the bottom below to start the process</div>
+        <div className="flex w-[500px] max-w-full flex-col gap-4 py-5">
+          <p className="font-medium">
+            {t('farcaster_connection_intro', 'Connect Farcaster in two steps:')}
+          </p>
+          <ol className="list-decimal space-y-2 pl-5 text-sm">
+            <li>
+              {t(
+                'farcaster_connection_select',
+                'Select Connect Farcaster below.'
+              )}
+            </li>
+            <li>
+              {t(
+                'farcaster_connection_approve',
+                'Approve the signer in your Farcaster app or QR flow.'
+              )}
+            </li>
+          </ol>
+          <p className="rounded-md bg-newBgColorInner p-3 text-sm">
+            {t(
+              'farcaster_connection_secret_warning',
+              'Never enter your password or recovery phrase in Vezdepost.'
+            )}
+          </p>
           <ButtonCaster login={auth} />
         </div>
       )}
