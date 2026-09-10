@@ -20,6 +20,17 @@ export class HashnodeProvider extends SocialAbstract implements SocialProvider {
   isBetweenSteps = false;
   scopes = [] as string[];
   editor = 'markdown' as const;
+  customFieldsInstructions = {
+    title: 'Connect your Hashnode account',
+    items: [
+      'Open Hashnode Account Settings → Developer → API tokens.',
+      'Create a Personal Access Token and copy it.',
+      'Paste the token into API key below.',
+    ],
+    note: 'Publishing through the Hashnode API requires a publication with API publishing access.',
+    warning:
+      'The token is secret. Do not send it to support or include it in screenshots.',
+  };
   maxLength() {
     return 10000;
   }

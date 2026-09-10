@@ -21,6 +21,17 @@ export class ListmonkProvider extends SocialAbstract implements SocialProvider {
   scopes = [] as string[];
   editor = 'html' as const;
   dto = ListmonkDto;
+  customFieldsInstructions = {
+    title: 'Connect your Listmonk installation',
+    items: [
+      'In URL, enter the public base address of your Listmonk installation.',
+      'Enter a Listmonk username and password that can access settings through the API.',
+      'Select Connect; Vezdepost will verify the address and credentials.',
+    ],
+    note: 'Listmonk must already be installed and reachable from the internet over HTTP or HTTPS.',
+    warning:
+      'Use a dedicated account when possible and do not share its password with support.',
+  };
 
   maxLength() {
     return 100000000;

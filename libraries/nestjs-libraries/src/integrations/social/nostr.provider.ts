@@ -33,7 +33,19 @@ export class NostrProvider extends SocialAbstract implements SocialProvider {
   isBetweenSteps = false;
   scopes = [] as string[];
   editor = 'normal' as const;
-  toolTip = 'Make sure you private a HEX key of your Nostr private key, you can get it from websites like iris.to'
+  toolTip =
+    'Use the hexadecimal private key from a Nostr client you already trust.';
+  customFieldsInstructions = {
+    title: 'Connect your Nostr account',
+    items: [
+      'Locate the private key for the Nostr account you want Vezdepost to publish from.',
+      'Use the 64-character hexadecimal form of the key (hex), not an npub public key.',
+      'Paste the hexadecimal private key into Nostr private key below.',
+    ],
+    note: 'If your wallet or client does not show a hexadecimal private key, do not use an unknown conversion website.',
+    warning:
+      'A Nostr private key controls the account. Never send it to support, reuse it in screenshots, or share it with anyone.',
+  };
 
   maxLength() {
     return 100000;

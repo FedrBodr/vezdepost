@@ -113,8 +113,6 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   scopes = [] as string[];
   editor = 'normal' as const;
   customFieldsInstructions = {
-    collapsible: true,
-    summary: 'Where to get the link and key',
     title: 'Connect a VK community',
     items: [
       'Open the community in the desktop VK website and select Management.',

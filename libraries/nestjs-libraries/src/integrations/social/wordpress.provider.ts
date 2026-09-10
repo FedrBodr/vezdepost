@@ -27,6 +27,18 @@ export class WordpressProvider
   scopes = [] as string[];
   override maxConcurrentJob = 5; // WordPress self-hosted typically has generous limits
   dto = WordpressDto;
+  customFieldsInstructions = {
+    title: 'Connect your WordPress site',
+    items: [
+      'Open WordPress admin, then go to Users → Profile → Application Passwords.',
+      'Create an Application Password named Vezdepost and copy it when WordPress shows it.',
+      'Enter the public HTTPS address of the site in Domain URL.',
+      'Enter the WordPress username and paste the Application Password in Password.',
+    ],
+    note: 'The WordPress user must be allowed to create posts and upload media.',
+    warning:
+      'Do not enter your normal wp-admin password. Application Passwords are separate and can be revoked.',
+  };
   maxLength() {
     return 100000;
   }
@@ -81,10 +93,10 @@ export class WordpressProvider
       },
       {
         key: 'password',
-        label: 'Password',
+        label: 'Application Password',
+        translationKey: 'label_wordpress_application_password',
         validation: `/.+/`,
         type: 'password' as const,
-        hint: 'Application password, create in User->Profile',
       },
     ];
   }

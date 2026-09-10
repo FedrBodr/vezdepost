@@ -18,6 +18,16 @@ export class DevToProvider extends SocialAbstract implements SocialProvider {
   isBetweenSteps = false;
   editor = 'markdown' as const;
   scopes = [] as string[];
+  customFieldsInstructions = {
+    title: 'Connect your DEV Community account',
+    items: [
+      'Open DEV Settings and go to Extensions.',
+      'In DEV Community API Keys, enter Vezdepost as the description and generate a key.',
+      'Copy the generated key and paste it into API key below.',
+    ],
+    warning:
+      'The API key is secret. Do not send it to support or include it in screenshots.',
+  };
   maxLength() {
     return 100000;
   }

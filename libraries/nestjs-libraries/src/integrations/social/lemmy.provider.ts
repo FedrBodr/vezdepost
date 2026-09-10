@@ -23,6 +23,17 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
   isBetweenSteps = false;
   scopes = [] as string[];
   editor = 'normal' as const;
+  customFieldsInstructions = {
+    title: 'Connect your Lemmy account',
+    items: [
+      'In Service, enter the home address of the Lemmy website where your account was created.',
+      'In Identifier, enter the username or email you use to sign in to that Lemmy website.',
+      'Enter that account password and select Connect.',
+    ],
+    note: 'You do not need to create a developer application or API key.',
+    warning:
+      'Your credentials must belong to the same Lemmy website entered in Service.',
+  };
   maxLength() {
     return 10000;
   }

@@ -19,6 +19,17 @@ export class MediumProvider extends SocialAbstract implements SocialProvider {
   scopes = [] as string[];
   editor = 'markdown' as const;
   dto = MediumSettingsDto;
+  customFieldsInstructions = {
+    title: 'Connect an existing Medium integration token',
+    items: [
+      'Open your Medium account settings and look for Integration tokens.',
+      'If that section is available, create a token named Vezdepost and copy it.',
+      'Paste the token into API key below.',
+    ],
+    note: 'If your settings do not show Integration tokens, this connection method is not available for your account.',
+    warning:
+      'Medium no longer supports its API or accepts new integrations. Existing tokens may stop working, and the token must be treated as a secret.',
+  };
   maxLength() {
     return 100000;
   }

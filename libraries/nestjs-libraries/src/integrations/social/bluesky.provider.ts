@@ -163,10 +163,22 @@ export class BlueskyProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2; // Bluesky has moderate rate limits
   identifier = 'bluesky';
   name = 'Bluesky';
-  toolTip = "We don’t currently support two-factor authentication. If it’s enabled on Bluesky, you’ll need to disable it."
+  toolTip =
+    'Create a dedicated App Password in Bluesky settings. You do not need to disable two-factor authentication.';
   isBetweenSteps = false;
   scopes = ['write:statuses', 'profile', 'write:media'];
   editor = 'normal' as const;
+  customFieldsInstructions = {
+    title: 'Connect your Bluesky account',
+    items: [
+      'Open Bluesky Settings → Privacy and security → App passwords.',
+      'Create an App Password named Vezdepost and copy it.',
+      'Enter your Bluesky handle in Identifier and paste the App Password in Password.',
+      'Keep https://bsky.social in Service unless your account uses another provider.',
+    ],
+    warning:
+      'Use an App Password, not your main Bluesky password. Treat it as a secret.',
+  };
   maxLength() {
     return 300;
   }
@@ -207,7 +219,8 @@ export class BlueskyProvider extends SocialAbstract implements SocialProvider {
       },
       {
         key: 'password',
-        label: 'Password',
+        label: 'App Password',
+        translationKey: 'label_bluesky_app_password',
         validation: `/^.{3,}$/`,
         type: 'password' as const,
       },
