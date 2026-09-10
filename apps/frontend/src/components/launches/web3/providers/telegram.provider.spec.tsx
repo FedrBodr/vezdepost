@@ -29,15 +29,24 @@ vi.mock('@gitroom/react/toaster/toaster', () => ({
 vi.mock('@gitroom/react/form/button', () => ({
   Button: ({
     children,
-    secondary: _secondary,
-    loading: _loading,
-    innerClassName: _innerClassName,
-    ...props
+    onClick,
+    className,
+    disabled,
+    type,
   }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
     secondary?: boolean;
     loading?: boolean;
     innerClassName?: string;
-  }) => <button {...props}>{children}</button>,
+  }) => (
+    <button
+      type={type}
+      onClick={onClick}
+      className={className}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  ),
 }));
 
 vi.mock('copy-to-clipboard', () => ({
