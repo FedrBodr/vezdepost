@@ -31,7 +31,11 @@ vi.mock(
   () => import('../../../../helpers/src/utils/telegram.constraints')
 );
 
-import { TelegramProvider } from './telegram.provider';
+import {
+  evaluateTelegramPermissions,
+  parseTelegramConnectionMessage,
+  TelegramProvider,
+} from './telegram.provider';
 
 const media = [{ id: 'media', path: 'https://cdn.test/photo.jpg' }];
 const albumMedia = [
@@ -313,5 +317,200 @@ describe('TelegramProvider media captions', () => {
     await expect(
       provider.post('channel', '-1001', details('x'.repeat(1025)))
     ).rejects.toBe(textError);
+  });
+});
+
+describe('Telegram connection discovery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ['/start nonce_123', { kind: 'start', nonce: 'nonce_123' }],
+    [
+      '/start@vezdepost_bot nonce-123',
+      { kind: 'start', nonce: 'nonce-123' },
+    ],
+    ['/connect nonce_123', { kind: 'connect', nonce: 'nonce_123' }],
+  ])('parses %s', (text, expected) => {
+    expect(parseTelegramConnectionMessage(text)).toEqual(expected);
+  });
+
+  it.each([
+    '/start',
+    '/connect',
+    '/connect nonce extra',
+    'x/connect nonce',
+    '/start nonce.with.dot',
+  ])('rejects %s', (text) => {
+    expect(parseTelegramConnectionMessage(text)).toBeNull();
+  });
+
+  it('requires a group administrator role', () => {
+    expect(
+      evaluateTelegramPermissions('supergroup', { status: 'member' } as any)
+    ).toBe('bot_not_admin');
+    expect(
+      evaluateTelegramPermissions('group', {
+        status: 'administrator',
+      } as any)
+    ).toBe('ready');
+  });
+
+  it('accepts a creator for both destination types', () => {
+    expect(
+      evaluateTelegramPermissions('group', { status: 'creator' } as any)
+    ).toBe('ready');
+    expect(
+      evaluateTelegramPermissions('channel', { status: 'creator' } as any)
+    ).toBe('ready');
+  });
+
+  it('requires the channel posting permission', () => {
+    expect(
+      evaluateTelegramPermissions('channel', {
+        status: 'administrator',
+        can_post_messages: false,
+      } as any)
+    ).toBe('missing_post_permission');
+    expect(
+      evaluateTelegramPermissions('channel', {
+        status: 'administrator',
+        can_post_messages: true,
+      } as any)
+    ).toBe('ready');
+  });
+
+  const makeConnectionBot = ({
+    updates = [],
+    chatType = 'supergroup',
+    member = { status: 'administrator' },
+  }: {
+    updates?: any[];
+    chatType?: string;
+    member?: Record<string, unknown>;
+  } = {}) => ({
+    getUpdates: vi.fn().mockResolvedValue(updates),
+    getMe: vi.fn().mockResolvedValue({ id: 42 }),
+    getChat: vi.fn().mockResolvedValue({ id: -1001, type: chatType }),
+    getChatMember: vi.fn().mockResolvedValue(member),
+    deleteMessage: vi.fn().mockResolvedValue(true),
+    sendMessage: vi.fn().mockResolvedValue({ message_id: 2 }),
+  });
+
+  it('returns the next update offset while waiting', async () => {
+    const bot = makeConnectionBot({ updates: [{ update_id: 77 }] });
+    const provider = new TelegramProvider(bot as any);
+
+    await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
+      status: 'waiting',
+      lastChatId: 78,
+    });
+  });
+
+  it('discovers a group from its automatic start payload', async () => {
+    const bot = makeConnectionBot({
+      updates: [
+        {
+          update_id: 77,
+          message: {
+            message_id: 4,
+            text: '/start@vezdepost_bot nonce_123',
+            chat: { id: -1001 },
+          },
+        },
+      ],
+    });
+    const provider = new TelegramProvider(bot as any);
+
+    await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
+      status: 'ready',
+      chatId: -1001,
+    });
+  });
+
+  it('keeps the legacy connect command for channel discovery', async () => {
+    const bot = makeConnectionBot({
+      chatType: 'channel',
+      member: { status: 'administrator', can_post_messages: true },
+      updates: [
+        {
+          update_id: 77,
+          channel_post: {
+            message_id: 4,
+            text: '/connect nonce_123',
+            chat: { id: -1001 },
+          },
+        },
+      ],
+    });
+    const provider = new TelegramProvider(bot as any);
+
+    await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
+      status: 'ready',
+      chatId: -1001,
+    });
+  });
+
+  it('does not accept a near nonce match', async () => {
+    const bot = makeConnectionBot({
+      updates: [
+        {
+          update_id: 77,
+          message: {
+            text: '/connect nonce_1234',
+            chat: { id: -1001 },
+          },
+        },
+      ],
+    });
+    const provider = new TelegramProvider(bot as any);
+
+    await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
+      status: 'waiting',
+      lastChatId: 78,
+    });
+    expect(bot.getChatMember).not.toHaveBeenCalled();
+  });
+
+  it('returns a candidate chat when the bot is not an administrator', async () => {
+    const bot = makeConnectionBot({
+      member: { status: 'member' },
+      updates: [
+        {
+          update_id: 77,
+          message: {
+            text: '/connect nonce_123',
+            chat: { id: -1001 },
+          },
+        },
+      ],
+    });
+    const provider = new TelegramProvider(bot as any);
+
+    await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
+      status: 'bot_not_admin',
+      candidateChatId: -1001,
+    });
+  });
+
+  it('rechecks a candidate chat without fetching updates again', async () => {
+    const bot = makeConnectionBot();
+    const provider = new TelegramProvider(bot as any);
+
+    await expect(
+      provider.getBotId({ word: 'nonce_123', chatId: -1001 })
+    ).resolves.toEqual({ status: 'ready', chatId: -1001 });
+    expect(bot.getUpdates).not.toHaveBeenCalled();
+  });
+
+  it('returns a recoverable status when Telegram fails', async () => {
+    const bot = makeConnectionBot();
+    bot.getUpdates.mockRejectedValueOnce(new Error('Telegram unavailable'));
+    const provider = new TelegramProvider(bot as any);
+
+    await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
+      status: 'telegram_error',
+    });
   });
 });

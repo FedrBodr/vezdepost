@@ -37,6 +37,54 @@ type TelegramBotClient = Pick<
   | 'getChatMember'
 >;
 
+export type TelegramConnectionStatus =
+  | 'waiting'
+  | 'ready'
+  | 'bot_not_admin'
+  | 'missing_post_permission'
+  | 'telegram_error';
+
+export type TelegramConnectionResult = {
+  status: TelegramConnectionStatus;
+  chatId?: number;
+  candidateChatId?: number;
+  lastChatId?: number;
+};
+
+export const parseTelegramConnectionMessage = (text?: string) => {
+  if (!text) {
+    return null;
+  }
+
+  const match = text.match(
+    /^\/(start|connect)(?:@[A-Za-z0-9_]+)? ([A-Za-z0-9_-]{1,64})$/
+  );
+  if (!match) {
+    return null;
+  }
+
+  return {
+    kind: match[1] as 'start' | 'connect',
+    nonce: match[2],
+  };
+};
+
+export const evaluateTelegramPermissions = (
+  chatType: string,
+  member: TelegramBot.ChatMember
+): TelegramConnectionStatus => {
+  if (member.status === 'creator') {
+    return 'ready';
+  }
+  if (member.status !== 'administrator') {
+    return 'bot_not_admin';
+  }
+  if (chatType === 'channel' && member.can_post_messages !== true) {
+    return 'missing_post_permission';
+  }
+  return 'ready';
+};
+
 export class TelegramProvider extends SocialAbstract implements SocialProvider {
   constructor(private readonly botClient: TelegramBotClient = telegramBot) {
     super();
@@ -102,63 +150,56 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async getBotId(query: { id?: number; word: string }) {
-    // Added allowed_updates Ensure only necessary updates are fetched
-    const res = await this.botClient.getUpdates({
-      ...(query.id ? { offset: query.id } : {}),
-      allowed_updates: ['message', 'channel_post'],
-    });
-    //message.text is for groups, channel_post.text is for channels
-    const match = res.find(
-      (p) =>
-        (p?.message?.text === `/connect ${query.word}` &&
-          p?.message?.chat?.id) ||
-        (p?.channel_post?.text === `/connect ${query.word}` &&
-          p?.channel_post?.chat?.id)
-    );
-    // get correct chatId based on the channel type
-    const chatId = match?.message?.chat?.id || match?.channel_post?.chat?.id;
+  private async verifyConnection(
+    chatId: number
+  ): Promise<TelegramConnectionResult> {
+    const [chat, bot] = await Promise.all([
+      this.botClient.getChat(chatId),
+      this.botClient.getMe(),
+    ]);
+    const member = await this.botClient.getChatMember(chatId, bot.id);
+    const status = evaluateTelegramPermissions(chat.type, member);
 
-    // prevents the code from running while chatId is still undefined to avoid the error 'ETELEGRAM: 400 Bad Request: chat_id is empty'. the code would still work eventually but console spam is not pretty
-    if (chatId) {
-      //get the numberic ID of the bot
-      const botId = (await this.botClient.getMe()).id;
-      // check if the bot is an admin in the chat
-      const isAdmin = await this.botIsAdmin(chatId, botId);
-      // get the messageId of the message that triggered the connection
-      const connectMessageId =
-        match?.message?.message_id || match?.channel_post?.message_id;
+    return status === 'ready'
+      ? { status, chatId }
+      : { status, candidateChatId: chatId };
+  }
 
-      if (!isAdmin) {
-        // alternatively you can replace this with a console.log if you do not want to inform the user of the bot's admin status
-        this.botClient.sendMessage(
-          chatId,
-          "Connection Successful. I don't have admin privileges to delete these messages, please go ahead and remove them yourself."
-        );
-      } else {
-        // Delete the message that triggered the connection
-        await this.botClient.deleteMessage(chatId, connectMessageId);
-        // Send success message to the chat
-        const successMessage = await this.botClient.sendMessage(
-          chatId,
-          'Connection Successful. Message will be deleted in 10 seconds.'
-        );
-        // Delete the success message after 10 seconds
-        setTimeout(async () => {
-          await this.botClient.deleteMessage(chatId, successMessage.message_id);
-          console.log('Success message deleted.');
-        }, 10000);
+  async getBotId(query: {
+    id?: number;
+    word: string;
+    chatId?: number;
+  }): Promise<TelegramConnectionResult> {
+    try {
+      if (query.chatId !== undefined) {
+        return await this.verifyConnection(query.chatId);
       }
-    }
 
-    // modified lastChatId to work with any type of channel (private/public groups/channels)
-    return chatId
-      ? { chatId }
-      : res.length > 0
-      ? {
-          lastChatId: res[res.length - 1].update_id + 1,
-        }
-      : {};
+      const res = await this.botClient.getUpdates({
+        ...(query.id !== undefined ? { offset: query.id } : {}),
+        allowed_updates: ['message', 'channel_post'],
+      });
+      const match = res.find((update) => {
+        const message = update.message || update.channel_post;
+        const connection = parseTelegramConnectionMessage(message?.text);
+        return connection?.nonce === query.word && message?.chat?.id;
+      });
+      const chatId = match?.message?.chat?.id || match?.channel_post?.chat?.id;
+
+      if (chatId !== undefined) {
+        return await this.verifyConnection(chatId);
+      }
+
+      return {
+        status: 'waiting',
+        ...(res.length > 0
+          ? { lastChatId: res[res.length - 1].update_id + 1 }
+          : {}),
+      };
+    } catch (error) {
+      console.error('Failed to verify Telegram connection:', error);
+      return { status: 'telegram_error' };
+    }
   }
 
   private processMedia(mediaFiles: PostDetails['media']) {
@@ -350,22 +391,4 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     return result;
   }
 
-  async botIsAdmin(chatId: number, botId: number): Promise<boolean> {
-    try {
-      const chatMember = await this.botClient.getChatMember(chatId, botId);
-
-      if (
-        chatMember.status === 'administrator' ||
-        chatMember.status === 'creator'
-      ) {
-        const permissions = chatMember.can_delete_messages;
-        return !!permissions; // Return true if bot can delete messages
-      }
-
-      return false;
-    } catch (error) {
-      console.error('Error checking bot privileges:', error);
-      return false;
-    }
-  }
 }

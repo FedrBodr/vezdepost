@@ -456,8 +456,18 @@ export class IntegrationsController {
   }
 
   @Get('/telegram/updates')
-  async getUpdates(@Query() query: { word: string; id?: number }) {
-    return new TelegramProvider().getBotId(query);
+  async getUpdates(
+    @Query() query: { word: string; id?: string; chatId?: string }
+  ) {
+    return new TelegramProvider().getBotId({
+      word: query.word,
+      ...(query.id && Number.isFinite(Number(query.id))
+        ? { id: Number(query.id) }
+        : {}),
+      ...(query.chatId && Number.isFinite(Number(query.chatId))
+        ? { chatId: Number(query.chatId) }
+        : {}),
+    });
   }
 
   @Get('/max/updates')
