@@ -40,11 +40,13 @@
 ### Task 1: Typed Telegram discovery and permission verification
 
 **Files:**
+
 - Modify: `libraries/nestjs-libraries/src/integrations/social/telegram.provider.ts`
 - Modify: `libraries/nestjs-libraries/src/integrations/social/telegram.provider.spec.ts`
 - Modify: `apps/backend/src/api/routes/integrations.controller.ts`
 
 **Interfaces:**
+
 - Consumes: Telegram `getUpdates`, `getMe`, `getChat`, and `getChatMember` responses.
 - Produces: `TelegramConnectionResult`, `TelegramConnectionStatus`, `parseTelegramConnectionMessage(text)`, and `getBotId({ word, id?, chatId? })`.
 
@@ -62,27 +64,33 @@ describe('Telegram connection discovery', () => {
     expect(parseTelegramConnectionMessage(text)).toEqual(expected);
   });
 
-  it.each(['/start', '/connect', '/connect nonce extra', 'x/connect nonce']) (
+  it.each(['/start', '/connect', '/connect nonce extra', 'x/connect nonce'])(
     'rejects %s',
     (text) => expect(parseTelegramConnectionMessage(text)).toBeNull()
   );
 
   it('requires a group administrator role', () => {
-    expect(evaluateTelegramPermissions('supergroup', { status: 'member' } as any))
-      .toBe('bot_not_admin');
-    expect(evaluateTelegramPermissions('group', { status: 'administrator' } as any))
-      .toBe('ready');
+    expect(
+      evaluateTelegramPermissions('supergroup', { status: 'member' } as any)
+    ).toBe('bot_not_admin');
+    expect(
+      evaluateTelegramPermissions('group', { status: 'administrator' } as any)
+    ).toBe('ready');
   });
 
   it('requires the channel posting permission', () => {
-    expect(evaluateTelegramPermissions('channel', {
-      status: 'administrator',
-      can_post_messages: false,
-    } as any)).toBe('missing_post_permission');
-    expect(evaluateTelegramPermissions('channel', {
-      status: 'administrator',
-      can_post_messages: true,
-    } as any)).toBe('ready');
+    expect(
+      evaluateTelegramPermissions('channel', {
+        status: 'administrator',
+        can_post_messages: false,
+      } as any)
+    ).toBe('missing_post_permission');
+    expect(
+      evaluateTelegramPermissions('channel', {
+        status: 'administrator',
+        can_post_messages: true,
+      } as any)
+    ).toBe('ready');
   });
 });
 ```
@@ -118,7 +126,9 @@ export type TelegramConnectionResult = {
 
 export const parseTelegramConnectionMessage = (text?: string) => {
   if (!text) return null;
-  const match = text.match(/^\/(start|connect)(?:@[A-Za-z0-9_]+)? ([A-Za-z0-9_-]{1,64})$/);
+  const match = text.match(
+    /^\/(start|connect)(?:@[A-Za-z0-9_]+)? ([A-Za-z0-9_-]{1,64})$/
+  );
   if (!match) return null;
   return {
     kind: match[1] as 'start' | 'connect',
@@ -253,10 +263,12 @@ git commit -m "feat: verify Telegram connection permissions"
 ### Task 2: Pure Telegram connection helpers
 
 **Files:**
+
 - Create: `apps/frontend/src/components/launches/web3/providers/telegram.connection.ts`
 - Create: `apps/frontend/src/components/launches/web3/providers/telegram.connection.spec.ts`
 
 **Interfaces:**
+
 - Consumes: configured bot name, backend nonce, and selected destination.
 - Produces: `TelegramDestination`, `TelegramConnectionResponse`, `buildTelegramDeepLink()`, and `buildTelegramConnectCommand()`.
 
@@ -265,19 +277,23 @@ git commit -m "feat: verify Telegram connection permissions"
 ```ts
 describe('Telegram connection helpers', () => {
   it('builds a group admin deep link with the nonce', () => {
-    expect(buildTelegramDeepLink({
-      botName: '@vezdepost_bot',
-      nonce: 'nonce_123',
-      destination: 'group',
-    })).toBe('https://t.me/vezdepost_bot?startgroup=nonce_123&admin=manage_chat');
+    expect(
+      buildTelegramDeepLink({
+        botName: '@vezdepost_bot',
+        nonce: 'nonce_123',
+        destination: 'group',
+      })
+    ).toBe('https://t.me/vezdepost_bot?startgroup=nonce_123&admin=manage_chat');
   });
 
   it('builds a channel deep link with posting permission', () => {
-    expect(buildTelegramDeepLink({
-      botName: 'vezdepost_bot',
-      nonce: 'ignored',
-      destination: 'channel',
-    })).toBe('https://t.me/vezdepost_bot?startchannel&admin=post_messages');
+    expect(
+      buildTelegramDeepLink({
+        botName: 'vezdepost_bot',
+        nonce: 'ignored',
+        destination: 'channel',
+      })
+    ).toBe('https://t.me/vezdepost_bot?startchannel&admin=post_messages');
   });
 
   it('builds the channel fallback command', () => {
@@ -325,7 +341,9 @@ export const buildTelegramDeepLink = ({
 }) => {
   const username = botName.replace(/^@/, '');
   return destination === 'group'
-    ? `https://t.me/${username}?startgroup=${encodeURIComponent(nonce)}&admin=manage_chat`
+    ? `https://t.me/${username}?startgroup=${encodeURIComponent(
+        nonce
+      )}&admin=manage_chat`
     : `https://t.me/${username}?startchannel&admin=post_messages`;
 };
 ```
@@ -344,10 +362,12 @@ git commit -m "feat: add Telegram connection links"
 ### Task 3: Guided Telegram modal state machine
 
 **Files:**
+
 - Modify: `apps/frontend/src/components/launches/web3/providers/telegram.provider.tsx`
 - Create: `apps/frontend/src/components/launches/web3/providers/telegram.provider.spec.tsx`
 
 **Interfaces:**
+
 - Consumes: Task 2 helpers and `TelegramConnectionResponse` from the authenticated polling route.
 - Produces: destination selection, automated group flow, channel confirmation flow, finite polling, retry, manual help, and verified `onComplete` calls.
 
@@ -427,10 +447,12 @@ it('completes only a verified ready response', async () => {
 });
 
 it('rechecks a candidate chat without another command', async () => {
-  fetcher.mockResolvedValueOnce(response({
-    status: 'bot_not_admin',
-    candidateChatId: -1001,
-  }));
+  fetcher.mockResolvedValueOnce(
+    response({
+      status: 'bot_not_admin',
+      candidateChatId: -1001,
+    })
+  );
   // click "Check again"
   expect(fetcher).toHaveBeenLastCalledWith(
     expect.stringContaining('chatId=-1001')
@@ -472,10 +494,12 @@ git commit -m "feat: guide Telegram channel connection"
 ### Task 4: Localized copy and regression verification
 
 **Files:**
+
 - Modify: `libraries/react-shared-libraries/src/translation/locales/en/translation.json`
 - Modify: `libraries/react-shared-libraries/src/translation/locales/ru/translation.json`
 
 **Interfaces:**
+
 - Consumes: every translation key referenced by the guided component.
 - Produces: complete English and Russian guided-flow copy and a verified workspace.
 

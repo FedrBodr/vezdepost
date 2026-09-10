@@ -13,9 +13,7 @@ describe('Telegram connection helpers', () => {
         nonce: 'nonce_123',
         destination: 'group',
       })
-    ).toBe(
-      'https://t.me/vezdepost_bot?startgroup=nonce_123&admin=manage_chat'
-    );
+    ).toBe('https://t.me/vezdepost_bot?startgroup=nonce_123&admin=manage_chat');
   });
 
   it('encodes the group nonce', () => {
@@ -35,15 +33,11 @@ describe('Telegram connection helpers', () => {
         nonce: 'ignored',
         destination: 'channel',
       })
-    ).toBe(
-      'https://t.me/vezdepost_bot?startchannel&admin=post_messages'
-    );
+    ).toBe('https://t.me/vezdepost_bot?startchannel&admin=post_messages');
   });
 
   it('builds the channel fallback command', () => {
-    expect(buildTelegramConnectCommand('nonce_123')).toBe(
-      '/connect nonce_123'
-    );
+    expect(buildTelegramConnectCommand('nonce_123')).toBe('/connect nonce_123');
   });
 
   it('ships the guided connection copy in English and Russian', () => {

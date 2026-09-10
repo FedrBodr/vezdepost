@@ -23,9 +23,11 @@
 ### Task 1: Enforce guide coverage for manual providers
 
 **Files:**
+
 - Create: `libraries/nestjs-libraries/src/integrations/social/manual-connection-guides.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `SocialProvider.customFields`, `SocialProvider.customFieldsInstructions`.
 - Produces: a regression contract requiring every registered provider with `customFields()` to expose a usable guide.
 
@@ -36,16 +38,24 @@ Create a table containing instances of `BlueskyProvider`, `DevToProvider`, `Hash
 ```ts
 expect(provider.customFields).toBeTypeOf('function');
 expect(provider.customFieldsInstructions?.title.trim()).not.toBe('');
-expect(provider.customFieldsInstructions?.items.length).toBeGreaterThanOrEqual(2);
+expect(provider.customFieldsInstructions?.items.length).toBeGreaterThanOrEqual(
+  2
+);
 expect(provider.customFieldsInstructions?.collapsible).not.toBe(true);
 ```
 
 Add focused assertions:
 
 ```ts
-expect(bluesky.customFieldsInstructions?.items.join(' ')).toContain('App Password');
-expect(wordpress.customFieldsInstructions?.items.join(' ')).toContain('Application Password');
-expect(medium.customFieldsInstructions?.warning).toContain('no longer supports');
+expect(bluesky.customFieldsInstructions?.items.join(' ')).toContain(
+  'App Password'
+);
+expect(wordpress.customFieldsInstructions?.items.join(' ')).toContain(
+  'Application Password'
+);
+expect(medium.customFieldsInstructions?.warning).toContain(
+  'no longer supports'
+);
 expect(nostr.customFieldsInstructions?.warning).toContain('private key');
 ```
 
@@ -69,6 +79,7 @@ git commit -m "test: require manual connection guides"
 ### Task 2: Add novice-friendly provider metadata
 
 **Files:**
+
 - Modify: `libraries/nestjs-libraries/src/integrations/social/bluesky.provider.ts`
 - Modify: `libraries/nestjs-libraries/src/integrations/social/dev.to.provider.ts`
 - Modify: `libraries/nestjs-libraries/src/integrations/social/hashnode.provider.ts`
@@ -79,6 +90,7 @@ git commit -m "test: require manual connection guides"
 - Modify: `libraries/nestjs-libraries/src/integrations/social/wordpress.provider.ts`
 
 **Interfaces:**
+
 - Consumes: `CustomFieldsInstructionsDefinition` as already serialized by `IntegrationManager`.
 - Produces: `customFieldsInstructions` metadata on each manual provider.
 
@@ -200,11 +212,13 @@ git commit -m "feat: guide manual social connections"
 ### Task 3: Localize and verify every guide
 
 **Files:**
+
 - Modify: `libraries/react-shared-libraries/src/translation/locales/en/translation.json`
 - Modify: `libraries/react-shared-libraries/src/translation/locales/ru/translation.json`
 - Modify: `libraries/nestjs-libraries/src/integrations/social/manual-connection-guides.spec.ts`
 
 **Interfaces:**
+
 - Consumes: every string in provider `customFieldsInstructions`.
 - Produces: complete English and Russian guide copy addressable through the existing `t(value, value)` convention.
 
@@ -243,9 +257,11 @@ git commit -m "feat: localize manual connection guides"
 ### Task 4: Verify the combined onboarding changes
 
 **Files:**
+
 - Verify only; no planned file changes.
 
 **Interfaces:**
+
 - Consumes: Telegram guided flow plus all manual provider guides.
 - Produces: a clean, reviewable feature branch.
 

@@ -22,11 +22,13 @@
 ### Task 1: Verify MAX commands and permissions on the server
 
 **Files:**
+
 - Create: `libraries/nestjs-libraries/src/integrations/social/max.provider.spec.ts`
 - Modify: `libraries/nestjs-libraries/src/integrations/social/max.provider.ts`
 - Modify: `apps/backend/src/api/routes/integrations.controller.ts`
 
 **Interfaces:**
+
 - Produces: `MaxConnectionResult` with `waiting | ready | bot_not_admin | missing_permissions | max_error`.
 - Produces: `parseMaxConnectionMessage(text)` and `evaluateMaxPermissions(member)` pure helpers.
 - Consumes: `getUpdates`, `getChat`, and `getChatMembership` from an injectable MAX API client.
@@ -71,6 +73,7 @@ git commit -m "feat: verify MAX connection permissions"
 ### Task 2: Build the guided MAX component
 
 **Files:**
+
 - Create: `apps/frontend/src/components/launches/web3/providers/max.connection.ts`
 - Create: `apps/frontend/src/components/launches/web3/providers/max.connection.spec.ts`
 - Create: `apps/frontend/src/components/launches/web3/providers/max.provider.spec.tsx`
@@ -78,6 +81,7 @@ git commit -m "feat: verify MAX connection permissions"
 - Modify: English and Russian `translation.json` locale files.
 
 **Interfaces:**
+
 - Consumes: `MaxConnectionResult`, `/integrations/max/updates`, `maxBotName`, and `onComplete(chatId, nonce)`.
 - Produces: `buildMaxBotUrl`, `buildMaxConnectCommand`, and a destination-aware UI state machine.
 
@@ -114,6 +118,7 @@ git commit -m "feat: guide MAX channel connection"
 ### Task 3: Harden the Moltbook claim flow
 
 **Files:**
+
 - Create: `apps/frontend/src/components/launches/web3/providers/moltbook.connection.ts`
 - Create: `apps/frontend/src/components/launches/web3/providers/moltbook.connection.spec.ts`
 - Create: `apps/frontend/src/components/launches/web3/providers/moltbook.provider.spec.tsx`
@@ -122,6 +127,7 @@ git commit -m "feat: guide MAX channel connection"
 - Modify: English and Russian locale files.
 
 **Interfaces:**
+
 - Produces: `isAllowedMoltbookClaimUrl(url)` accepting only HTTPS,
   `www.moltbook.com`, and `/claim/`.
 - Changes: `/integrations/moltbook/status` from GET query to POST JSON body `{ apiKey }`.
@@ -157,11 +163,13 @@ git commit -m "feat: guide Moltbook agent claim"
 ### Task 4: Explain Farcaster authorization
 
 **Files:**
+
 - Create: `apps/frontend/src/components/launches/web3/providers/wrapcaster.provider.spec.tsx`
 - Modify: `apps/frontend/src/components/launches/web3/providers/wrapcaster.provider.tsx`
 - Modify: English and Russian locale files.
 
 **Interfaces:**
+
 - Consumes: existing `ButtonCaster` and `onComplete(code, state)`.
 - Produces: localized pre-auth guidance without changing Neynar behavior.
 

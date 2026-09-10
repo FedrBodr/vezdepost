@@ -197,12 +197,12 @@ Matches are exact after parsing. Partial or substring matches are rejected.
 
 The UI maps server outcomes to concrete recovery actions:
 
-| Status | User-facing result | Recovery |
-| --- | --- | --- |
-| `waiting` | "Waiting for Telegram" | Return from Telegram or check again |
-| `bot_not_admin` | "The bot was added but is not an administrator" | Reopen the relevant Telegram setup instructions |
-| `missing_post_permission` | "Allow the bot to publish messages" | Open channel administrators and enable posting |
-| `telegram_error` | "Telegram did not respond" | Retry without losing the attempt |
+| Status                    | User-facing result                              | Recovery                                        |
+| ------------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| `waiting`                 | "Waiting for Telegram"                          | Return from Telegram or check again             |
+| `bot_not_admin`           | "The bot was added but is not an administrator" | Reopen the relevant Telegram setup instructions |
+| `missing_post_permission` | "Allow the bot to publish messages"             | Open channel administrators and enable posting  |
+| `telegram_error`          | "Telegram did not respond"                      | Retry without losing the attempt                |
 
 Network failures do not complete the integration. The copy action confirms
 success with translated copy, and all primary actions remain keyboard

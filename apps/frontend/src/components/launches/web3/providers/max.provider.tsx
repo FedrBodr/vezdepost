@@ -138,21 +138,18 @@ export const MaxProvider: FC<Web3ProviderInterface> = ({
           'The bot is not an administrator yet.'
         )
       : status === 'missing_permissions'
-        ? t(
-            'max_connection_missing_permissions',
-            'Enable permission to read all messages and write messages.'
-          )
-        : status === 'max_error'
-          ? t(
-              'max_connection_error',
-              'MAX did not respond. Try checking again.'
-            )
-          : hasStarted && !isPolling && status === 'waiting'
-            ? t(
-                'max_connection_timed_out',
-                'We have not received confirmation from MAX yet.'
-              )
-            : undefined;
+      ? t(
+          'max_connection_missing_permissions',
+          'Enable permission to read all messages and write messages.'
+        )
+      : status === 'max_error'
+      ? t('max_connection_error', 'MAX did not respond. Try checking again.')
+      : hasStarted && !isPolling && status === 'waiting'
+      ? t(
+          'max_connection_timed_out',
+          'We have not received confirmation from MAX yet.'
+        )
+      : undefined;
 
   return (
     <div className="flex flex-col gap-[14px] pt-[12px] text-[14px]">
@@ -219,10 +216,7 @@ export const MaxProvider: FC<Web3ProviderInterface> = ({
 
       {!hasStarted ? (
         <Button type="button" onClick={() => verify()}>
-          {t(
-            'max_connection_check',
-            'I added the bot — check connection'
-          )}
+          {t('max_connection_check', 'I added the bot — check connection')}
         </Button>
       ) : null}
 

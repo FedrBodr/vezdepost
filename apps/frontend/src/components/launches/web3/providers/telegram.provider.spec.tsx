@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import copy from 'copy-to-clipboard';
 import { TelegramProvider } from './telegram.provider';
@@ -86,9 +93,7 @@ describe('TelegramProvider connection guide', () => {
       screen
         .getByRole('link', { name: /open telegram and choose a group/i })
         .getAttribute('href')
-    ).toBe(
-      'https://t.me/vezdepost_bot?startgroup=nonce_123&admin=manage_chat'
-    );
+    ).toBe('https://t.me/vezdepost_bot?startgroup=nonce_123&admin=manage_chat');
     expect(screen.queryByRole('button', { name: /copy command/i })).toBeNull();
     expect(
       screen.queryByText(
