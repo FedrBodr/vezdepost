@@ -193,8 +193,6 @@ describe('VkGroupProvider community credentials', () => {
 
   it('declares the exact community-key permission guide', () => {
     expect(provider.customFieldsInstructions).toEqual({
-      collapsible: true,
-      summary: 'Where to get the link and key',
       title: 'Connect a VK community',
       items: [
         'Open the community in the desktop VK website and select Management.',

@@ -118,10 +118,7 @@ export const TelegramProvider: FC<Web3ProviderInterface> = ({
 
   const copyCommand = useCallback(() => {
     copy(buildTelegramConnectCommand(nonce));
-    toaster.show(
-      t('telegram_connection_copied', 'Command copied'),
-      'success'
-    );
+    toaster.show(t('telegram_connection_copied', 'Command copied'), 'success');
   }, [nonce, t, toaster]);
 
   if (!destination) {
@@ -146,7 +143,9 @@ export const TelegramProvider: FC<Web3ProviderInterface> = ({
           onClick={() => selectDestination('group')}
           className="flex min-h-[72px] items-center gap-[12px] rounded-[12px] border border-newTableBorder bg-newBgColorInner px-[16px] text-start hover:border-textColor/40"
         >
-          <span aria-hidden="true" className="text-[24px]">👥</span>
+          <span aria-hidden="true" className="text-[24px]">
+            👥
+          </span>
           <span>
             <strong className="block text-[15px]">
               {t('telegram_connection_group', 'Group')}
@@ -164,7 +163,9 @@ export const TelegramProvider: FC<Web3ProviderInterface> = ({
           onClick={() => selectDestination('channel')}
           className="flex min-h-[72px] items-center gap-[12px] rounded-[12px] border border-newTableBorder bg-newBgColorInner px-[16px] text-start hover:border-textColor/40"
         >
-          <span aria-hidden="true" className="text-[24px]">📣</span>
+          <span aria-hidden="true" className="text-[24px]">
+            📣
+          </span>
           <span>
             <strong className="block text-[15px]">
               {t('telegram_connection_channel', 'Channel')}
@@ -284,7 +285,10 @@ export const TelegramProvider: FC<Web3ProviderInterface> = ({
       )}
 
       {isPolling && (
-        <div role="status" className="text-center text-[13px] text-textColor/70">
+        <div
+          role="status"
+          className="text-center text-[13px] text-textColor/70"
+        >
           {t('telegram_connection_waiting', 'Waiting for Telegram…')}
         </div>
       )}
@@ -318,7 +322,9 @@ export const TelegramProvider: FC<Web3ProviderInterface> = ({
               'telegram_connection_manual_add',
               'Add the bot shown below to the selected chat.'
             )}
-            <code className="ms-[4px]">@{telegramBotName.replace(/^@/, '')}</code>
+            <code className="ms-[4px]">
+              @{telegramBotName.replace(/^@/, '')}
+            </code>
           </li>
           <li>
             {isGroup
@@ -336,7 +342,9 @@ export const TelegramProvider: FC<Web3ProviderInterface> = ({
               'telegram_connection_manual_command',
               'Send the command shown below in that chat.'
             )}
-            <code className="ms-[4px]">{buildTelegramConnectCommand(nonce)}</code>
+            <code className="ms-[4px]">
+              {buildTelegramConnectCommand(nonce)}
+            </code>
           </li>
         </ol>
       </details>
