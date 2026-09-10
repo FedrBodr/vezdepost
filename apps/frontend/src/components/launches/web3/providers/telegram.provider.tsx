@@ -1,125 +1,345 @@
 'use client';
 
-import '@neynar/react/dist/style.css';
 import React, { FC, useCallback, useEffect, useRef, useState } from 'react';
+import copy from 'copy-to-clipboard';
 import { Web3ProviderInterface } from '@gitroom/frontend/components/launches/web3/web3.provider.interface';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { timer } from '@gitroom/helpers/utils/timer';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
-import { Input } from '@gitroom/react/form/input';
 import { Button } from '@gitroom/react/form/button';
-import copy from 'copy-to-clipboard';
-import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
-export const TelegramProvider: FC<Web3ProviderInterface> = (props) => {
-  const { onComplete, nonce } = props;
+import { useToaster } from '@gitroom/react/toaster/toaster';
+import {
+  buildTelegramConnectCommand,
+  buildTelegramDeepLink,
+  TelegramConnectionResponse,
+  TelegramDestination,
+} from './telegram.connection';
+
+const POLLING_INTERVAL_MS = 2_000;
+const POLLING_TIMEOUT_MS = 90_000;
+
+export const TelegramProvider: FC<Web3ProviderInterface> = ({
+  onComplete,
+  nonce,
+}) => {
   const { telegramBotName } = useVariables();
   const fetch = useFetch();
-  const word = useRef(makeId(4));
-  const stop = useRef(false);
-  const [step, setStep] = useState(false);
   const toaster = useToaster();
-  async function* load() {
-    let id = '';
-    while (true) {
-      const data = await (
-        await fetch(
-          `/integrations/telegram/updates?word=${word.current}${
-            id ? `&id=${id}` : ''
-          }`
-        )
-      ).json();
-      if (data.lastChatId) {
-        id = data.lastChatId;
-      }
-      yield data;
-    }
-  }
   const t = useT();
+  const attempt = useRef(0);
+  const lastUpdateId = useRef<number>();
+  const [destination, setDestination] = useState<TelegramDestination>();
+  const [candidateChatId, setCandidateChatId] = useState<number>();
+  const [status, setStatus] =
+    useState<TelegramConnectionResponse['status']>('waiting');
+  const [isPolling, setIsPolling] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
 
-  const loadAll = async () => {
-    stop.current = false;
-    setStep(true);
-    const generator = load();
-    for await (const data of generator) {
-      if (stop.current) {
-        return;
-      }
-      if (data.chatId) {
-        onComplete(data.chatId, nonce);
-        return;
-      }
-      await timer(2000);
-    }
-  };
-  const copyText = useCallback(() => {
-    copy(`/connect ${word.current}`);
-    toaster.show('Copied to clipboard', 'success');
-  }, []);
   useEffect(() => {
     return () => {
-      stop.current = true;
+      attempt.current += 1;
     };
   }, []);
-  return (
-    <>
-      <div className="justify-center items-center flex flex-col pt-[16px]">
+
+  const selectDestination = (value: TelegramDestination) => {
+    attempt.current += 1;
+    lastUpdateId.current = undefined;
+    setCandidateChatId(undefined);
+    setStatus('waiting');
+    setIsPolling(false);
+    setHasStarted(false);
+    setDestination(value);
+  };
+
+  const verify = useCallback(
+    async (knownChatId?: number) => {
+      const currentAttempt = ++attempt.current;
+      const deadline = Date.now() + POLLING_TIMEOUT_MS;
+      let chatId = knownChatId;
+      setHasStarted(true);
+      setIsPolling(true);
+      setStatus('waiting');
+
+      while (attempt.current === currentAttempt) {
+        const query = new URLSearchParams({ word: nonce });
+        if (chatId !== undefined) {
+          query.set('chatId', String(chatId));
+        } else if (lastUpdateId.current !== undefined) {
+          query.set('id', String(lastUpdateId.current));
+        }
+
+        let data: TelegramConnectionResponse;
+        try {
+          data = await (
+            await fetch(`/integrations/telegram/updates?${query.toString()}`)
+          ).json();
+        } catch {
+          data = { status: 'telegram_error' };
+        }
+
+        if (attempt.current !== currentAttempt) {
+          return;
+        }
+        if (data.status === 'ready' && data.chatId !== undefined) {
+          setStatus('ready');
+          setIsPolling(false);
+          onComplete(String(data.chatId), nonce);
+          return;
+        }
+        if (
+          data.status === 'bot_not_admin' ||
+          data.status === 'missing_post_permission'
+        ) {
+          setCandidateChatId(data.candidateChatId);
+          setStatus(data.status);
+          setIsPolling(false);
+          return;
+        }
+        if (data.status === 'telegram_error') {
+          setStatus(data.status);
+          setIsPolling(false);
+          return;
+        }
+        if (data.lastChatId !== undefined) {
+          lastUpdateId.current = data.lastChatId;
+        }
+        if (Date.now() >= deadline) {
+          setIsPolling(false);
+          return;
+        }
+
+        await timer(POLLING_INTERVAL_MS);
+        chatId = undefined;
+      }
+    },
+    [fetch, nonce, onComplete]
+  );
+
+  const copyCommand = useCallback(() => {
+    copy(buildTelegramConnectCommand(nonce));
+    toaster.show(
+      t('telegram_connection_copied', 'Command copied'),
+      'success'
+    );
+  }, [nonce, t, toaster]);
+
+  if (!destination) {
+    return (
+      <div className="flex w-full flex-col gap-[16px] pt-[8px] text-textColor">
         <div>
-          {t('please_add', 'Please add')} <strong>@{telegramBotName}</strong>{' '}
-          {t(
-            'to_your_telegram_group_channel_and_click_here',
-            'to your\n          telegram group / channel and click here:'
-          )}
-        </div>
-        {!step ? (
-          <div className="w-full mt-[16px]" onClick={loadAll}>
-            <div
-              className={`cursor-pointer bg-[#2EA6DD] h-[44px] rounded-[4px] flex justify-center items-center text-white gap-[4px]`}
-            >
-              <svg
-                width="51"
-                height="22"
-                viewBox="0 0 72 63"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M71.85 3.00001L60.612 60.378C60.612 60.378 60.129 63 56.877 63C55.149 63 54.258 62.178 54.258 62.178L29.916 41.979L18.006 35.976L2.721 31.911C2.721 31.911 0 31.125 0 28.875C0 27 2.799 26.106 2.799 26.106L66.747 0.70201C66.747 0.70201 68.7 -0.00299041 70.125 9.58803e-06C71.001 9.58803e-06 72 0.37501 72 1.50001C72 2.25001 71.85 3.00001 71.85 3.00001Z"
-                  fill="white"
-                />
-                <path
-                  d="M39.0005 49.5147L28.7225 59.6367C28.7225 59.6367 28.2755 59.9817 27.6785 59.9967C27.4715 60.0027 27.2495 59.9697 27.0215 59.8677L29.9135 41.9727L39.0005 49.5147Z"
-                  fill="#B0BEC5"
-                />
-                <path
-                  d="M59.691 12.5877C59.184 11.9277 58.248 11.8077 57.588 12.3087L18 35.9997C18 35.9997 24.318 53.6757 25.281 56.7357C26.247 59.7987 27.021 59.8707 27.021 59.8707L29.913 41.9757L59.409 14.6877C60.069 14.1867 60.192 13.2477 59.691 12.5877Z"
-                  fill="#CFD8DC"
-                />
-              </svg>
-              <div>{t('connect_telegram', 'Connect Telegram')}</div>
-            </div>
-          </div>
-        ) : (
-          <div className="w-full text-center" onClick={copyText}>
+          <h2 className="text-[20px] font-[600]">
             {t(
-              'please_add_the_following_command_in_your_chat',
-              'Please add the following command in your chat:'
+              'telegram_connection_choose_type',
+              'What do you want to connect?'
             )}
-            <div className="mt-[16px] flex">
-              <div className="flex-1">
-                <Input
-                  label=""
-                  value={`/connect ${word.current}`}
-                  name=""
-                  disableForm={true}
-                />
-              </div>
-              <Button>{t('copy', 'Copy')}</Button>
-            </div>
-          </div>
-        )}
+          </h2>
+          <p className="mt-[6px] text-[13px] text-textColor/70">
+            {t(
+              'telegram_connection_choose_type_hint',
+              'Choose the option that matches how people use this Telegram chat.'
+            )}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => selectDestination('group')}
+          className="flex min-h-[72px] items-center gap-[12px] rounded-[12px] border border-newTableBorder bg-newBgColorInner px-[16px] text-start hover:border-textColor/40"
+        >
+          <span aria-hidden="true" className="text-[24px]">👥</span>
+          <span>
+            <strong className="block text-[15px]">
+              {t('telegram_connection_group', 'Group')}
+            </strong>
+            <span className="mt-[2px] block text-[12px] text-textColor/60">
+              {t(
+                'telegram_connection_group_hint',
+                'A chat where members communicate'
+              )}
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => selectDestination('channel')}
+          className="flex min-h-[72px] items-center gap-[12px] rounded-[12px] border border-newTableBorder bg-newBgColorInner px-[16px] text-start hover:border-textColor/40"
+        >
+          <span aria-hidden="true" className="text-[24px]">📣</span>
+          <span>
+            <strong className="block text-[15px]">
+              {t('telegram_connection_channel', 'Channel')}
+            </strong>
+            <span className="mt-[2px] block text-[12px] text-textColor/60">
+              {t(
+                'telegram_connection_channel_hint',
+                'A publication feed for subscribers'
+              )}
+            </span>
+          </span>
+        </button>
       </div>
-    </>
+    );
+  }
+
+  const isGroup = destination === 'group';
+  const deepLink = buildTelegramDeepLink({
+    botName: telegramBotName,
+    nonce,
+    destination,
+  });
+  const errorMessage =
+    status === 'bot_not_admin'
+      ? t(
+          'telegram_connection_bot_not_admin',
+          'The bot was added but is not an administrator.'
+        )
+      : status === 'missing_post_permission'
+      ? t(
+          'telegram_connection_missing_post_permission',
+          'The bot cannot publish. Enable its permission to post messages.'
+        )
+      : status === 'telegram_error'
+      ? t(
+          'telegram_connection_telegram_error',
+          'Telegram did not respond. Try checking again.'
+        )
+      : hasStarted && !isPolling
+      ? t(
+          'telegram_connection_timed_out',
+          'We have not received confirmation yet.'
+        )
+      : '';
+
+  return (
+    <div className="flex w-full flex-col gap-[14px] pt-[8px] text-textColor">
+      <button
+        type="button"
+        onClick={() => {
+          attempt.current += 1;
+          setDestination(undefined);
+        }}
+        className="w-fit text-[12px] text-textColor/70 underline"
+      >
+        {t('telegram_connection_back', 'Back')}
+      </button>
+      <div>
+        <h2 className="text-[20px] font-[600]">
+          {isGroup
+            ? t(
+                'telegram_connection_choose_group',
+                'Open Telegram and choose a group'
+              )
+            : t(
+                'telegram_connection_choose_channel',
+                'Open Telegram and choose a channel'
+              )}
+        </h2>
+        <p className="mt-[6px] text-[13px] leading-[1.5] text-textColor/70">
+          {isGroup
+            ? t(
+                'telegram_connection_group_permission',
+                'Keep the suggested administrator permission enabled so Vezdepost can publish.'
+              )
+            : t(
+                'telegram_connection_channel_permission',
+                'Allow the bot to publish messages in the channel.'
+              )}
+        </p>
+      </div>
+      <a
+        href={deepLink}
+        target="_blank"
+        rel="noreferrer"
+        onClick={() => void verify()}
+        className="flex min-h-[44px] items-center justify-center rounded-[6px] bg-[#2AABEE] px-[18px] text-center text-[14px] font-[600] text-white"
+      >
+        {isGroup
+          ? t(
+              'telegram_connection_open_group',
+              'Open Telegram and choose a group'
+            )
+          : t(
+              'telegram_connection_open_channel',
+              'Open Telegram and choose a channel'
+            )}
+      </a>
+
+      {!isGroup && (
+        <div className="rounded-[12px] border border-newTableBorder bg-newBgColorInner p-[14px]">
+          <p className="text-[13px] leading-[1.5] text-textColor/70">
+            {t(
+              'telegram_connection_confirm_channel',
+              'Copy this command and publish it once in the selected channel.'
+            )}
+          </p>
+          <div className="mt-[10px] flex items-center gap-[8px]">
+            <code className="min-w-0 flex-1 overflow-x-auto rounded-[6px] bg-primary px-[12px] py-[10px] text-[13px]">
+              {buildTelegramConnectCommand(nonce)}
+            </code>
+            <Button onClick={copyCommand} className="rounded-[6px] px-[14px]">
+              {t('telegram_connection_copy_command', 'Copy command')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isPolling && (
+        <div role="status" className="text-center text-[13px] text-textColor/70">
+          {t('telegram_connection_waiting', 'Waiting for Telegram…')}
+        </div>
+      )}
+
+      {!!errorMessage && (
+        <div
+          role="alert"
+          className="rounded-[10px] border border-orange-400/30 bg-orange-400/10 p-[12px] text-[13px]"
+        >
+          {errorMessage}
+        </div>
+      )}
+
+      {!isPolling && !!errorMessage && (
+        <Button
+          secondary={true}
+          onClick={() => void verify(candidateChatId)}
+          className="w-full rounded-[6px]"
+        >
+          {t('telegram_connection_check_again', 'Check again')}
+        </Button>
+      )}
+
+      <details className="rounded-[10px] border border-newTableBorder px-[14px] py-[10px] text-[13px]">
+        <summary className="cursor-pointer font-[500]">
+          {t('telegram_connection_manual_help', 'Add the bot manually')}
+        </summary>
+        <ol className="mt-[10px] list-decimal space-y-[6px] ps-[18px] text-textColor/70">
+          <li>
+            {t(
+              'telegram_connection_manual_add',
+              'Add the bot shown below to the selected chat.'
+            )}
+            <code className="ms-[4px]">@{telegramBotName.replace(/^@/, '')}</code>
+          </li>
+          <li>
+            {isGroup
+              ? t(
+                  'telegram_connection_manual_group_admin',
+                  'Make the bot an administrator.'
+                )
+              : t(
+                  'telegram_connection_manual_channel_admin',
+                  'Make the bot an administrator and allow it to post messages.'
+                )}
+          </li>
+          <li>
+            {t(
+              'telegram_connection_manual_command',
+              'Send the command shown below in that chat.'
+            )}
+            <code className="ms-[4px]">{buildTelegramConnectCommand(nonce)}</code>
+          </li>
+        </ol>
+      </details>
+    </div>
   );
 };
