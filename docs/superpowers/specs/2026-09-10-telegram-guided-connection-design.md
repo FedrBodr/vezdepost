@@ -165,8 +165,11 @@ than interpolating unchecked text.
 ## Server contract
 
 `GET /integrations/telegram/updates` keeps accepting the nonce and optional
-Telegram update offset. Its result becomes a discriminated status suitable for
-the guided UI while retaining `chatId` on success for backward compatibility.
+Telegram update offset. It also accepts an optional candidate chat ID after a
+matching update has been found. When that ID is present, the provider skips
+update discovery and rechecks the candidate chat's permissions directly. Its
+result becomes a discriminated status suitable for the guided UI while
+retaining `chatId` on success for backward compatibility.
 
 Expected outcomes:
 
@@ -177,7 +180,9 @@ Expected outcomes:
 - `telegram_error`: Telegram could not be queried safely.
 
 Waiting responses include the next update offset when Telegram returned any
-updates. Responses must not return access
+updates. Permission failures include `candidateChatId` so "Check again" can
+verify newly granted rights without asking the user to resend a command.
+Responses must not return access
 tokens, bot tokens, raw Telegram errors, or unrelated update content.
 
 The provider recognizes:
