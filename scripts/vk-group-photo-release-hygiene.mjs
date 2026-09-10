@@ -8,7 +8,7 @@ export const SECRET_SIGNATURES = [
   /\bgh[pousr]_[A-Za-z0-9]{36,}\b/,
   /\bAKIA[0-9A-Z]{16}\b/,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-  /\b(?:VK_GROUP_CAPABILITY_TOKEN|access[_-]?token|api[_-]?key|client[_-]?secret)\b\s*[:=]\s*["']?[A-Za-z0-9._-]{32,}/i,
+  /\b(?:VK_GROUP_CAPABILITY_(?:USER_)?TOKEN|access[_-]?token|api[_-]?key|client[_-]?secret)\b\s*[:=]\s*(?:"[A-Za-z0-9._-]{32,}"|'[A-Za-z0-9._-]{32,}'|[A-Za-z0-9_-]{32,})(?![A-Za-z0-9._-])/i,
 ];
 
 function git(cwd, args, encoding = 'utf8') {
@@ -167,6 +167,7 @@ export function runHygieneChecks({
 } = {}) {
   if (base !== 'prod') {
     writeRecord(stdout, { check: 'input', status: 'STOP', files: [] });
+    writeRecord(stdout, { check: 'terminal', status: 'STOP' });
     return 2;
   }
 
@@ -174,6 +175,7 @@ export function runHygieneChecks({
   const changedResult = git(cwd, ['diff', '--name-only', '-z', range]);
   if (changedResult.status !== 0) {
     writeRecord(stdout, { check: 'changed-files', status: 'STOP', files: [] });
+    writeRecord(stdout, { check: 'terminal', status: 'STOP' });
     return 2;
   }
   const changedFiles = nulList(changedResult.stdout);
@@ -240,6 +242,10 @@ export function runHygieneChecks({
     files: secrets.files,
   });
 
+  writeRecord(stdout, {
+    check: 'terminal',
+    status: failed ? 'STOP' : 'GO',
+  });
   return failed ? 2 : 0;
 }
 

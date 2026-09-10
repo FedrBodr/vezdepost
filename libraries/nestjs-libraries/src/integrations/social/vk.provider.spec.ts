@@ -10,6 +10,27 @@ vi.mock('axios', () => ({
   },
 }));
 
+vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => ({
+  ...(await importOriginal()),
+  withMediaSourceStream: vi.fn(
+    async (
+      path: string,
+      _options: unknown,
+      consume: (source: unknown) => Promise<unknown>
+    ) => {
+      const response = await axios.get(path, { responseType: 'stream' });
+      return consume({
+        stream: response.data,
+        size: undefined,
+        finalUrl: path,
+        status: 200,
+        headers: new Headers(),
+        local: false,
+      });
+    }
+  ),
+}));
+
 class TestVkProvider extends VkProvider {
   upload(userId: string, accessToken: string, post: any) {
     return this.uploadMedia(userId, accessToken, post);
@@ -62,10 +83,26 @@ describe('VkProvider verified publishing', () => {
   beforeEach(() => {
     provider = new TestVkProvider();
     vi.clearAllMocks();
+    vi.mocked(axios.get).mockReset().mockResolvedValue({ data: 'media-data' });
+    vi.mocked(axios.post).mockReset();
   });
 
   it('opts into proactive token refresh', () => {
     expect(new VkProvider().refreshCron).toBe(true);
+  });
+
+  it('preserves the personal VK OAuth scope contract', () => {
+    expect(new VkProvider().scopes).toMatchInlineSnapshot(`
+      [
+        "vkid.personal_info",
+        "email",
+        "wall",
+        "status",
+        "docs",
+        "photos",
+        "video",
+      ]
+    `);
   });
 
   it('throws RefreshToken when a media API returns VK error 5', async () => {
@@ -105,7 +142,7 @@ describe('VkProvider verified publishing', () => {
     const request = provider.upload('1', accessToken, imagePost);
     await expect(request).rejects.toBeInstanceOf(BadBody);
     await expectSanitizedFailure(request, [accessToken, mediaUrl]);
-    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.get).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -126,7 +163,7 @@ describe('VkProvider verified publishing', () => {
     const request = provider.upload('1', accessToken, videoPost);
     await expect(request).rejects.toBeInstanceOf(BadBody);
     await expectSanitizedFailure(request, [accessToken, videoUrl, uploadUrl]);
-    expect(axios.get).not.toHaveBeenCalled();
+    expect(axios.get).toHaveBeenCalledOnce();
   });
 
   it('preserves a digit-only video ID without numeric conversion', async () => {
@@ -370,6 +407,48 @@ describe('VkProvider OAuth response validation', () => {
   beforeEach(() => {
     provider = new TestVkProvider();
     vi.clearAllMocks();
+  });
+
+  it('preserves the personal VK AuthTokenDetails shape', async () => {
+    vi.spyOn(provider, 'fetch')
+      .mockResolvedValueOnce(
+        response({
+          response: {
+            access_token: 'new-access-secret',
+            refresh_token: 'new-refresh-secret',
+            expires_in: 3600,
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        response({
+          response: {
+            user: {
+              user_id: '123',
+              first_name: 'Ada',
+              last_name: 'Lovelace',
+              avatar: 'https://cdn.example.test/avatar.png',
+            },
+          },
+        })
+      );
+
+    await expect(
+      provider.authenticate({
+        code: 'authorization-code&&&&device-1',
+        codeVerifier: 'verifier',
+      })
+    ).resolves.toMatchInlineSnapshot(`
+      {
+        "accessToken": "new-access-secret",
+        "expiresIn": 3600,
+        "id": "123",
+        "name": "Ada Lovelace",
+        "picture": "https://cdn.example.test/avatar.png",
+        "refreshToken": "new-refresh-secret&&&&device-1",
+        "username": "ada",
+      }
+    `);
   });
 
   it('rejects a successful auth response without an access token before user_info', async () => {

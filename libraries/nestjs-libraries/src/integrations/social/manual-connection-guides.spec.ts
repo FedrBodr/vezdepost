@@ -8,7 +8,6 @@ import { LemmyProvider } from './lemmy.provider';
 import { ListmonkProvider } from './listmonk.provider';
 import { MediumProvider } from './medium.provider';
 import { NostrProvider } from './nostr.provider';
-import { VkGroupProvider } from './vk.group.provider';
 import { WordpressProvider } from './wordpress.provider';
 
 const providers = [
@@ -19,7 +18,6 @@ const providers = [
   new ListmonkProvider(),
   new MediumProvider(),
   new NostrProvider(),
-  new VkGroupProvider(),
   new WordpressProvider(),
 ];
 
@@ -51,7 +49,7 @@ describe('manual social connection guides', () => {
   });
 
   it('names dedicated credentials and high-risk limitations', () => {
-    const [bluesky, , , , , medium, nostr, , wordpress] = providers;
+    const [bluesky, , , , , medium, nostr, wordpress] = providers;
 
     expect(bluesky.customFieldsInstructions?.items.join(' ')).toContain(
       'App Password'

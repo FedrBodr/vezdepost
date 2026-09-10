@@ -2,23 +2,20 @@
 
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import {
-  cookieName,
   fallbackLng,
+  getLanguageDirection,
   languages,
 } from '@gitroom/react/translation/i18n.config';
+import { persistLanguageCookie } from '@gitroom/react/translation/language.cookie';
 import i18next from 'i18next';
-import useCookie from 'react-use-cookie';
 import ReactCountryFlag from 'react-country-flag';
-import { List, Box, Group, Text } from '@mantine/core';
+import { Text } from '@mantine/core';
 import React, { useCallback } from 'react';
 import countries from 'i18n-iso-countries';
-
-// Register required locales
 import countriesEn from 'i18n-iso-countries/langs/en.json';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
-import { ModalWrapperComponent } from '../new-launch/modal.wrapper.component';
-
 import clsx from 'clsx';
+
 countries.registerLocale(countriesEn);
 
 const getCountryCodeForFlag = (languageCode: string) => {
@@ -64,17 +61,14 @@ const getCountryCodeForFlag = (languageCode: string) => {
 export const ChangeLanguageComponent = () => {
   const currentLanguage = i18next.resolvedLanguage || fallbackLng;
   const availableLanguages = languages;
-  const [_, setCookie] = useCookie(cookieName, currentLanguage || fallbackLng);
   const modals = useModals();
-  const t = useT();
 
-  const handleLanguageChange = (language: string) => {
-    setCookie(language);
-    i18next.changeLanguage(language);
+  const handleLanguageChange = async (language: string) => {
+    persistLanguageCookie(language);
+    await i18next.changeLanguage(language);
+    document.documentElement.lang = language;
+    document.documentElement.dir = getLanguageDirection(language);
     modals.closeCurrent();
-    const rtlLanguages = ['he', 'ar'];
-    const dir = rtlLanguages.includes(language) ? 'rtl' : 'ltr';
-    document.documentElement.setAttribute('dir', dir);
   };
 
   // Function to get language name in its native script
@@ -93,30 +87,37 @@ export const ChangeLanguageComponent = () => {
 
   return (
     <div className="relative">
-      <div className="grid grid-cols-4 gap-2">
-        {availableLanguages.map((language) => (
-          <div
-            className={clsx(
-              'flex items-center flex-col bg-newTableHeader hover:bg-newTableBorder p-[20px] cursor-pointer gap-2',
-              language === currentLanguage ? 'border border-textColor' : ''
-            )}
-            key={language}
-            onClick={() => handleLanguageChange(language)}
-          >
-            <ReactCountryFlag
-              countryCode={getCountryCodeForFlag(language)}
-              svg
-              style={{
-                width: '1.5em',
-                height: '1.5em',
-              }}
-              title={language}
-            />
-            <Text weight={language === currentLanguage ? 'bold' : 'normal'}>
-              {getLanguageName(language)}
-            </Text>
-          </div>
-        ))}
+      <div data-language-grid className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {availableLanguages.map((language) => {
+          const languageName = getLanguageName(language) || language;
+          return (
+            <button
+              type="button"
+              data-language={language}
+              aria-label={languageName}
+              aria-pressed={language === currentLanguage}
+              className={clsx(
+                'min-h-[88px] flex items-center justify-center flex-col rounded-[8px] bg-newTableHeader hover:bg-newTableBorder p-[12px] cursor-pointer gap-2 focus-visible:ring-2 focus-visible:ring-textColor focus-visible:ring-offset-2 focus-visible:ring-offset-newBgColorInner disabled:cursor-not-allowed disabled:opacity-60',
+                language === currentLanguage
+                  ? 'border border-textColor'
+                  : 'border border-transparent'
+              )}
+              key={language}
+              onClick={() => void handleLanguageChange(language)}
+            >
+              <span aria-hidden="true">
+                <ReactCountryFlag
+                  countryCode={getCountryCodeForFlag(language)}
+                  svg
+                  style={{ width: '1.5em', height: '1.5em' }}
+                />
+              </span>
+              <Text weight={language === currentLanguage ? 'bold' : 'normal'}>
+                {languageName}
+              </Text>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -128,29 +129,35 @@ export const LanguageComponent = () => {
   const openModal = () => {
     modal.openModal({
       title: t('change_language', 'Change Language'),
+      closeButtonAriaLabel: t('close', 'Close'),
       withCloseButton: true,
+      size: 'min(600px, calc(100vw - 24px))',
       children: <ChangeLanguageComponent />,
     });
   };
   return (
-    <div
+    <button
+      type="button"
       onClick={openModal}
-      className="rounded-full overflow-hidden h-[22px] w-[22px] relative cursor-pointer"
+      aria-label={t('change_language', 'Change Language')}
+      aria-haspopup="dialog"
+      className="rounded-full overflow-hidden h-[44px] w-[44px] relative cursor-pointer focus-visible:ring-2 focus-visible:ring-textColor focus-visible:ring-offset-2 focus-visible:ring-offset-newBgColorInner disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <ReactCountryFlag
-        countryCode={getCountryCodeForFlag(currentLanguage)}
-        svg
-        style={{
-          width: '22px',
-          height: '22px',
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          objectFit: 'cover',
-        }}
-        title={currentLanguage}
-      />
-    </div>
+      <span aria-hidden="true">
+        <ReactCountryFlag
+          countryCode={getCountryCodeForFlag(currentLanguage)}
+          svg
+          style={{
+            width: '22px',
+            height: '22px',
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            objectFit: 'cover',
+          }}
+        />
+      </span>
+    </button>
   );
 };

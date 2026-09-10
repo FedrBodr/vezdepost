@@ -4,10 +4,10 @@ import React, {
   FC,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  ClipboardEvent,
   forwardRef,
   useImperativeHandle,
 } from 'react';
@@ -17,6 +17,8 @@ import EmojiPicker from 'emoji-picker-react';
 import { Theme } from 'emoji-picker-react';
 import { BoldText } from '@gitroom/frontend/components/new-launch/bold.text';
 import { UText } from '@gitroom/frontend/components/new-launch/u.text';
+import { ItalicText } from '@gitroom/frontend/components/new-launch/italic.text';
+import { StrikeText } from '@gitroom/frontend/components/new-launch/strike.text';
 import { SignatureBox } from '@gitroom/frontend/components/signature';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import {
@@ -33,23 +35,14 @@ import { useCopilotAction, useCopilotReadable } from '@copilotkit/react-core';
 import { useDropzone } from 'react-dropzone';
 import { useUppyUploader } from '@gitroom/frontend/components/media/new.uploader';
 import { Dashboard } from '@uppy/react';
-import Link from '@tiptap/extension-link';
-import {
-  useEditor,
-  EditorContent,
-  Extension,
-  mergeAttributes,
-} from '@tiptap/react';
+import { useEditor, EditorContent, mergeAttributes } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
-import Bold from '@tiptap/extension-bold';
 import Text from '@tiptap/extension-text';
 import Paragraph from '@tiptap/extension-paragraph';
-import Underline from '@tiptap/extension-underline';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { History } from '@tiptap/extension-history';
-import { BulletList, ListItem } from '@tiptap/extension-list';
 import { Bullets } from '@gitroom/frontend/components/new-launch/bullets.component';
-import Heading from '@tiptap/extension-heading';
+import { OrderedList } from '@gitroom/frontend/components/new-launch/ordered-list.component';
 import { HeadingComponent } from '@gitroom/frontend/components/new-launch/heading.component';
 import Mention from '@tiptap/extension-mention';
 import { suggestion } from '@gitroom/frontend/components/new-launch/mention.component';
@@ -68,36 +61,20 @@ import {
 } from '@gitroom/frontend/components/ui/icons';
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { PlainTextPasteExtension } from '@gitroom/frontend/components/new-launch/plain-text-paste.extension';
+import {
+  type EditorCapabilityV2,
+  getFormattingControls,
+  resolveEditorCapabilityV2,
+} from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
+import {
+  createCanonicalEditorExtensions,
+  getEditorCreationPolicy,
+  getEditorCreationPolicyKey,
+} from '@gitroom/frontend/components/new-launch/platform.editor.extensions';
+import { PlatformContentNotice } from '@gitroom/frontend/components/new-launch/platform.content.notice';
+import { deriveGlobalTargets } from '@gitroom/frontend/components/new-launch/global.targets';
 
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
-
-const InterceptBoldShortcut = Extension.create({
-  name: 'preventBoldWithUnderline',
-
-  addKeyboardShortcuts() {
-    return {
-      'Mod-b': () => {
-        // For example, toggle bold while removing underline
-        this?.editor?.commands?.unsetUnderline();
-        return this?.editor?.commands?.toggleBold();
-      },
-    };
-  },
-});
-
-const InterceptUnderlineShortcut = Extension.create({
-  name: 'preventUnderlineWithUnderline',
-
-  addKeyboardShortcuts() {
-    return {
-      'Mod-u': () => {
-        // For example, toggle bold while removing underline
-        this?.editor?.commands?.unsetBold();
-        return this?.editor?.commands?.toggleUnderline();
-      },
-    };
-  },
-});
 
 export const EditorWrapper: FC<{
   totalPosts: number;
@@ -109,8 +86,10 @@ export const EditorWrapper: FC<{
     setInternalValueText,
     addRemoveInternal,
     internal,
+    internalChannels,
     global,
     current,
+    setCurrent,
     addInternalValue,
     addGlobalValue,
     setInternalValueMedia,
@@ -126,23 +105,21 @@ export const EditorWrapper: FC<{
     setInternalValue,
     setInternalDelay,
     setGlobalDelay,
-    internalFromAll,
-    totalChars,
     postComment,
     dummy,
     editor,
     loadedState,
     setLoadedState,
     selectedIntegration,
-    chars,
     comments,
   } = useLaunchStore(
     useShallow((state) => ({
       internal: state.internal.find((p) => p.integration.id === state.current),
-      internalFromAll: state.integrations.find((p) => p.id === state.current),
+      internalChannels: state.internal,
       global: state.global,
       comments: state.comments,
       current: state.current,
+      setCurrent: state.setCurrent,
       addRemoveInternal: state.addRemoveInternal,
       dummy: state.dummy,
       setInternalValueText: state.setInternalValueText,
@@ -160,7 +137,6 @@ export const EditorWrapper: FC<{
       setInternalValue: state.setInternalValue,
       setGlobalDelay: state.setGlobalDelay,
       setInternalDelay: state.setInternalDelay,
-      totalChars: state.totalChars,
       appendInternalValueMedia: state.appendInternalValueMedia,
       appendGlobalValueMedia: state.appendGlobalValueMedia,
       postComment: state.postComment,
@@ -168,7 +144,6 @@ export const EditorWrapper: FC<{
       loadedState: state.loaded,
       setLoadedState: state.setLoaded,
       selectedIntegration: state.selectedIntegrations,
-      chars: state.chars,
     }))
   );
 
@@ -187,6 +162,29 @@ export const EditorWrapper: FC<{
   const canEdit = useMemo(() => {
     return current === 'global' || !!internal;
   }, [current, internal]);
+
+  const globalTargets = useMemo(
+    () => deriveGlobalTargets(selectedIntegration, internalChannels),
+    [selectedIntegration, internalChannels]
+  );
+
+  const customizePlatform = useCallback(
+    (targetIntegrationId: string) => {
+      const target = selectedIntegration.find(
+        (item) => item.integration.id === targetIntegrationId
+      );
+      if (!target) return;
+      if (
+        !internalChannels.some(
+          (item) => item.integration.id === target.integration.id
+        )
+      ) {
+        addRemoveInternal(target.integration.id);
+      }
+      setCurrent(target.integration.id);
+    },
+    [selectedIntegration, internalChannels, addRemoveInternal, setCurrent]
+  );
 
   const items = useMemo(() => {
     if (internal) {
@@ -437,6 +435,9 @@ export const EditorWrapper: FC<{
               <Editor
                 comments={comments}
                 editorType={editor}
+                identifier={current}
+                contentOwnerId={current}
+                postId={g.id}
                 allValues={items}
                 onChange={changeValue(index)}
                 key={index}
@@ -447,12 +448,14 @@ export const EditorWrapper: FC<{
                 setImages={changeImages(index)}
                 autoComplete={canEdit}
                 validateChars={true}
-                identifier={internalFromAll?.identifier || 'global'}
-                totalChars={totalChars}
                 appendImages={appendImages(index)}
                 dummy={dummy}
-                selectedIntegration={selectedIntegration}
-                chars={chars}
+                selectedIntegration={
+                  current === 'global' ? globalTargets : selectedIntegration
+                }
+                onCustomize={
+                  current === 'global' ? customizePlatform : undefined
+                }
                 childButton={
                   <>
                     {(canEdit && items.length - 1 === index) || !comments ? (
@@ -528,6 +531,10 @@ export const EditorWrapper: FC<{
 
 export const Editor: FC<{
   editorType?: 'none' | 'normal' | 'markdown' | 'html';
+  identifier?: string;
+  contentOwnerId?: string;
+  postId?: string;
+  editorCapability?: EditorCapabilityV2;
   totalPosts: number;
   value: string;
   num?: number;
@@ -539,11 +546,12 @@ export const Editor: FC<{
   autoComplete?: boolean;
   validateChars?: boolean;
   comments: boolean | 'no-media';
-  identifier?: string;
   totalChars?: number;
   selectedIntegration: SelectedIntegrations[];
   dummy: boolean;
-  chars: Record<string, number>;
+  /** @deprecated V2 counters do not trust the client-writable chars map. */
+  chars?: Record<string, number>;
+  onCustomize?: (targetIntegrationId: string) => void;
   childButton?: React.ReactNode;
 }> = (props) => {
   const {
@@ -552,18 +560,43 @@ export const Editor: FC<{
     pictures,
     setImages,
     num,
-    identifier,
     appendImages,
     dummy,
-    chars,
     childButton,
     comments,
   } = props;
+  const editorCapability = useMemo(
+    () =>
+      props.editorCapability ||
+      resolveEditorCapabilityV2(
+        props.identifier ?? 'global',
+        props.selectedIntegration,
+        [],
+        props.value || '',
+        props.pictures || []
+      ),
+    [
+      props.editorCapability,
+      props.identifier,
+      props.selectedIntegration,
+      props.value,
+      props.pictures,
+    ]
+  );
+  const formattingControls = useMemo(
+    () => getFormattingControls(editorCapability),
+    [editorCapability]
+  );
+  const editorCreationPolicyKey = useMemo(
+    () => getEditorCreationPolicyKey(editorCapability),
+    [editorCapability]
+  );
   const [id] = useState(makeId(10));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const t = useT();
   const toaster = useToaster();
   const editorRef = useRef<undefined | { editor: any }>(undefined);
+  const [activeEditor, setActiveEditor] = useState<any>();
   const [loading, setLoading] = useState(false);
 
   const uppy = useUppyUploader({
@@ -601,18 +634,16 @@ export const Editor: FC<{
   );
 
   const paste = useCallback(
-    async (event: ClipboardEvent | File[]) => {
+    async (event: globalThis.ClipboardEvent) => {
       if (num > 0 && comments === 'no-media') {
         return;
       }
-      // @ts-ignore
       const clipboardItems = event.clipboardData?.items;
       if (!clipboardItems) {
         return;
       }
 
       const files: File[] = [];
-      // @ts-ignore
       for (const item of clipboardItems) {
         if (item.kind === 'file') {
           const file = item.getAsFile();
@@ -666,10 +697,10 @@ export const Editor: FC<{
 
   const addText = useCallback(
     (emoji: string) => {
-      editorRef?.current?.editor?.commands?.insertContent(emoji);
-      editorRef?.current?.editor?.commands?.focus();
+      activeEditor?.commands?.insertContent(emoji);
+      activeEditor?.commands?.focus();
     },
-    [props.value, id]
+    [activeEditor]
   );
 
   const [loadedEditor, setLoadedEditor] = useState(editorType);
@@ -716,9 +747,15 @@ export const Editor: FC<{
             </div>
             <div className="px-[10px] pt-[10px] bg-newBgColorInner rounded-t-[6px] relative z-[99]">
               <OnlyEditor
+                key={JSON.stringify([
+                  props.contentOwnerId ?? props.identifier ?? 'standalone',
+                  props.postId ?? id,
+                  editorCreationPolicyKey,
+                ])}
                 value={props.value}
-                editorType={editorType}
+                capability={editorCapability}
                 onChange={props.onChange}
+                onEditorChange={setActiveEditor}
                 paste={paste}
                 ref={editorRef}
               />
@@ -769,46 +806,52 @@ export const Editor: FC<{
                   name="image"
                   information={
                     <InformationComponent
+                      capability={editorCapability}
                       isPicture={pictures?.length > 0}
-                      chars={chars}
-                      totalChars={valueWithoutHtml.length}
-                      totalAllowedChars={props.totalChars}
-                      text={valueWithoutHtml}
                     />
                   }
                   toolBar={
                     <div className="flex gap-[5px]">
-                      <SignatureBox editor={editorRef?.current?.editor} />
-                      {editorType !== 'none' && (
-                        <>
-                          <UText
-                            editor={editorRef?.current?.editor}
-                            currentValue={props.value!}
-                          />
-                          <BoldText
-                            editor={editorRef?.current?.editor}
-                            currentValue={props.value!}
-                          />
-                        </>
+                      <SignatureBox editor={activeEditor} />
+                      {formattingControls.includes('underline') && (
+                        <UText
+                          editor={activeEditor}
+                          currentValue={props.value!}
+                        />
                       )}
-                      {(editorType === 'markdown' || editorType === 'html') &&
-                        identifier !== 'telegram' &&
-                        identifier !== 'max' && (
-                          <>
-                            <AComponent
-                              editor={editorRef?.current?.editor}
-                              currentValue={props.value!}
-                            />
-                            <Bullets
-                              editor={editorRef?.current?.editor}
-                              currentValue={props.value!}
-                            />
-                            <HeadingComponent
-                              editor={editorRef?.current?.editor}
-                              currentValue={props.value!}
-                            />
-                          </>
-                        )}
+                      {formattingControls.includes('bold') && (
+                        <BoldText
+                          editor={activeEditor}
+                          currentValue={props.value!}
+                        />
+                      )}
+                      {formattingControls.includes('italic') && (
+                        <ItalicText editor={activeEditor} />
+                      )}
+                      {formattingControls.includes('strike') && (
+                        <StrikeText editor={activeEditor} />
+                      )}
+                      {formattingControls.includes('link') && (
+                        <AComponent
+                          editor={activeEditor}
+                          currentValue={props.value!}
+                        />
+                      )}
+                      {formattingControls.includes('list') && (
+                        <Bullets
+                          editor={activeEditor}
+                          currentValue={props.value!}
+                        />
+                      )}
+                      {formattingControls.includes('ordered-list') && (
+                        <OrderedList editor={activeEditor} />
+                      )}
+                      {formattingControls.includes('heading') && (
+                        <HeadingComponent
+                          editor={activeEditor}
+                          currentValue={props.value!}
+                        />
+                      )}
                       <div
                         data-tooltip-id="tooltip"
                         data-tooltip-content={t('insert_emoji', 'Insert Emoji')}
@@ -854,6 +897,12 @@ export const Editor: FC<{
           </div>
         </div>
       </div>
+      {!!editorCapability.diagnostics.length && (
+        <PlatformContentNotice
+          diagnostics={editorCapability.diagnostics}
+          onCustomize={props.onCustomize}
+        />
+      )}
     </div>
   );
 };
@@ -861,14 +910,57 @@ export const Editor: FC<{
 export const OnlyEditor = forwardRef<
   any,
   {
-    editorType: 'none' | 'normal' | 'markdown' | 'html';
+    capability: Pick<EditorCapabilityV2, 'formatting'>;
     value: string;
     onChange: (value: string) => void;
-    paste?: (event: ClipboardEvent | File[]) => void;
+    onEditorChange?: (editor: any) => void;
+    paste?: (event: globalThis.ClipboardEvent) => void;
   }
->(({ editorType, value, onChange, paste }, ref) => {
+>(({ capability, value, onChange, onEditorChange, paste }, ref) => {
   const t = useT();
   const fetch = useFetch();
+  const {
+    bold,
+    underline,
+    italic,
+    strike,
+    links,
+    lists,
+    orderedLists,
+    headings,
+  } = capability.formatting;
+  const canonicalEditorExtensions = useMemo(
+    () =>
+      createCanonicalEditorExtensions({
+        formatting: {
+          bold,
+          underline,
+          italic,
+          strike,
+          links,
+          lists,
+          orderedLists,
+          headings,
+        },
+      }),
+    [bold, headings, italic, links, lists, orderedLists, strike, underline]
+  );
+  const editorCreationPolicy = useMemo(
+    () =>
+      getEditorCreationPolicy({
+        formatting: {
+          bold,
+          underline,
+          italic,
+          strike,
+          links,
+          lists,
+          orderedLists,
+          headings,
+        },
+      }),
+    [bold, headings, italic, links, lists, orderedLists, strike, underline]
+  );
 
   const { internal } = useLaunchStore(
     useShallow((state) => ({
@@ -911,95 +1003,18 @@ export const OnlyEditor = forwardRef<
       Document,
       Paragraph,
       Text,
-      PlainTextPasteExtension,
-      Underline,
-      Bold,
-      InterceptBoldShortcut,
-      InterceptUnderlineShortcut,
-      BulletList,
-      ListItem,
+      PlainTextPasteExtension.configure({
+        applyPasteRules:
+          editorCreationPolicy.bold ||
+          editorCreationPolicy.italic ||
+          editorCreationPolicy.strike ||
+          editorCreationPolicy.link,
+      }),
+      ...canonicalEditorExtensions,
       Placeholder.configure({
         placeholder: t('write_something', 'Write something …'),
         emptyEditorClass: 'is-editor-empty',
       }),
-      ...(editorType === 'html' || editorType === 'markdown'
-        ? [
-            Link.configure({
-              openOnClick: false,
-              autolink: true,
-              defaultProtocol: 'https',
-              protocols: ['http', 'https'],
-              isAllowedUri: (url, ctx) => {
-                try {
-                  // prevent transforming plain emails like foo@bar.com into links
-                  const trimmed = String(url).trim();
-                  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                  if (emailPattern.test(trimmed)) {
-                    return false;
-                  }
-
-                  // construct URL
-                  const parsedUrl = url.includes(':')
-                    ? new URL(url)
-                    : new URL(`${ctx.defaultProtocol}://${url}`);
-
-                  // use default validation
-                  if (!ctx.defaultValidate(parsedUrl.href)) {
-                    return false;
-                  }
-
-                  // disallowed protocols
-                  const disallowedProtocols = ['ftp', 'file', 'mailto'];
-                  const protocol = parsedUrl.protocol.replace(':', '');
-
-                  if (disallowedProtocols.includes(protocol)) {
-                    return false;
-                  }
-
-                  // only allow protocols specified in ctx.protocols
-                  const allowedProtocols = ctx.protocols.map((p) =>
-                    typeof p === 'string' ? p : p.scheme
-                  );
-
-                  if (!allowedProtocols.includes(protocol)) {
-                    return false;
-                  }
-
-                  // all checks have passed
-                  return true;
-                } catch {
-                  return false;
-                }
-              },
-              shouldAutoLink: (url) => {
-                try {
-                  // prevent auto-linking of plain emails like foo@bar.com
-                  const trimmed = String(url).trim();
-                  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                  if (emailPattern.test(trimmed)) {
-                    return false;
-                  }
-
-                  // construct URL
-                  const parsedUrl = url.includes(':')
-                    ? new URL(url)
-                    : new URL(`https://${url}`);
-
-                  // only auto-link if the domain is not in the disallowed list
-                  const disallowedDomains = [
-                    'example-no-autolink.com',
-                    'another-no-autolink.com',
-                  ];
-                  const domain = parsedUrl.hostname;
-
-                  return !disallowedDomains.includes(domain);
-                } catch {
-                  return false;
-                }
-              },
-            }),
-          ]
-        : []),
       ...(internal?.integration?.id
         ? [
             Mention.configure({
@@ -1020,13 +1035,6 @@ export const OnlyEditor = forwardRef<
             }),
           ]
         : []),
-      ...(editorType === 'html' || editorType === 'markdown'
-        ? [
-            Heading.configure({
-              levels: [1, 2, 3],
-            }),
-          ]
-        : []),
       History.configure({
         depth: 100, // default is 100
         newGroupDelay: 100, // default is 500ms
@@ -1035,8 +1043,9 @@ export const OnlyEditor = forwardRef<
     content: value || '',
     shouldRerenderOnTransaction: true,
     immediatelyRender: false,
-    // @ts-ignore
-    onPaste: paste,
+    ...(paste
+      ? { onPaste: (event: globalThis.ClipboardEvent) => paste(event) }
+      : {}),
     onUpdate: (innerProps) => {
       onChange?.(innerProps.editor.getHTML());
     },
@@ -1045,6 +1054,11 @@ export const OnlyEditor = forwardRef<
   useImperativeHandle(ref, () => ({
     editor,
   }));
+
+  useLayoutEffect(() => {
+    onEditorChange?.(editor);
+    return () => onEditorChange?.(undefined);
+  }, [editor, onEditorChange]);
 
   return <EditorContent editor={editor} />;
 });

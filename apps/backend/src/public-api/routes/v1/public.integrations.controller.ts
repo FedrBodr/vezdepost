@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpException,
   Param,
@@ -37,7 +38,7 @@ import { UploadDto } from '@gitroom/nestjs-libraries/dtos/media/upload.dto';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { GetNotificationsDto } from '@gitroom/nestjs-libraries/dtos/notifications/get.notifications.dto';
 import { Readable } from 'stream';
-import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fromBuffer } = require('file-type');
 
@@ -62,6 +63,10 @@ import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abst
 import { PostValidationException } from '@gitroom/backend/api/routes/posts.validation.exception';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+import {
+  PostValidationFailure,
+  selectPostValidationFailure,
+} from '@gitroom/nestjs-libraries/database/prisma/posts/post.validation';
 
 @ApiTags('Public API')
 @Controller('/public/v1')
@@ -103,32 +108,16 @@ export class PublicIntegrationsController {
     @Body() body: UploadDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    let response: globalThis.Response;
+    let buffer: Buffer;
     try {
-      response = await fetch(body.url, {
-        // @ts-ignore — undici option, not in lib.dom fetch types
-        dispatcher: ssrfSafeDispatcher,
+      buffer = await readMediaSourceBuffer(body.url, {
+        maxBytes: getMaxSize('video/mp4'),
       });
     } catch {
       // Network-level failure (DNS, connection refused, SSRF block, etc.) —
       // fetch rejects rather than returning a non-ok response.
       throw new HttpException({ msg: 'Failed to fetch URL' }, 400);
     }
-    if (!response.ok) {
-      throw new HttpException({ msg: 'Failed to fetch URL' }, 400);
-    }
-
-    // Guard against OOM: bail out before buffering the whole body into memory.
-    // Content-Length may be absent or wrong, so we re-check the real size after
-    // download too. The type isn't known yet (sniffed below), so the pre-check
-    // uses the largest allowed cap (video).
-    const maxDownloadSize = getMaxSize('video/mp4');
-    const declaredSize = Number(response.headers.get('content-length'));
-    if (declaredSize && declaredSize > maxDownloadSize) {
-      throw new HttpException({ msg: 'File is too large.' }, 400);
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
     const detected = await fromBuffer(buffer);
     if (!detected || !PUBLIC_API_ALLOWED_MIME.has(detected.mime)) {
       throw new HttpException({ msg: 'Unsupported file type.' }, 400);
@@ -197,24 +186,6 @@ export class PublicIntegrationsController {
     );
     body.type = rawBody.type;
 
-    if (
-      process.env.RESTRICT_UPLOAD_DOMAINS &&
-      body.posts.some((p) =>
-        p.value.some((a) =>
-          a.image.some(
-            (i) => i.path.indexOf(process.env.RESTRICT_UPLOAD_DOMAINS) === -1
-          )
-        )
-      )
-    ) {
-      throw new HttpException(
-        {
-          msg: `All media must be uploaded through our upload API route and contain the domain: ${process.env.RESTRICT_UPLOAD_DOMAINS}`,
-        },
-        400
-      );
-    }
-
     // Server-side validation — same rules as the dashboard, surfaced as a
     // readable 400 (see PostValidationExceptionFilter).
     const validation = await this._postsService.validatePosts(
@@ -222,7 +193,10 @@ export class PublicIntegrationsController {
       body.posts
     );
 
-    const fail = (item: (typeof validation)[number], error: string) => {
+    const fail = (
+      item: { identifier: string; name: string },
+      error: string
+    ) => {
       throw new PostValidationException({
         provider: item.identifier,
         name: item.name,
@@ -230,27 +204,12 @@ export class PublicIntegrationsController {
       });
     };
 
-    for (const item of validation) {
-      if (item.emptyContent) {
-        fail(
-          item,
-          'Your post should have at least one character or one image.'
-        );
-      }
-    }
-
-    if (body.type !== 'draft') {
-      for (const item of validation) {
-        if (!item.valid) {
-          fail(item, item.settingsError || 'Please fix your settings');
-        }
-        if (item.errors !== true) {
-          fail(item, item.errors as string);
-        }
-        if (item.tooLong) {
-          fail(item, 'post is too long, please fix it');
-        }
-      }
+    const failure = selectPostValidationFailure(
+      validation,
+      body.type === 'draft'
+    );
+    if (failure) {
+      fail(failure.item, this.validationError(failure));
     }
 
     const allowedCreationMethods = ['CLI', 'API'] as const;
@@ -261,6 +220,21 @@ export class PublicIntegrationsController {
       : 'API';
 
     return this._postsService.createPost(org.id, body, creationMethod);
+  }
+
+  private validationError(failure: PostValidationFailure) {
+    switch (failure.category) {
+      case 'empty-content':
+        return 'Your post should have at least one character or one image.';
+      case 'invalid-settings':
+        return failure.item.settingsError || 'Please fix your settings';
+      case 'provider-validity':
+        return failure.item.errors as string;
+      case 'too-long':
+        return 'post is too long, please fix it';
+      case 'content-error':
+        return failure.item.contentError!;
+    }
   }
 
   @Delete('/posts/:id')
@@ -336,7 +310,7 @@ export class PublicIntegrationsController {
         .getAllowedSocialsIntegrations()
         .includes(integration)
     ) {
-      throw new HttpException({ msg: 'Integration not allowed' }, 400);
+      throw new ForbiddenException('Integration not available');
     }
 
     const integrationProvider =

@@ -29,7 +29,6 @@ import {
   minifyPostsList,
   minifyPosts,
 } from '@gitroom/helpers/utils/posts.list.minify';
-import axios from 'axios';
 import sharp from 'sharp';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { Readable } from 'stream';
@@ -48,16 +47,37 @@ import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
-import { stripLinks } from '@gitroom/helpers/utils/strip.links';
+import {
+  ValidUrlExtension,
+  ValidUrlPath,
+} from '@gitroom/helpers/utils/valid.url.path';
+import {
+  SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+  SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+  fetchRemoteBuffer,
+} from '@gitroom/helpers/utils/ssrf.safe.fetch';
+import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
-import { weightedLength } from '@gitroom/helpers/utils/count.length';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
+import { normalizedFieldMeasurementValue } from '@gitroom/helpers/utils/platform.content.normalizers';
+import {
+  PostValidationFailure,
+  selectPostValidationFailure,
+} from '@gitroom/nestjs-libraries/database/prisma/posts/post.validation';
+import {
+  resolveAppOwnedLocalUploadFilePath,
+  resolveLocalUploadFilePath,
+} from '@gitroom/helpers/utils/local.upload.path';
 
 type PostWithConditionals = Post & {
   integration?: Integration;
   childrenPost: Post[];
 };
+
+const mediaPathValidator = new ValidUrlPath();
+const mediaExtensionValidator = new ValidUrlExtension();
+const mediaValidationArguments = {} as any;
 
 @Injectable()
 export class PostsService {
@@ -349,90 +369,158 @@ export class PostsService {
     );
   }
 
-  async updateMedia(id: string, imagesList: any[], convertToJPEG = false) {
-    try {
-      let imageUpdateNeeded = false;
-      const getImageList = await Promise.all(
-        (
-          await Promise.all(
-            (imagesList || []).map(async (p: any) => {
-              if (!p.path && p.id) {
-                imageUpdateNeeded = true;
-                return this._mediaService.getMediaById(p.id);
-              }
+  async resolveMediaSources(imagesList: any[] | null): Promise<any[]> {
+    if (imagesList === null) {
+      return [];
+    }
+    if (!Array.isArray(imagesList)) {
+      throw new BadRequestException('Invalid media list.');
+    }
+    if (
+      imagesList.some(
+        (item) =>
+          !item ||
+          typeof item !== 'object' ||
+          (!item.path && (typeof item.id !== 'string' || !item.id))
+      )
+    ) {
+      throw new BadRequestException('Invalid media attachment.');
+    }
 
-              return p;
-            })
+    try {
+      const resolved = await Promise.all(
+        imagesList.map(async (media: any) => {
+          if (media.path) return media;
+          const stored = await this._mediaService.getMediaById(media.id);
+          if (!stored) {
+            throw new BadRequestException('Invalid media attachment.');
+          }
+          return stored;
+        })
+      );
+      return resolved.map((media) => {
+        if (
+          typeof media?.path !== 'string' ||
+          !media.path ||
+          !mediaPathValidator.validate(media.path, mediaValidationArguments) ||
+          !mediaExtensionValidator.validate(
+            media.path,
+            mediaValidationArguments
           )
-        )
-          .map((m) => {
-            return {
-              ...m,
+        ) {
+          throw new BadRequestException('Invalid media attachment.');
+        }
+        return media;
+      });
+    } catch (err: any) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      throw new Error('Unable to prepare media safely.');
+    }
+  }
+
+  async updateMedia(
+    id: string,
+    imagesList: any[] | null,
+    convertToJPEG = false
+  ) {
+    let imageUpdateNeeded =
+      Array.isArray(imagesList) &&
+      imagesList.some((media) => !media?.path && media?.id);
+
+    try {
+      const resolvedMedia = (await this.resolveMediaSources(imagesList)).map(
+        (media) => {
+          const isRemote = /^https?:\/\//i.test(media.path);
+          const localFile = isRemote
+            ? resolveAppOwnedLocalUploadFilePath(media.path)
+            : resolveLocalUploadFilePath(media.path);
+          if (!isRemote && !localFile) {
+            throw new BadRequestException('Invalid media attachment.');
+          }
+          return {
+            ...media,
+            url: !isRemote
+              ? process.env.FRONTEND_URL +
+                '/' +
+                process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
+                media.path
+              : media.path,
+            type: hasExtension(media.path, 'mp4') ? 'video' : 'image',
+            path: !isRemote ? localFile : media.path,
+          };
+        }
+      );
+      const getImageList = await Promise.all(
+        resolvedMedia.map(async (media) => {
+          if (!convertToJPEG) {
+            return media;
+          }
+
+          if (media.type === 'image' && hasExtension(media.path, 'png')) {
+            imageUpdateNeeded = true;
+            const isRemote = /^https?:\/\//i.test(media.path);
+            const localFile = isRemote
+              ? resolveAppOwnedLocalUploadFilePath(media.path)
+              : resolveLocalUploadFilePath(media.path);
+            const imageBuffer = localFile
+              ? await readOrFetch(localFile)
+              : await fetchRemoteBuffer(media.url, {
+                  maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+                  bodyTimeoutMs: SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+                });
+
+            const buffer = await sharp(imageBuffer)
+              .jpeg({ quality: 100 })
+              .toBuffer();
+
+            const { path, originalname } = await this.storage.uploadFile({
+              buffer,
+              mimetype: 'image/jpeg',
+              size: buffer.length,
+              path: '',
+              fieldname: '',
+              destination: '',
+              stream: new Readable(),
+              filename: '',
+              originalname: '',
+              encoding: '',
+            });
+
+            const converted = {
+              ...media,
+              name: originalname,
               url:
-                m.path.indexOf('http') === -1
+                path.indexOf('http') === -1
                   ? process.env.FRONTEND_URL +
                     '/' +
                     process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
-                    m.path
-                  : m.path,
-              type: m.type || (hasExtension(m.path, 'mp4') ? 'video' : 'image'),
+                    path
+                  : path,
+              type: 'image',
               path:
-                m.path.indexOf('http') === -1
-                  ? process.env.UPLOAD_DIRECTORY + m.path
-                  : m.path,
+                path.indexOf('http') === -1
+                  ? process.env.UPLOAD_DIRECTORY + path
+                  : path,
             };
-          })
-          .map(async (m) => {
-            if (!convertToJPEG) {
-              return m;
+            if (
+              !mediaPathValidator.validate(
+                converted.path,
+                mediaValidationArguments
+              ) ||
+              !mediaExtensionValidator.validate(
+                converted.path,
+                mediaValidationArguments
+              )
+            ) {
+              throw new BadRequestException('Invalid media attachment.');
             }
+            return converted;
+          }
 
-            if (m.type === 'image' && hasExtension(m.path, 'png')) {
-              imageUpdateNeeded = true;
-              const response = await axios.get(m.url, {
-                responseType: 'arraybuffer',
-              });
-
-              const imageBuffer = Buffer.from(response.data);
-
-              // Use sharp to get the metadata of the image
-              const buffer = await sharp(imageBuffer)
-                .jpeg({ quality: 100 })
-                .toBuffer();
-
-              const { path, originalname } = await this.storage.uploadFile({
-                buffer,
-                mimetype: 'image/jpeg',
-                size: buffer.length,
-                path: '',
-                fieldname: '',
-                destination: '',
-                stream: new Readable(),
-                filename: '',
-                originalname: '',
-                encoding: '',
-              });
-
-              return {
-                ...m,
-                name: originalname,
-                url:
-                  path.indexOf('http') === -1
-                    ? process.env.FRONTEND_URL +
-                      '/' +
-                      process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY +
-                      path
-                    : path,
-                type: 'image',
-                path:
-                  path.indexOf('http') === -1
-                    ? process.env.UPLOAD_DIRECTORY + path
-                    : path,
-              };
-            }
-
-            return m;
-          })
+          return media;
+        })
       );
 
       if (imageUpdateNeeded) {
@@ -444,7 +532,10 @@ export class PostsService {
 
       return getImageList;
     } catch (err: any) {
-      return imagesList;
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      throw new Error('Unable to prepare media safely.');
     }
   }
 
@@ -774,13 +865,15 @@ export class PostsService {
       value: Array<{
         content?: string;
         image?: Array<{
+          id?: string;
           path: string;
           thumbnail?: string;
           type?: 'image' | 'video' | string;
         }>;
       }>;
       settings?: any;
-    }>
+    }>,
+    options: { v2Only?: boolean } = {}
   ) {
     return Promise.all(
       (posts || []).map(async (post) => {
@@ -814,7 +907,7 @@ export class PostsService {
         // Settings DTO validation — mirrors the client `form.trigger()`.
         let valid = true;
         let settingsError = '';
-        if (provider?.dto) {
+        if (!options.v2Only && provider?.dto) {
           const instance = plainToInstance(provider.dto, settings, {
             enableImplicitConversion: false,
           });
@@ -827,32 +920,71 @@ export class PostsService {
 
         // Provider-specific media validation (the old client `checkValidity`).
         let errors: string | true = true;
-        try {
-          errors = await provider.checkValidity(
-            media,
-            settings,
-            additionalSettings
-          );
-        } catch (err: any) {
-          errors = err?.message || 'Invalid media';
+        if (!options.v2Only) {
+          try {
+            errors = await provider.checkValidity(
+              media,
+              settings,
+              additionalSettings
+            );
+          } catch (err: any) {
+            errors = err?.message || 'Invalid media';
+          }
         }
 
-        const maximumCharacters = provider.maxLength(additionalSettings);
-        const isX = integration.providerIdentifier === 'x';
+        const contentAnalyses = await Promise.all(
+          (post.value || []).map(async (item) => {
+            const resolvedMedia = await this.validationMedia(item.image || []);
+            const capabilities =
+              await this._integrationManager.resolveCapabilitiesV2({
+                providerName: integration.providerIdentifier,
+                settings,
+                media: resolvedMedia,
+                integration,
+              });
+            const analysis = analyzePlatformContentV2({
+              canonicalHtml: item.content || '',
+              settings,
+              media: resolvedMedia,
+              capability: capabilities,
+              convertMentionFunction: provider.mentionFormat,
+            });
 
-        const emptyContent = (post.value || []).some((a) => {
-          const strip = stripHtmlValidation('normal', a.content || '', true);
-          const length = isX ? weightedLength(strip) : strip.length;
-          return length === 0 && (a.image || []).length === 0;
-        });
-
-        const tooLong = (post.value || []).some((a) => {
-          const strip = stripHtmlValidation('normal', a.content || '', true);
-          const weighted = isX ? weightedLength(strip) : strip.length;
-          const totalCharacters =
-            weighted > strip.length ? weighted : strip.length;
-          return totalCharacters > (maximumCharacters || 1000000);
-        });
+            return {
+              analysis,
+              capabilities,
+              media: resolvedMedia,
+            };
+          })
+        );
+        const contentMessages = contentAnalyses.flatMap(
+          ({ analysis }) => analysis.diagnostics
+        );
+        const contentError =
+          contentAnalyses
+            .flatMap(({ analysis }) => analysis.diagnostics)
+            .find((item) => item.severity === 'error')?.message || '';
+        const emptyContent = contentAnalyses.some(
+          ({ analysis, capabilities, media: resolvedMedia }) =>
+            resolvedMedia.length === 0 &&
+            capabilities.fields.every((field) => {
+              const normalized = analysis.fields[field.key];
+              return (
+                !normalized ||
+                normalizedFieldMeasurementValue(normalized.value, field).trim()
+                  .length === 0
+              );
+            })
+        );
+        const tooLong = contentAnalyses.some(
+          ({ analysis, capabilities }) =>
+            capabilities.verification === 'unverified-adapter' &&
+            analysis.diagnostics.some((item) => item.code === 'text-too-long')
+        );
+        const maximumCharacters =
+          contentAnalyses[0]?.capabilities.fields.find(
+            ({ source, limit }) => source === 'canonical-editor' && !!limit
+          )?.limit?.max || provider.maxLength(additionalSettings);
 
         return {
           id: integration.id,
@@ -864,6 +996,8 @@ export class PostsService {
           emptyContent,
           tooLong,
           maximumCharacters,
+          contentMessages,
+          contentError,
         };
       })
     );
@@ -885,33 +1019,98 @@ export class PostsService {
     return '';
   }
 
+  private async validationMedia(
+    media: Array<{ id?: string; path?: string; type?: string }>
+  ): Promise<Array<{ type: 'image' | 'video' }>> {
+    if (!Array.isArray(media)) {
+      throw new BadRequestException('Invalid media list.');
+    }
+
+    try {
+      return await Promise.all(
+        media.map(async (item) => {
+          if (!item || typeof item !== 'object') {
+            throw new BadRequestException('Invalid media attachment.');
+          }
+          const stored =
+            !item.path &&
+            item.id &&
+            typeof (this._mediaService as any)?.getMediaById === 'function'
+              ? await this._mediaService.getMediaById(item.id)
+              : undefined;
+          const trusted = stored || item;
+          if (
+            typeof trusted?.path !== 'string' ||
+            !trusted.path ||
+            !mediaPathValidator.validate(
+              trusted.path,
+              mediaValidationArguments
+            ) ||
+            !mediaExtensionValidator.validate(
+              trusted.path,
+              mediaValidationArguments
+            )
+          ) {
+            throw new BadRequestException('Invalid media attachment.');
+          }
+          return {
+            type: hasExtension(trusted.path, 'mp4')
+              ? ('video' as const)
+              : ('image' as const),
+          };
+        })
+      );
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('Invalid media attachment.');
+    }
+  }
+
   async createPost(
     orgId: string,
     body: CreatePostDto,
     creationMethod: CreationMethod
   ): Promise<any[]> {
+    const preparedPosts = await Promise.all(
+      body.posts.map(async (post) => {
+        const provider = this._integrationManager.getSocialIntegration(
+          (post.settings as any)?.__type
+        );
+        const removeLinks = !!provider?.stripLinks?.();
+        const messages = (post.value || []).map((item) => item.content);
+        const updateContent =
+          !body.shortLink || removeLinks
+            ? messages
+            : await this._shortLinkService.convertTextToShortLinks(
+                orgId,
+                messages
+              );
+
+        return {
+          ...post,
+          value: (post.value || []).map((item, index) => ({
+            ...item,
+            content: updateContent[index],
+          })),
+        };
+      })
+    );
+
+    const finalValidation = await this.validatePosts(orgId, preparedPosts, {
+      v2Only: true,
+    });
+    const finalFailure = selectPostValidationFailure(
+      finalValidation,
+      body.type === 'draft'
+    );
+    if (finalFailure) {
+      throw new BadRequestException(this.validationError(finalFailure));
+    }
+
     const postList = [];
-    for (const post of body.posts) {
-      const provider = this._integrationManager.getSocialIntegration(
-        (post.settings as any)?.__type
-      );
-      const removeLinks = !!provider?.stripLinks?.();
-
-      const messages = (post.value || []).map((p) => p.content);
-      // No point shortlinking links on platforms that strip them out anyway
-      const updateContent =
-        !body.shortLink || removeLinks
-          ? messages
-          : await this._shortLinkService.convertTextToShortLinks(
-              orgId,
-              messages
-            );
-
-      post.value = (post.value || []).map((p, i) => ({
-        ...p,
-        content: removeLinks ? stripLinks(updateContent[i]) : updateContent[i],
-      }));
-
+    for (const post of preparedPosts) {
       const { posts } = await this._postRepository.createOrUpdatePost(
         body.type,
         orgId,
@@ -963,6 +1162,33 @@ export class PostsService {
       throw new BadRequestException('Post not found');
     }
 
+    if (status === 'schedule' && getPostById.state === 'DRAFT') {
+      const persistedGroup = await this._postRepository.getPostsByGroup(
+        orgId,
+        getPostById.group
+      );
+      const validationPosts = this.persistedValidationThread(
+        persistedGroup,
+        getPostById
+      );
+      const rootPost = validationPosts[0];
+      const validation = await this.validatePosts(orgId, [
+        {
+          integration: { id: rootPost.integrationId },
+          settings: this.parsePersistedJson(rootPost.settings, {}),
+          value: validationPosts.map((post) => ({
+            content: post.content,
+            image: this.parsePersistedJson(post.image, []),
+            delay: post.delay || 0,
+          })),
+        },
+      ]);
+      const failure = selectPostValidationFailure(validation, false);
+      if (failure) {
+        throw new BadRequestException(this.validationError(failure));
+      }
+    }
+
     const state: State = status === 'draft' ? 'DRAFT' : 'QUEUE';
     await this._postRepository.changeState(id, state);
 
@@ -976,6 +1202,65 @@ export class PostsService {
     } catch (err) {}
 
     return { id, state };
+  }
+
+  private parsePersistedJson<T>(value: string | null, fallback: T): T {
+    try {
+      return JSON.parse(value || '') as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private persistedValidationThread(groupPosts: any[], requestedPost: any) {
+    const integrationPosts = groupPosts.filter(
+      (post) => post.integrationId === requestedPost.integrationId
+    );
+    const postsById = new Map(
+      integrationPosts.map((post) => [post.id, post] as const)
+    );
+    let rootPost = postsById.get(requestedPost.id) || requestedPost;
+    const ancestorIds = new Set<string>();
+
+    while (rootPost.parentPostId && !ancestorIds.has(rootPost.id)) {
+      ancestorIds.add(rootPost.id);
+      const parent = postsById.get(rootPost.parentPostId);
+      if (!parent) {
+        break;
+      }
+      rootPost = parent;
+    }
+
+    const orderedPosts: any[] = [];
+    const appendedIds = new Set<string>();
+    const appendThread = (post: any) => {
+      if (appendedIds.has(post.id)) {
+        return;
+      }
+      appendedIds.add(post.id);
+      orderedPosts.push(post);
+      integrationPosts
+        .filter((candidate) => candidate.parentPostId === post.id)
+        .forEach(appendThread);
+    };
+    appendThread(rootPost);
+
+    return orderedPosts;
+  }
+
+  private validationError(failure: PostValidationFailure) {
+    switch (failure.category) {
+      case 'empty-content':
+        return 'Your post should have at least one character or one image.';
+      case 'invalid-settings':
+        return failure.item.settingsError || 'Please fix your settings';
+      case 'provider-validity':
+        return failure.item.errors as string;
+      case 'too-long':
+        return 'post is too long, please fix it';
+      case 'content-error':
+        return failure.item.contentError!;
+    }
   }
 
   async changeDate(

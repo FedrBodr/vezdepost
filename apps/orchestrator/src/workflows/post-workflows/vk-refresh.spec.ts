@@ -63,6 +63,12 @@ const workflows = [
   ['v1.0.5', postWorkflowV105],
 ] as const;
 
+const preflightFailures = [
+  ['unsafe media source', 'Blocked remote media URL'],
+  ['missing media source', 'Invalid media source'],
+  ['malformed media payload', 'Invalid publication media'],
+] as const;
+
 describe('VK workflow token refresh', () => {
   beforeEach(() => {
     for (const activity of [
@@ -113,6 +119,95 @@ describe('VK workflow token refresh', () => {
 
     return post;
   }
+
+  it.each(
+    workflows.flatMap(([version, workflow]) =>
+      preflightFailures.map(([caseName, message]) => ({
+        version,
+        caseName,
+        workflow,
+        message,
+      }))
+    )
+  )(
+    '$version marks the root post ERROR and terminates when preflight rejects $caseName',
+    async ({ workflow, message }) => {
+      const post = prepareConfirmedPublication();
+      const preflightFailure = new ActivityFailure(
+        'getPostsList failed',
+        'getPostsList',
+        'activity-preflight',
+        RetryState.NON_RETRYABLE_FAILURE,
+        'test-worker',
+        ApplicationFailure.nonRetryable(message, 'publication_media_preflight')
+      );
+      activities.main.getPostsList.mockRejectedValue(preflightFailure);
+
+      await expect(
+        workflow({
+          taskQueue: 'vk-personal',
+          postId: post.id,
+          organizationId: post.organizationId,
+          postNow: true,
+        })
+      ).resolves.toBe(false);
+
+      expect(activities.main.changeState).toHaveBeenCalledTimes(1);
+      expect(activities.main.changeState).toHaveBeenCalledWith(
+        post.id,
+        'ERROR',
+        message
+      );
+      expect(activities.main.inAppNotification).toHaveBeenCalledWith(
+        post.organizationId,
+        'We could not prepare your post safely',
+        `The post was not published because its media could not be prepared safely: ${message}`,
+        true,
+        false,
+        'fail'
+      );
+      expect(activities.main.isCommentable).not.toHaveBeenCalled();
+      expect(activities.main.updatePost).not.toHaveBeenCalled();
+      expect(
+        activities.main.startPersonalStreakReminders
+      ).not.toHaveBeenCalled();
+      expect(activities.main.sendWebhooks).not.toHaveBeenCalled();
+      for (const activity of Object.values(activities.taskQueue)) {
+        expect(activity).not.toHaveBeenCalled();
+      }
+    }
+  );
+
+  it.each(workflows)(
+    '%s preserves workflow failure for unrelated getPostsList errors',
+    async (_version, workflow) => {
+      const post = prepareConfirmedPublication();
+      const transientFailure = new ActivityFailure(
+        'getPostsList timed out',
+        'getPostsList',
+        'activity-preflight',
+        RetryState.TIMEOUT,
+        'test-worker',
+        ApplicationFailure.retryable('database timeout', 'TimeoutFailure')
+      );
+      activities.main.getPostsList.mockRejectedValue(transientFailure);
+
+      await expect(
+        workflow({
+          taskQueue: 'vk-personal',
+          postId: post.id,
+          organizationId: post.organizationId,
+          postNow: true,
+        })
+      ).rejects.toBe(transientFailure);
+
+      expect(activities.main.changeState).not.toHaveBeenCalled();
+      expect(activities.main.inAppNotification).not.toHaveBeenCalled();
+      for (const activity of Object.values(activities.taskQueue)) {
+        expect(activity).not.toHaveBeenCalled();
+      }
+    }
+  );
 
   it.each(workflows)(
     '%s skips the new reminder command while replaying history without the patch marker',

@@ -11,6 +11,8 @@ import { Integration } from '@prisma/client';
 import { MeweDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/mewe.dto';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
+import { lookup } from 'mime-types';
 
 export class MeweProvider extends SocialAbstract implements SocialProvider {
   identifier = 'mewe';
@@ -204,8 +206,10 @@ export class MeweProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     mediaPath: string
   ): Promise<string> {
-    const mediaResponse = await fetch(mediaPath);
-    const blob = await mediaResponse.blob();
+    const mediaBuffer = await readMediaSourceBuffer(mediaPath);
+    const blob = new Blob([mediaBuffer], {
+      type: lookup(mediaPath.split(/[?#]/, 1)[0]) || 'application/octet-stream',
+    });
     const fileName = mediaPath.split('/').pop() || 'photo.jpg';
 
     const form = new FormData();
@@ -282,7 +286,10 @@ export class MeweProvider extends SocialAbstract implements SocialProvider {
 
     const postId = makeId(12);
 
-    const releaseURL = postType === 'timeline' ? `https://mewe.com/${integration.profile}/posts` : `https://mewe.com/group/${firstPost.settings.group}`;
+    const releaseURL =
+      postType === 'timeline'
+        ? `https://mewe.com/${integration.profile}/posts`
+        : `https://mewe.com/group/${firstPost.settings.group}`;
 
     return [
       {

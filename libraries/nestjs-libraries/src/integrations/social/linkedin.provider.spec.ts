@@ -5,7 +5,7 @@ const originalEnv = { ...process.env };
 const jsonResponse = (body: unknown) =>
   ({
     json: vi.fn().mockResolvedValue(body),
-  }) as unknown as Response;
+  } as unknown as Response);
 
 vi.mock(
   '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface',
@@ -47,6 +47,8 @@ vi.mock('@gitroom/nestjs-libraries/chat/rules.description.decorator', () => ({
 }));
 
 import { LinkedinProvider } from './linkedin.provider';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -207,27 +209,40 @@ describe('LinkedinProvider carousel fallback', () => {
     { name: 'one image', media: [image('one')] },
     { name: 'one video', media: [video] },
     { name: 'no media', media: [] },
-  ])(
-    'accepts $name and relies on regular-post fallback',
-    async ({ media }) => {
-      const provider = new LinkedinProvider();
-
-      await expect(
-        provider.checkValidity([media as any], {
-          post_as_images_carousel: true,
-        })
-      ).resolves.toBe(true);
-    }
-  );
-
-  it('keeps rejecting multiple attachments when one is a video', async () => {
+  ])('accepts $name and relies on regular-post fallback', async ({ media }) => {
     const provider = new LinkedinProvider();
 
     await expect(
-      provider.checkValidity([[video, image('one')] as any], {
+      provider.checkValidity([media as any], {
+        post_as_images_carousel: true,
+      })
+    ).resolves.toBe(true);
+  });
+
+  it('keeps rejecting multiple attachments when one is a video', async () => {
+    const provider = new LinkedinProvider();
+    const media = [video, image('one')];
+    const capability = resolvePlatformCapabilityV2({
+      identifier: 'linkedin',
+      settings: {},
+      media: media.map(({ type }) => ({ type })),
+    });
+    const analysis = analyzePlatformContentV2({
+      canonicalHtml: '<p>LinkedIn post</p>',
+      settings: {},
+      media: media.map(({ type }) => ({ type })),
+      capability,
+    });
+
+    await expect(
+      provider.checkValidity([media as any], {
         post_as_images_carousel: true,
       })
     ).resolves.toBe('Can have maximum 1 media when selecting a video.');
+    expect(analysis.blocking).toBe(true);
+    expect(analysis.diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'unsupported-media' })
+    );
   });
 });
 

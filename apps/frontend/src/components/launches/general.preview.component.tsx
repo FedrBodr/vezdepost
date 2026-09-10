@@ -6,7 +6,99 @@ import { FC } from 'react';
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
+import { measureContent } from '@gitroom/helpers/utils/platform.content.measurement';
+import { normalizedFieldMeasurementValue } from '@gitroom/helpers/utils/platform.content.normalizers';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
+import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+
+const escapeHtml = (content: string) =>
+  content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const mentionMarkup = (content: string, labelsAreSerialized = false) =>
+  content.replace(/\[\[\[([.\s\S]*?)]]]/g, (_match, label) => {
+    return (
+      '<span class="font-bold font-[arial] text-[#ae8afc]">' +
+      (labelsAreSerialized ? label : escapeHtml(label)) +
+      '</span>'
+    );
+  });
+
+const mentionTokens = (content: string) => {
+  const tokens: Array<{ text: string; mention: boolean }> = [];
+  const matcher = /\[\[\[([.\s\S]*?)]]]/g;
+  let cursor = 0;
+  for (const match of content.matchAll(matcher)) {
+    const start = match.index;
+    if (start > cursor) {
+      tokens.push({ text: content.slice(cursor, start), mention: false });
+    }
+    tokens.push({ text: match[1], mention: true });
+    cursor = start + match[0].length;
+  }
+  if (cursor < content.length) {
+    tokens.push({ text: content.slice(cursor), mention: false });
+  }
+  return tokens;
+};
+
+const renderMentionRange = (
+  tokens: ReturnType<typeof mentionTokens>,
+  rangeStart: number,
+  rangeEnd: number
+) => {
+  let offset = 0;
+  return tokens
+    .map((token) => {
+      const tokenStart = offset;
+      const tokenEnd = tokenStart + token.text.length;
+      offset = tokenEnd;
+      const start = Math.max(rangeStart, tokenStart);
+      const end = Math.min(rangeEnd, tokenEnd);
+      if (start >= end) {
+        return '';
+      }
+      const text = escapeHtml(
+        token.text.slice(start - tokenStart, end - tokenStart)
+      );
+      return token.mention
+        ? `<span class="font-bold font-[arial] text-[#ae8afc]">${text}</span>`
+        : text;
+    })
+    .join('');
+};
+
+const croppedMarkup = ({
+  content,
+  integrationType,
+  maximumCharacters,
+}: {
+  content: string;
+  integrationType: string;
+  maximumCharacters: number;
+}) => {
+  const tokens = mentionTokens(content);
+  const plainText = tokens.map(({ text }) => text).join('');
+  const { start, end } = textSlicer(
+    integrationType,
+    maximumCharacters,
+    plainText
+  );
+
+  return (
+    renderMentionRange(tokens, start, end) +
+    '<mark class="bg-red-500" data-tooltip-id="tooltip" ' +
+    'data-tooltip-content="This text will be cropped">' +
+    renderMentionRange(tokens, end, plainText.length) +
+    '</mark>'
+  );
+};
 
 export const GeneralPreviewComponent: FC<{
   maximumCharacters?: number;
@@ -16,36 +108,80 @@ export const GeneralPreviewComponent: FC<{
   const mediaDir = useMediaDirectory();
 
   const renderContent = topValue.map((p) => {
-    const newContent = stripHtmlValidation(
-      'normal',
-      p.content.replace(
-        /<span.*?data-mention-id="([.\s\S]*?)"[.\s\S]*?>([.\s\S]*?)<\/span>/gi,
-        (match, match1, match2) => {
-          return `[[[${match2}]]]`;
-        }
-      ),
-      true
+    const media =
+      p.image?.map(({ path }) => ({
+        type: path.split('?')[0].toLowerCase().endsWith('.mp4')
+          ? ('video' as const)
+          : ('image' as const),
+      })) ?? [];
+    const serializedCanonicalField = integration?.capabilitiesV2?.fields.find(
+      ({ source, limit }) => source === 'canonical-editor' && !!limit
     );
-
-    const { start, end } = textSlicer(
-      integration?.identifier || '',
-      props.maximumCharacters || 10000,
-      newContent
+    const resolved = integration
+      ? resolvePlatformCapabilityV2({
+          identifier: integration.identifier,
+          settings: {},
+          media,
+          ...(integration.capabilitiesV2?.runtimeOverlay
+            ? { runtimeOverlay: integration.capabilitiesV2.runtimeOverlay }
+            : {}),
+          adapter: {
+            editor: integration.editor,
+            maximum:
+              serializedCanonicalField?.limit?.max ??
+              props.maximumCharacters ??
+              10_000,
+            stripRawUrls:
+              integration.capabilitiesV2?.delivery.stripRawUrls ??
+              !!integration.stripLinks,
+            ...(serializedCanonicalField?.limit
+              ? {
+                  measurement: {
+                    unit: serializedCanonicalField.limit.unit,
+                    ...(serializedCanonicalField.limit.counter
+                      ? { counter: serializedCanonicalField.limit.counter }
+                      : {}),
+                  },
+                }
+              : {}),
+          },
+        })
+      : undefined;
+    const capability = resolved;
+    const analysis = capability
+      ? analyzePlatformContentV2({
+          canonicalHtml: p.content,
+          settings: {},
+          media,
+          capability,
+          convertMentionFunction: (_id, label) => `[[[${label}]]]`,
+        })
+      : undefined;
+    const field = capability?.fields.find(
+      ({ source }) => source === 'canonical-editor'
     );
+    const normalized = field ? analysis?.fields[field.key]?.value : p.content;
+    const visibleText = field
+      ? normalizedFieldMeasurementValue(normalized ?? '', field)
+      : stripHtmlValidation('none', p.content);
+    const maximumCharacters =
+      field?.limit?.max ?? props.maximumCharacters ?? 10_000;
+    const exceeded = field?.limit
+      ? measureContent(visibleText, field.limit).exceeded
+      : visibleText.length > maximumCharacters;
+    const finalValue = exceeded
+      ? croppedMarkup({
+          content: visibleText,
+          integrationType: integration?.identifier || '',
+          maximumCharacters,
+        })
+      : mentionMarkup(
+          normalized ?? p.content,
+          capability?.profileIdentifier === 'telegram' ||
+            capability?.profileIdentifier === 'max'
+        );
 
-    const finalValue =
-      newContent
-        .slice(start, end)
-        .replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
-          return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
-        }) +
-      `<mark class="bg-red-500" data-tooltip-id="tooltip" data-tooltip-content="This text will be cropped">` +
-      newContent.slice(end).replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
-        return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
-      }) +
-      `</mark>`;
-
-    return { text: finalValue, images: p.image };
+    return { text: sanitizePostContent(finalValue), images: p.image };
   });
 
   return (

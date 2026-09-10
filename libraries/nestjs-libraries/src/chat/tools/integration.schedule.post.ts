@@ -12,6 +12,7 @@ import {
   ValidUrlExtension,
   ValidUrlPath,
 } from '@gitroom/helpers/utils/valid.url.path';
+import { selectPostValidationFailure } from '@gitroom/nestjs-libraries/database/prisma/posts/post.validation';
 
 const validUrlExtension = new ValidUrlExtension();
 const validUrlPath = new ValidUrlPath();
@@ -90,7 +91,7 @@ If the tools return errors, you would need to rerun it with the right parameters
                     content: z
                       .string()
                       .describe(
-                        "The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, li, ul, p (you can't have u and strong together)"
+                        "The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, em, i, s, li, ul, ol, p (you can't have u and strong together; each li must be inside ul or ol). Only use tags the destination platform supports."
                       ),
                     attachments: z
                       .array(attachmentUrl)
@@ -120,16 +121,16 @@ If the tools return errors, you would need to rerun it with the right parameters
           )
           .describe('Individual post'),
       }),
-      outputSchema: z.object({
-        output: z
-          .array(
+      outputSchema: z
+        .object({
+          output: z.array(
             z.object({
               postId: z.string(),
               integration: z.string(),
             })
-          )
-          .or(z.object({ errors: z.string() })),
-      }),
+          ),
+        })
+        .or(z.object({ errors: z.string() })),
       execute: async (inputData, context) => {
         checkAuth(inputData, context);
         const organizationId = JSON.parse(
@@ -145,8 +146,8 @@ If the tools return errors, you would need to rerun it with the right parameters
               platform.integrationId
             );
 
-          // Same server-side validation as the dashboard / public API
-          // (settings DTO + media checkValidity + empty / too-long content).
+          // Same server-side validation as the dashboard / public API:
+          // settings, provider validity, and shared capability diagnostics.
           const settings = platform.settings.reduce(
             (acc: AllProvidersSettings, s: { key: string; value: any }) => ({
               ...acc,
@@ -171,31 +172,38 @@ If the tools return errors, you would need to rerun it with the right parameters
             ]
           );
 
-          if (validation.emptyContent) {
-            return {
-              errors: `${validation.name}: Your post should have at least one character or one image.`,
-            };
-          }
+          const failure = selectPostValidationFailure(
+            [validation],
+            platform.type === 'draft'
+          );
+          if (failure) {
+            const prefix = `${validation.name}: `;
+            const retry =
+              ', please fix it, and try integrationSchedulePostTool again.';
 
-          if (platform.type !== 'draft') {
-            if (!validation.valid) {
-              return {
-                errors: `${validation.name}: ${
-                  validation.settingsError || 'Please fix your settings'
-                }, please fix it, and try integrationSchedulePostTool again.`,
-              };
-            }
-
-            if (validation.errors !== true) {
-              return {
-                errors: `${validation.name}: ${validation.errors}, please fix it, and try integrationSchedulePostTool again.`,
-              };
-            }
-
-            if (validation.tooLong) {
-              return {
-                errors: `${validation.name}: The maximum characters is ${validation.maximumCharacters}, please fix it, and try integrationSchedulePostTool again.`,
-              };
+            switch (failure.category) {
+              case 'empty-content':
+                return {
+                  errors: `${prefix}Your post should have at least one character or one image.`,
+                };
+              case 'invalid-settings':
+                return {
+                  errors: `${prefix}${
+                    validation.settingsError || 'Please fix your settings'
+                  }${retry}`,
+                };
+              case 'provider-validity':
+                return {
+                  errors: `${prefix}${validation.errors}${retry}`,
+                };
+              case 'too-long':
+                return {
+                  errors: `${prefix}The maximum characters is ${validation.maximumCharacters}${retry}`,
+                };
+              case 'content-error':
+                return {
+                  errors: `${prefix}${validation.contentError}${retry}`,
+                };
             }
           }
         }
@@ -207,36 +215,47 @@ If the tools return errors, you would need to rerun it with the right parameters
             throw new Error('Integration not found');
           }
 
-          const output = await this._postsService.createPost(organizationId, {
-            date: post.date,
-            type: post.type as 'draft' | 'schedule' | 'now',
-            shortLink: post.shortLink,
-            tags: [],
-            posts: [
-              {
-                integration,
-                group: makeId(10),
-                settings: post.settings.reduce(
-                  (acc: AllProvidersSettings, s: { key: string; value: any }) => ({
-                    ...acc,
-                    [s.key]: s.value,
-                  }),
-                  {
-                    __type: integration.providerIdentifier,
-                  } as AllProvidersSettings
-                ),
-                value: post.postsAndComments.map((p: any) => ({
-                  content: p.content,
-                  id: makeId(10),
-                  delay: 0,
-                  image: p.attachments.map((p: any) => ({
+          const body = await this._postsService.mapTypeToPost(
+            {
+              date: post.date,
+              type: post.type as 'draft' | 'schedule' | 'now',
+              shortLink: post.shortLink,
+              tags: [],
+              posts: [
+                {
+                  integration,
+                  group: makeId(10),
+                  settings: post.settings.reduce(
+                    (
+                      acc: AllProvidersSettings,
+                      s: { key: string; value: any }
+                    ) => ({
+                      ...acc,
+                      [s.key]: s.value,
+                    }),
+                    {
+                      __type: integration.providerIdentifier,
+                    } as AllProvidersSettings
+                  ),
+                  value: post.postsAndComments.map((p: any) => ({
+                    content: p.content,
                     id: makeId(10),
-                    path: p,
+                    delay: 0,
+                    image: p.attachments.map((path: string) => ({
+                      id: makeId(10),
+                      path,
+                    })),
                   })),
-                })),
-              },
-            ],
-          }, 'MCP');
+                },
+              ],
+            },
+            organizationId
+          );
+          const output = await this._postsService.createPost(
+            organizationId,
+            body,
+            'MCP'
+          );
           finalOutput.push(...output);
         }
 

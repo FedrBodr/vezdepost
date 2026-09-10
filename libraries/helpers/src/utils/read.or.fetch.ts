@@ -1,16 +1,10 @@
-import { readFileSync } from 'fs';
-import axios from 'axios';
+import { type MediaSourceOptions, readMediaSourceBuffer } from './media.source';
 
-export const readOrFetch = async (path: string) => {
-  if (path.indexOf('http') === 0) {
-    return (
-      await axios({
-        url: path,
-        method: 'GET',
-        responseType: 'arraybuffer',
-      })
-    ).data;
-  }
-
-  return readFileSync(path);
+export const readOrFetch = async (
+  path: string,
+  options?: MediaSourceOptions
+) => {
+  return options
+    ? readMediaSourceBuffer(path, options)
+    : readMediaSourceBuffer(path);
 };

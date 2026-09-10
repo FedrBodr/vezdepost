@@ -1,0 +1,1156 @@
+import type {
+  ContentUnit,
+  FormattingSupport,
+  PlatformCapabilityProfileV2,
+  PostVariantCapability,
+  TextFieldCapability,
+} from './platform.capability.types';
+import {
+  TELEGRAM_MEDIA_CAPTION_LIMIT,
+  TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
+  TELEGRAM_RICH_LIMIT,
+} from './telegram.constraints';
+
+const plainFormatting: TextFieldCapability['formatting'] = {
+  bold: 'unicode',
+  underline: 'unicode',
+  italic: 'plain',
+  strike: 'plain',
+  links: 'plain',
+  lists: 'plain',
+  orderedLists: 'plain',
+  headings: 'plain',
+};
+
+const telegramFormatting: TextFieldCapability['formatting'] = {
+  bold: 'native',
+  underline: 'native',
+  italic: 'native',
+  strike: 'native',
+  links: 'native',
+  lists: 'native',
+  orderedLists: 'native',
+  headings: 'native',
+};
+
+const telegramCaptionFormatting: TextFieldCapability['formatting'] = {
+  ...telegramFormatting,
+  lists: 'plain',
+  orderedLists: 'plain',
+  headings: 'plain',
+};
+
+const maxFormatting: TextFieldCapability['formatting'] = {
+  bold: 'native',
+  underline: 'native',
+  italic: 'plain',
+  strike: 'plain',
+  links: 'native',
+  lists: 'plain',
+  orderedLists: 'plain',
+  headings: 'plain',
+};
+
+const slackFormatting: TextFieldCapability['formatting'] = {
+  bold: 'native',
+  underline: 'unsupported',
+  italic: 'native',
+  strike: 'native',
+  links: 'native',
+  lists: 'plain',
+  orderedLists: 'plain',
+  headings: 'plain',
+};
+
+const discordFormatting: TextFieldCapability['formatting'] = {
+  bold: 'native',
+  underline: 'native',
+  italic: 'native',
+  strike: 'native',
+  links: 'native',
+  lists: 'native',
+  orderedLists: 'native',
+  headings: 'native',
+};
+
+const chatFormatting: TextFieldCapability['formatting'] = {
+  bold: 'unsupported',
+  underline: 'unsupported',
+  italic: 'unsupported',
+  strike: 'unsupported',
+  links: 'plain',
+  lists: 'plain',
+  orderedLists: 'plain',
+  headings: 'plain',
+};
+
+const limitUnitForDialect = (
+  dialect: TextFieldCapability['dialect']
+): ContentUnit => {
+  switch (dialect) {
+    case 'slack-mrkdwn':
+      return 'utf16-code-units';
+    case 'discord-markdown':
+      return 'utf16-code-units';
+    case 'bluesky-facets':
+      return 'graphemes';
+    default:
+      return 'graphemes';
+  }
+};
+
+const body = (
+  max: number,
+  dialect: TextFieldCapability['dialect'],
+  formatting: Record<
+    | 'bold'
+    | 'underline'
+    | 'italic'
+    | 'strike'
+    | 'links'
+    | 'lists'
+    | 'orderedLists'
+    | 'headings',
+    FormattingSupport
+  >,
+  source: 'platform' | 'application-safety' = 'platform',
+  recommendedMax?: number
+): TextFieldCapability => ({
+  key: 'body',
+  label: 'Body',
+  required: false,
+  source: 'canonical-editor',
+  dialect,
+  limit: {
+    max,
+    unit: limitUnitForDialect(dialect),
+    source,
+    ...(recommendedMax === undefined ? {} : { recommendedMax }),
+  },
+  formatting,
+});
+
+const caption = (): TextFieldCapability => ({
+  ...body(1_024, 'html', telegramCaptionFormatting),
+  key: 'caption',
+  label: 'Media caption',
+  limit: { ...TELEGRAM_MEDIA_CAPTION_LIMIT },
+});
+
+const telegramBody = (): TextFieldCapability => ({
+  ...body(32_768, 'telegram-rich-html', telegramFormatting),
+  limit: { ...TELEGRAM_RICH_LIMIT },
+});
+
+const telegramText: PostVariantCapability = {
+  key: 'text',
+  fields: [telegramBody()],
+  structuredFields: [],
+  media: {
+    type: 'optional',
+    images: { min: 1 },
+    videos: { min: 1 },
+    mixed: true,
+  },
+  delivery: {
+    longMediaText: 'not-applicable',
+    stripRawUrls: false,
+    mediaGroupMaxItems: TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
+  },
+};
+
+const telegramMedia: PostVariantCapability = {
+  ...telegramText,
+  key: 'media',
+  fields: [telegramBody(), caption()],
+  delivery: {
+    longMediaText: 'split-after-media',
+    stripRawUrls: false,
+    mediaGroupMaxItems: TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
+  },
+};
+
+const simpleVariant = (
+  key: string,
+  limit: number,
+  dialect: TextFieldCapability['dialect'],
+  formatting: TextFieldCapability['formatting'],
+  media: PostVariantCapability['media'] = {
+    type: 'optional',
+    images: { min: 1, max: 10 },
+    videos: { min: 1, max: 1 },
+    mixed: true,
+  },
+  structuredFields: PostVariantCapability['structuredFields'] = [],
+  delivery: PostVariantCapability['delivery'] = {
+    longMediaText: 'not-applicable',
+    stripRawUrls: false,
+  },
+  source: 'platform' | 'application-safety' = 'platform',
+  recommendedMax?: number
+): PostVariantCapability => ({
+  key,
+  fields: [body(limit, dialect, formatting, source, recommendedMax)],
+  structuredFields,
+  media,
+  delivery,
+});
+
+const threadsBody = (): TextFieldCapability => ({
+  ...body(500, 'plain', plainFormatting),
+  limit: { max: 500, unit: 'utf16-code-units', source: 'platform' },
+});
+
+const markdownFormatting: TextFieldCapability['formatting'] = {
+  bold: 'native',
+  underline: 'native',
+  italic: 'native',
+  strike: 'native',
+  links: 'native',
+  lists: 'plain',
+  orderedLists: 'plain',
+  headings: 'plain',
+};
+
+const redditTitle = (): TextFieldCapability => ({
+  key: 'title',
+  label: 'Title',
+  required: true,
+  source: 'provider-setting',
+  dialect: 'plain',
+  limit: { max: 300, unit: 'utf16-code-units', source: 'platform' },
+  formatting: plainFormatting,
+});
+
+const redditVariant = (
+  key: string,
+  media: PostVariantCapability['media'],
+  structuredFields: PostVariantCapability['structuredFields'] = []
+): PostVariantCapability => ({
+  key,
+  fields: [
+    redditTitle(),
+    body(10_000, 'markdown', markdownFormatting, 'application-safety'),
+  ],
+  structuredFields,
+  media,
+  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+});
+
+const threadsVariant = (
+  key: string,
+  media: PostVariantCapability['media']
+): PostVariantCapability => ({
+  key,
+  fields: [threadsBody()],
+  structuredFields: [],
+  media,
+  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+});
+
+const instagramCaption = (): TextFieldCapability => ({
+  key: 'caption',
+  label: 'Caption',
+  required: false,
+  source: 'canonical-editor',
+  dialect: 'plain',
+  limit: { max: 2_200, unit: 'utf16-code-units', source: 'platform' },
+  formatting: plainFormatting,
+});
+
+const instagramVariant = (
+  key: string,
+  media: PostVariantCapability['media']
+): PostVariantCapability => ({
+  key,
+  fields: [instagramCaption()],
+  structuredFields: [],
+  media,
+  delivery: { longMediaText: 'caption', stripRawUrls: false },
+});
+
+const facebookBody = (): TextFieldCapability => ({
+  ...body(63_206, 'plain', plainFormatting),
+  limit: {
+    max: 63_206,
+    unit: 'utf16-code-units',
+    source: 'platform',
+  },
+});
+
+const chatBody = (): TextFieldCapability => ({
+  ...body(500, 'plain', chatFormatting),
+  limit: { max: 500, unit: 'utf16-code-units', source: 'platform' },
+});
+
+const lemmyBody = (): TextFieldCapability => ({
+  ...body(10_000, 'markdown', markdownFormatting),
+  limit: {
+    max: 10_000,
+    unit: 'utf16-code-units',
+    source: 'application-safety',
+  },
+});
+
+const chatVariant = (
+  structuredFields: PostVariantCapability['structuredFields'] = []
+): PostVariantCapability => ({
+  key: 'chat',
+  fields: [chatBody()],
+  structuredFields,
+  media: { type: 'none' },
+  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+});
+
+const wrapcastBody = (): TextFieldCapability => ({
+  ...body(320, 'plain', plainFormatting),
+  limit: { max: 320, unit: 'utf8-bytes', source: 'platform' },
+});
+
+const nostrBody = (): TextFieldCapability => ({
+  ...body(100_000, 'plain', plainFormatting),
+  limit: {
+    max: 100_000,
+    unit: 'utf16-code-units',
+    source: 'application-safety',
+  },
+});
+
+const articleBody = (max: number): TextFieldCapability => ({
+  ...body(max, 'markdown', markdownFormatting),
+  limit: {
+    max,
+    unit: 'utf16-code-units',
+    source: 'application-safety',
+  },
+});
+
+const htmlArticleBody = (max: number): TextFieldCapability => ({
+  ...body(max, 'html', maxFormatting),
+  limit: {
+    max,
+    unit: 'utf16-code-units',
+    source: 'application-safety',
+  },
+});
+
+const gmbBody = (): TextFieldCapability => ({
+  ...body(1_500, 'plain', plainFormatting),
+  limit: { max: 1_500, unit: 'utf16-code-units', source: 'platform' },
+});
+
+const gmbVariant = (
+  key: string,
+  structuredFields: PostVariantCapability['structuredFields']
+): PostVariantCapability => ({
+  key,
+  fields: [gmbBody()],
+  structuredFields,
+  media: { type: 'optional', images: { min: 1, max: 1 } },
+  delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+});
+
+const gmbCallToActionFields: PostVariantCapability['structuredFields'] = [
+  { key: 'callToActionType', label: 'Call to action type', required: false },
+  { key: 'callToActionUrl', label: 'Call to action URL', required: false },
+];
+
+const dribbbleFormatting: TextFieldCapability['formatting'] = {
+  bold: 'unsupported',
+  underline: 'unsupported',
+  italic: 'unsupported',
+  strike: 'unsupported',
+  links: 'plain',
+  lists: 'unsupported',
+  orderedLists: 'unsupported',
+  headings: 'unsupported',
+};
+
+const evidenceDate = '2026-08-20';
+
+const profiles: Record<string, PlatformCapabilityProfileV2> = {
+  telegram: {
+    identifier: 'telegram',
+    displayName: 'Telegram',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'text',
+    variants: { text: telegramText, media: telegramMedia },
+  },
+  max: {
+    identifier: 'max',
+    displayName: 'MAX',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: simpleVariant('post', 4_000, 'html', maxFormatting, {
+        type: 'optional',
+        images: { min: 1, max: 10 },
+      }),
+    },
+  },
+  linkedin: {
+    identifier: 'linkedin',
+    displayName: 'LinkedIn',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'feed',
+    variants: {
+      feed: simpleVariant('feed', 3_000, 'plain', plainFormatting, {
+        type: 'exclusive',
+        optional: true,
+        alternatives: [
+          { kind: 'images', min: 1, max: 10 },
+          { kind: 'video', min: 1, max: 1 },
+        ],
+      }),
+    },
+  },
+  'linkedin-page': {
+    identifier: 'linkedin-page',
+    displayName: 'LinkedIn Page',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'feed',
+    variants: {},
+    aliasOf: 'linkedin',
+  },
+  tumblr: {
+    identifier: 'tumblr',
+    displayName: 'Tumblr',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: simpleVariant(
+        'post',
+        32_768,
+        'plain',
+        plainFormatting,
+        {
+          type: 'optional',
+          images: { min: 1, max: 30 },
+          videos: { min: 1, max: 1 },
+          mixed: true,
+        },
+        [
+          { key: 'title', label: 'Title', required: false },
+          { key: 'link', label: 'Link', required: false },
+          { key: 'sourceUrl', label: 'Source URL', required: false },
+          { key: 'tags', label: 'Tags', required: false },
+        ]
+      ),
+    },
+  },
+  pinterest: {
+    identifier: 'pinterest',
+    displayName: 'Pinterest',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'pin',
+    variants: {
+      pin: simpleVariant(
+        'pin',
+        500,
+        'plain',
+        plainFormatting,
+        {
+          type: 'exclusive',
+          alternatives: [
+            { kind: 'images', min: 1, max: 5 },
+            { kind: 'video', min: 1, max: 1, coverRequired: true },
+          ],
+        },
+        [
+          { key: 'title', label: 'Title', required: false },
+          { key: 'link', label: 'Link', required: false },
+          { key: 'board', label: 'Board', required: true },
+        ]
+      ),
+    },
+  },
+  vk: {
+    identifier: 'vk',
+    displayName: 'VK',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: simpleVariant('post', 16_384, 'plain', plainFormatting),
+    },
+  },
+  'vk-group': {
+    identifier: 'vk-group',
+    displayName: 'VK Group',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: simpleVariant('post', 16_384, 'plain', plainFormatting, {
+        type: 'optional',
+        images: { min: 1, max: 10 },
+      }),
+    },
+  },
+  slack: {
+    identifier: 'slack',
+    displayName: 'Slack',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'message',
+    variants: {
+      message: simpleVariant(
+        'message',
+        40_000,
+        'slack-mrkdwn',
+        slackFormatting,
+        { type: 'optional' },
+        [],
+        { longMediaText: 'not-applicable', stripRawUrls: false },
+        'platform',
+        4_000
+      ),
+    },
+  },
+  tiktok: {
+    identifier: 'tiktok',
+    displayName: 'TikTok',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'video',
+    variants: {
+      video: {
+        key: 'video',
+        fields: [
+          {
+            ...body(2_200, 'plain', plainFormatting),
+            key: 'caption',
+            label: 'Caption',
+            required: false,
+            limit: {
+              max: 2_200,
+              unit: 'utf16-code-units',
+              source: 'platform',
+            },
+          },
+        ],
+        structuredFields: [],
+        media: {
+          type: 'exclusive',
+          alternatives: [{ kind: 'video', min: 1, max: 1 }],
+        },
+        delivery: { longMediaText: 'caption', stripRawUrls: false },
+      },
+      photo: {
+        key: 'photo',
+        fields: [
+          {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            source: 'provider-setting',
+            dialect: 'plain',
+            limit: {
+              max: 90,
+              unit: 'utf16-code-units',
+              source: 'platform',
+            },
+            formatting: plainFormatting,
+          },
+          {
+            ...body(4_000, 'plain', plainFormatting),
+            key: 'description',
+            label: 'Description',
+            limit: {
+              max: 4_000,
+              unit: 'utf16-code-units',
+              source: 'platform',
+            },
+          },
+        ],
+        structuredFields: [],
+        media: {
+          type: 'exclusive',
+          alternatives: [{ kind: 'images', min: 1, max: 35 }],
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  threads: {
+    identifier: 'threads',
+    displayName: 'Threads',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'text',
+    variants: {
+      text: threadsVariant('text', { type: 'none' }),
+      single: threadsVariant('single', {
+        type: 'exclusive',
+        alternatives: [
+          { kind: 'images', min: 1, max: 1 },
+          { kind: 'video', min: 1, max: 1 },
+        ],
+      }),
+      carousel: threadsVariant('carousel', {
+        type: 'required',
+        images: { min: 2 },
+        videos: { min: 1 },
+        mixed: true,
+        maxTotal: 20,
+      }),
+    },
+  },
+  youtube: {
+    identifier: 'youtube',
+    displayName: 'YouTube',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'upload',
+    variants: {
+      upload: {
+        key: 'upload',
+        fields: [
+          {
+            key: 'title',
+            label: 'Title',
+            required: true,
+            source: 'provider-setting',
+            dialect: 'plain',
+            limit: {
+              max: 100,
+              unit: 'utf16-code-units',
+              source: 'platform',
+            },
+            formatting: plainFormatting,
+          },
+          {
+            ...body(5_000, 'plain', plainFormatting),
+            key: 'description',
+            label: 'Description',
+            limit: {
+              max: 5_000,
+              unit: 'utf8-bytes',
+              source: 'platform',
+            },
+          },
+        ],
+        structuredFields: [],
+        media: { type: 'required', videos: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  mastodon: {
+    identifier: 'mastodon',
+    displayName: 'Mastodon',
+    verification: 'runtime',
+    evidenceDate,
+    defaultVariant: 'status',
+    variants: {
+      status: simpleVariant(
+        'status',
+        500,
+        'plain',
+        plainFormatting,
+        {
+          type: 'provider-runtime',
+          fallback: {
+            type: 'optional',
+            images: { min: 1, max: 4 },
+            videos: { min: 1, max: 1 },
+            mixed: true,
+          },
+        },
+        [{ key: 'contentWarning', label: 'Content warning', required: false }],
+        { longMediaText: 'not-applicable', stripRawUrls: false },
+        'application-safety'
+      ),
+    },
+    runtimeKeys: ['text-limit', 'media-rule'],
+    runtimeMaxAgeSeconds: 3_600,
+  },
+  x: {
+    identifier: 'x',
+    displayName: 'X',
+    verification: 'runtime',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: {
+        key: 'post',
+        fields: [
+          {
+            ...body(280, 'plain', plainFormatting),
+            limit: {
+              max: 280,
+              unit: 'weighted',
+              counter: 'x-weighted',
+              source: 'platform',
+            },
+          },
+        ],
+        structuredFields: [],
+        media: {
+          type: 'exclusive',
+          optional: true,
+          alternatives: [
+            { kind: 'images', min: 1, max: 4 },
+            { kind: 'video', min: 1, max: 1 },
+          ],
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+    runtimeKeys: ['text-limit'],
+    runtimeMaxCeiling: 4_000,
+  },
+  reddit: {
+    identifier: 'reddit',
+    displayName: 'Reddit',
+    verification: 'runtime',
+    evidenceDate,
+    defaultVariant: 'self',
+    variants: {
+      self: redditVariant('self', { type: 'none' }),
+      link: redditVariant('link', { type: 'none' }, [
+        { key: 'url', label: 'URL', required: true },
+      ]),
+      image: redditVariant('image', {
+        type: 'required',
+        images: { min: 1, max: 1 },
+      }),
+      video: redditVariant('video', {
+        type: 'required',
+        videos: { min: 1, max: 1, coverRequired: true },
+      }),
+    },
+    runtimeKeys: ['text-limit'],
+    runtimeCeilings: { title: 300 },
+  },
+  instagram: {
+    identifier: 'instagram',
+    displayName: 'Instagram',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'feed',
+    variants: {
+      feed: instagramVariant('feed', {
+        type: 'required',
+        images: { min: 1 },
+        videos: { min: 1 },
+        mixed: true,
+        maxTotal: 10,
+      }),
+      story: instagramVariant('story', {
+        type: 'required',
+        images: { min: 1 },
+        videos: { min: 1 },
+        mixed: true,
+      }),
+      reel: instagramVariant('reel', {
+        type: 'required',
+        videos: { min: 1, max: 1 },
+      }),
+      'trial-reel': instagramVariant('trial-reel', {
+        type: 'required',
+        videos: { min: 1, max: 1 },
+      }),
+    },
+  },
+  'instagram-standalone': {
+    identifier: 'instagram-standalone',
+    displayName: 'Instagram Standalone',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'feed',
+    variants: {},
+    aliasOf: 'instagram',
+  },
+  facebook: {
+    identifier: 'facebook',
+    displayName: 'Facebook',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'feed',
+    variants: {
+      feed: {
+        key: 'feed',
+        fields: [facebookBody()],
+        structuredFields: [{ key: 'link', label: 'Link', required: false }],
+        media: {
+          type: 'optional',
+          images: { min: 1, max: 10 },
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+      story: {
+        key: 'story',
+        fields: [],
+        structuredFields: [],
+        media: {
+          type: 'required',
+          images: { min: 1 },
+          videos: { min: 1 },
+          mixed: true,
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+      video: {
+        key: 'video',
+        fields: [facebookBody()],
+        structuredFields: [],
+        media: { type: 'required', videos: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  discord: {
+    identifier: 'discord',
+    displayName: 'Discord',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'message',
+    variants: {
+      message: simpleVariant(
+        'message',
+        1_980,
+        'discord-markdown',
+        discordFormatting,
+        {
+          type: 'optional',
+          images: { min: 1, max: 10 },
+          videos: { min: 1, max: 10 },
+          mixed: true,
+          maxTotal: 10,
+        },
+        [{ key: 'channel', label: 'Channel', required: true }],
+        { longMediaText: 'not-applicable', stripRawUrls: false },
+        'application-safety'
+      ),
+    },
+  },
+  twitch: {
+    identifier: 'twitch',
+    displayName: 'Twitch',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'chat',
+    variants: {
+      chat: chatVariant([
+        { key: 'messageType', label: 'Message type', required: false },
+      ]),
+    },
+  },
+  kick: {
+    identifier: 'kick',
+    displayName: 'Kick',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'chat',
+    variants: {
+      chat: chatVariant(),
+    },
+  },
+  lemmy: {
+    identifier: 'lemmy',
+    displayName: 'Lemmy',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: {
+        key: 'post',
+        fields: [
+          {
+            key: 'title',
+            label: 'Title',
+            required: true,
+            source: 'provider-setting',
+            dialect: 'plain',
+            formatting: plainFormatting,
+          },
+          lemmyBody(),
+        ],
+        structuredFields: [{ key: 'url', label: 'URL', required: false }],
+        media: { type: 'optional', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  wrapcast: {
+    identifier: 'wrapcast',
+    displayName: 'Wrapcast',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'cast',
+    variants: {
+      cast: {
+        key: 'cast',
+        fields: [wrapcastBody()],
+        structuredFields: [
+          { key: 'channelId', label: 'Channel ID', required: false },
+        ],
+        media: { type: 'optional', images: { min: 1, max: 2 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  nostr: {
+    identifier: 'nostr',
+    displayName: 'Nostr',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'note',
+    variants: {
+      note: {
+        key: 'note',
+        fields: [nostrBody()],
+        structuredFields: [],
+        media: {
+          type: 'optional',
+          images: { min: 1 },
+          videos: { min: 1 },
+          mixed: true,
+        },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  medium: {
+    identifier: 'medium',
+    displayName: 'Medium',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'article',
+    variants: {
+      article: {
+        key: 'article',
+        fields: [articleBody(100_000)],
+        structuredFields: [
+          { key: 'title', label: 'Title', required: true },
+          { key: 'tags', label: 'Tags', required: false },
+          { key: 'canonical', label: 'Canonical', required: false },
+          { key: 'publication', label: 'Publication', required: false },
+        ],
+        media: { type: 'none' },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  devto: {
+    identifier: 'devto',
+    displayName: 'DevTo',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'article',
+    variants: {
+      article: {
+        key: 'article',
+        fields: [articleBody(100_000)],
+        structuredFields: [
+          { key: 'title', label: 'Title', required: true },
+          { key: 'tags', label: 'Tags', required: false },
+          { key: 'organization', label: 'Organization', required: false },
+          { key: 'canonical', label: 'Canonical', required: false },
+        ],
+        media: { type: 'optional', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  hashnode: {
+    identifier: 'hashnode',
+    displayName: 'Hashnode',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'article',
+    variants: {
+      article: {
+        key: 'article',
+        fields: [articleBody(10_000)],
+        structuredFields: [
+          { key: 'title', label: 'Title', required: true },
+          { key: 'publication', label: 'Publication', required: true },
+          { key: 'tags', label: 'Tags', required: false },
+          { key: 'subtitle', label: 'Subtitle', required: false },
+          { key: 'canonical', label: 'Canonical', required: false },
+        ],
+        media: { type: 'optional', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  wordpress: {
+    identifier: 'wordpress',
+    displayName: 'WordPress',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'post',
+    variants: {
+      post: {
+        key: 'post',
+        fields: [htmlArticleBody(100_000)],
+        structuredFields: [
+          { key: 'title', label: 'Title', required: true },
+          { key: 'type', label: 'Type', required: true },
+          { key: 'status', label: 'Status', required: false },
+          { key: 'categories', label: 'Categories', required: false },
+          { key: 'tags', label: 'Tags', required: false },
+        ],
+        media: { type: 'optional', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  listmonk: {
+    identifier: 'listmonk',
+    displayName: 'Listmonk',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'campaign',
+    variants: {
+      campaign: {
+        key: 'campaign',
+        fields: [htmlArticleBody(1_000_000)],
+        structuredFields: [
+          { key: 'subject', label: 'Subject', required: true },
+          { key: 'list', label: 'List', required: true },
+          { key: 'template', label: 'Template', required: false },
+          { key: 'preview', label: 'Preview', required: false },
+        ],
+        media: { type: 'none' },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+  bluesky: {
+    identifier: 'bluesky',
+    displayName: 'Bluesky',
+    verification: 'verified',
+    evidenceDate: '2026-08-21',
+    defaultVariant: 'post',
+    variants: {
+      post: simpleVariant(
+        'post',
+        300,
+        'bluesky-facets',
+        {
+          bold: 'unsupported',
+          underline: 'unsupported',
+          italic: 'unsupported',
+          strike: 'unsupported',
+          links: 'native',
+          lists: 'plain',
+          orderedLists: 'plain',
+          headings: 'plain',
+        },
+        {
+          type: 'exclusive',
+          optional: true,
+          alternatives: [
+            { kind: 'images', min: 1, max: 4 },
+            { kind: 'video', min: 1, max: 1 },
+          ],
+        }
+      ),
+    },
+  },
+  gmb: {
+    identifier: 'gmb',
+    displayName: 'Google My Business',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'standard',
+    variants: {
+      standard: gmbVariant('standard', gmbCallToActionFields),
+      event: gmbVariant('event', [
+        ...gmbCallToActionFields,
+        { key: 'eventTitle', label: 'Event title', required: true },
+        { key: 'eventStartDate', label: 'Event start date', required: false },
+        { key: 'eventEndDate', label: 'Event end date', required: false },
+        { key: 'eventStartTime', label: 'Event start time', required: false },
+        { key: 'eventEndTime', label: 'Event end time', required: false },
+      ]),
+      offer: gmbVariant('offer', [
+        ...gmbCallToActionFields,
+        { key: 'offerCouponCode', label: 'Offer coupon code', required: false },
+        { key: 'offerRedeemUrl', label: 'Offer redeem URL', required: false },
+        { key: 'offerTerms', label: 'Offer terms', required: false },
+      ]),
+    },
+  },
+  dribbble: {
+    identifier: 'dribbble',
+    displayName: 'Dribbble',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'shot',
+    variants: {
+      shot: {
+        key: 'shot',
+        fields: [
+          {
+            ...body(40_000, 'plain', dribbbleFormatting),
+            limit: {
+              max: 40_000,
+              unit: 'utf16-code-units',
+              source: 'application-safety',
+            },
+          },
+        ],
+        structuredFields: [{ key: 'title', label: 'Title', required: true }],
+        media: { type: 'required', images: { min: 1, max: 1 } },
+        delivery: { longMediaText: 'not-applicable', stripRawUrls: false },
+      },
+    },
+  },
+};
+
+const deepFreeze = <T>(value: T): T => {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      deepFreeze(child);
+    }
+  }
+  return value;
+};
+
+export const PROFILE_IDENTIFIERS = deepFreeze([
+  'telegram',
+  'max',
+  'linkedin',
+  'linkedin-page',
+  'tumblr',
+  'pinterest',
+  'vk',
+  'vk-group',
+  'slack',
+  'tiktok',
+  'mastodon',
+  'bluesky',
+  'threads',
+  'youtube',
+  'x',
+  'reddit',
+  'instagram',
+  'instagram-standalone',
+  'facebook',
+  'discord',
+  'twitch',
+  'kick',
+  'lemmy',
+  'wrapcast',
+  'nostr',
+  'medium',
+  'devto',
+  'hashnode',
+  'wordpress',
+  'listmonk',
+  'gmb',
+  'dribbble',
+] as const);
+
+export const PLATFORM_CAPABILITY_PROFILES = deepFreeze(profiles);

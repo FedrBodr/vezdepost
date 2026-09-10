@@ -31,6 +31,7 @@ services:
       # CLOUDFLARE_REGION: 'auto'
 
       # === Social Media API Settings
+      ENABLED_SOCIAL_INTEGRATIONS: '${ENABLED_SOCIAL_INTEGRATIONS:-}'
       X_URL: ''
       X_API_KEY: ''
       X_API_SECRET: ''

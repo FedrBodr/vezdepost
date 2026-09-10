@@ -34,7 +34,7 @@ export class ListmonkProvider extends SocialAbstract implements SocialProvider {
   };
 
   maxLength() {
-    return 100000000;
+    return 1_000_000;
   }
 
   async customFields() {

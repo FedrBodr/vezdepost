@@ -695,5 +695,11 @@
   "watch_tutorial_description": "Assista a este vídeo curto para aprender a tirar o máximo proveito do Postiz",
   "back": "Voltar",
   "get_started": "Começar",
-  "kick_select_channel": "Selecionar canal"
+  "kick_select_channel": "Selecionar canal",
+  "missing_platform_prompt": "Não encontra a plataforma de que precisa?",
+  "missing_platform_email": "Envie-nos um e-mail — tentaremos adicioná-la.",
+  "request_platform": "Solicitar",
+  "platform_requested": "Solicitada",
+  "request_new_platform_email_subject": "Solicitar uma nova plataforma no Vezdepost",
+  "provider_connection_help_email_subject": "Não é possível conectar {{platform}} no Vezdepost"
 }

@@ -10,9 +10,20 @@ import {
   NotificationType,
 } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { Integration, Post, State } from '@prisma/client';
-import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+import { analyzePlatformContentV2 } from '@gitroom/helpers/utils/platform.content.analysis';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
-import { AuthTokenDetails } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+import {
+  AuthTokenDetails,
+  MediaContent,
+  PostDetails,
+  SocialProvider,
+} from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+import { authorizeMediaSource } from '@gitroom/helpers/utils/media.source';
+import {
+  collectPublicationMediaSourcePaths,
+  collectPublicationThreadMediaSourcePaths,
+  parsePublicationMediaSources,
+} from './publication.media.sources';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
@@ -24,6 +35,11 @@ import {
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
 import { PersonalStreakReminderStarter } from '@gitroom/nestjs-libraries/temporal/personal-streak-reminder.starter';
+import { ApplicationFailure } from '@temporalio/activity';
+import {
+  isDeterministicPublicationMediaError,
+  PUBLICATION_MEDIA_PREFLIGHT_FAILURE_TYPE,
+} from './publication.media.preflight';
 
 // Drops fields the workflow and downstream activities never read — biggest wins are `error` (grows per retry) and `childrenPost` (Prisma side-loads it on every recursive row).
 function slimPost(post: any) {
@@ -157,7 +173,23 @@ export class PostActivity {
       return [];
     }
 
-    return getPosts.map(slimPost);
+    try {
+      const posts = getPosts.map(slimPost);
+      const providerIdentifier = posts[0]?.integration?.providerIdentifier;
+      if (typeof providerIdentifier !== 'string' || !providerIdentifier) {
+        throw new Error('Invalid publication integration');
+      }
+      return await this.resolveAndAuthorizePublicationThreadMedia(
+        providerIdentifier,
+        posts
+      );
+    } catch (error) {
+      if (!isDeterministicPublicationMediaError(error)) throw error;
+      throw ApplicationFailure.fromError(error, {
+        type: PUBLICATION_MEDIA_PREFLIGHT_FAILURE_TYPE,
+        nonRetryable: true,
+      });
+    }
   }
 
   @ActivityMethod()
@@ -180,35 +212,12 @@ export class PostActivity {
       integration.providerIdentifier
     );
 
-    const newPosts = await this._postService.updateTags(
-      integration.organizationId,
-      posts
-    );
-
     return getIntegration.comment(
       integration.internalId,
       postId,
       lastPostId,
       integration.token,
-      await Promise.all(
-        (newPosts || []).map(async (p) => ({
-          id: p.id,
-          message: stripHtmlValidation(
-            getIntegration.editor,
-            p.content,
-            true,
-            false,
-            !/<\/?[a-z][\s\S]*>/i.test(p.content),
-            getIntegration.mentionFormat
-          ),
-          settings: JSON.parse(p.settings || '{}'),
-          media: await this._postService.updateMedia(
-            p.id,
-            JSON.parse(p.image || '[]'),
-            getIntegration?.convertToJPEG || false
-          ),
-        }))
-      ),
+      await this.preparePostDetails(integration, posts, getIntegration),
       integration
     );
   }
@@ -229,37 +238,116 @@ export class PostActivity {
       integration.providerIdentifier
     );
 
-    const newPosts = await this._postService.updateTags(
-      integration.organizationId,
-      posts
-    );
-
     const postNow = await getIntegration.post(
       integration.internalId,
       integration.token,
-      await Promise.all(
-        (newPosts || []).map(async (p) => ({
-          id: p.id,
-          message: stripHtmlValidation(
-            getIntegration.editor,
-            p.content,
-            true,
-            false,
-            !/<\/?[a-z][\s\S]*>/i.test(p.content),
-            getIntegration.mentionFormat
-          ),
-          settings: JSON.parse(p.settings || '{}'),
-          media: await this._postService.updateMedia(
-            p.id,
-            JSON.parse(p.image || '[]'),
-            getIntegration?.convertToJPEG || false
-          ),
-        }))
-      ),
+      await this.preparePostDetails(integration, posts, getIntegration),
       integration
     );
 
     return postNow;
+  }
+
+  private async preparePostDetails(
+    integration: Integration,
+    posts: Post[],
+    provider: SocialProvider
+  ): Promise<PostDetails[]> {
+    const preflightedPosts =
+      await this.resolveAndAuthorizePublicationThreadMedia(
+        integration.providerIdentifier,
+        posts
+      );
+
+    const newPosts = await this._postService.updateTags(
+      integration.organizationId,
+      preflightedPosts as Post[]
+    );
+
+    return Promise.all(
+      (newPosts || []).map(async (post) => {
+        const settings = JSON.parse(post.settings || '{}');
+        const normalizedMedia = (await this._postService.updateMedia(
+          post.id,
+          JSON.parse(post.image || '[]'),
+          false
+        )) as MediaContent[];
+        const analyze = async (media: MediaContent[]) => {
+          const capabilities =
+            await this._integrationManager.resolveCapabilitiesV2({
+              providerName: integration.providerIdentifier,
+              settings,
+              media: media.map(({ type }) => ({ type })),
+              integration,
+            });
+          const analysis = analyzePlatformContentV2({
+            canonicalHtml: post.content,
+            settings,
+            media,
+            capability: capabilities,
+            convertMentionFunction: provider.mentionFormat,
+          });
+          const blocking = analysis.diagnostics.find(
+            ({ severity }) => severity === 'error'
+          );
+          if (blocking) throw new Error(blocking.message);
+          return analysis;
+        };
+
+        const sourcePaths = collectPublicationMediaSourcePaths({
+          providerIdentifier: integration.providerIdentifier,
+          settings,
+          media: normalizedMedia,
+        });
+        await Promise.all(
+          sourcePaths.map((path) => authorizeMediaSource(path))
+        );
+
+        const analysis = await analyze(normalizedMedia);
+        const media = provider.convertToJPEG
+          ? ((await this._postService.updateMedia(
+              post.id,
+              normalizedMedia,
+              true
+            )) as MediaContent[])
+          : normalizedMedia;
+
+        const fields = analysis.fields;
+        return {
+          id: post.id,
+          fields,
+          message:
+            fields.body?.value ??
+            fields.caption?.value ??
+            fields.description?.value ??
+            '',
+          settings,
+          media,
+        };
+      })
+    );
+  }
+
+  private async resolveAndAuthorizePublicationThreadMedia<
+    T extends { settings?: string | null; image?: string | null }
+  >(providerIdentifier: string, posts: readonly T[]): Promise<T[]> {
+    const resolvedPosts = await Promise.all(
+      posts.map(async (post) => {
+        const media = parsePublicationMediaSources(post.image);
+        const resolvedMedia = media.some(
+          ({ path }) => typeof path !== 'string' || !path.trim()
+        )
+          ? await this._postService.resolveMediaSources(media)
+          : media;
+        return { ...post, image: JSON.stringify(resolvedMedia) };
+      })
+    );
+    const sourcePaths = collectPublicationThreadMediaSourcePaths({
+      providerIdentifier,
+      posts: resolvedPosts,
+    });
+    await Promise.all(sourcePaths.map((path) => authorizeMediaSource(path)));
+    return resolvedPosts;
   }
 
   @ActivityMethod()

@@ -7,8 +7,13 @@
 #   GOOGLE_CLIENT_SECRET=...
 #   LINKEDIN_CLIENT_ID=...
 #   LINKEDIN_CLIENT_SECRET=...
-# Optional integrations: X_API_KEY, X_API_SECRET, NEXT_PUBLIC_POSTHOG_KEY,
-# NEXT_PUBLIC_POSTHOG_HOST.
+#   TUMBLR_CLIENT_ID=...
+#   TUMBLR_CLIENT_SECRET=...
+#   PINTEREST_CLIENT_ID=...
+#   PINTEREST_CLIENT_SECRET=...
+#   X_API_KEY=...
+#   X_API_SECRET=...
+# Optional integrations: NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST.
 services:
   postiz:
     image: postiz-max:local
@@ -31,7 +36,7 @@ services:
     # nginx starts right away (clean 502 instead of hanging connects);
     # the app starts only once temporal actually accepts connections —
     # otherwise the backend loses the startup race and dies (2026-07-09 incident)
-    command: ["sh", "-c", "nginx && node /wait-temporal.js && pnpm run pm2"]
+    command: ['sh', '-c', 'nginx && node /wait-temporal.js && pnpm run pm2']
     # host port only for on-server debugging; the internet comes in via caddy
     ports: !override
       - '127.0.0.1:4007:5000'
@@ -48,10 +53,15 @@ services:
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
       VK_ID: '${VK_ID:?set in .env}'
+      ENABLED_SOCIAL_INTEGRATIONS: 'telegram,max,vk,vk-group,linkedin,tumblr'
       GOOGLE_CLIENT_ID: '${GOOGLE_CLIENT_ID:?set in .env}'
       GOOGLE_CLIENT_SECRET: '${GOOGLE_CLIENT_SECRET:?set in .env}'
       LINKEDIN_CLIENT_ID: '${LINKEDIN_CLIENT_ID:?set in .env}'
       LINKEDIN_CLIENT_SECRET: '${LINKEDIN_CLIENT_SECRET:?set in .env}'
+      TUMBLR_CLIENT_ID: '${TUMBLR_CLIENT_ID:?set in .env}'
+      TUMBLR_CLIENT_SECRET: '${TUMBLR_CLIENT_SECRET:?set in .env}'
+      PINTEREST_CLIENT_ID: '${PINTEREST_CLIENT_ID:?set in .env}'
+      PINTEREST_CLIENT_SECRET: '${PINTEREST_CLIENT_SECRET:?set in .env}'
       X_API_KEY: '${X_API_KEY:-}'
       X_API_SECRET: '${X_API_SECRET:-}'
       NEXT_PUBLIC_POSTHOG_KEY: '${NEXT_PUBLIC_POSTHOG_KEY:-}'
@@ -75,10 +85,12 @@ services:
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/landing:/srv/landing:ro
+      - /etc/caddy/sites:/etc/caddy/sites:ro
       - caddy-data:/data
       - caddy-config:/config
     networks:
       - postiz-network
+      - caddy-edge
 
   # upstream compose has no restart policy on the temporal stack —
   # after a VM reboot it stayed down while postiz came up (2026-07-09)
@@ -111,3 +123,8 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+
+networks:
+  caddy-edge:
+    external: true
+    name: caddy-edge

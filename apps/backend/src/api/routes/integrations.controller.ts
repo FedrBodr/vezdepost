@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -96,12 +97,25 @@ export class IntegrationsController {
           const findIntegration = this._integrationManager.getSocialIntegration(
             p.providerIdentifier
           );
+          let additionalSettings: unknown = [];
+          try {
+            additionalSettings = JSON.parse(p.additionalSettings || '[]');
+          } catch {
+            additionalSettings = [];
+          }
           return {
             name: p.name,
             id: p.id,
             internalId: p.internalId,
             disabled: p.disabled,
             editor: findIntegration.editor,
+            capabilitiesV2:
+              await this._integrationManager.resolveCapabilitiesV2({
+                providerName: p.providerIdentifier,
+                settings: additionalSettings,
+                media: [],
+                integration: p,
+              }),
             stripLinks: !!findIntegration?.stripLinks?.(),
             picture: p.picture || '/no-picture.jpg',
             identifier: p.providerIdentifier,
@@ -212,7 +226,7 @@ export class IntegrationsController {
         .getAllowedSocialsIntegrations()
         .includes(integration)
     ) {
-      throw new Error('Integration not allowed');
+      throw new ForbiddenException('Integration not available');
     }
 
     const integrationProvider =

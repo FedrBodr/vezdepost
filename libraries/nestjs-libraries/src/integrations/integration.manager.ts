@@ -39,6 +39,13 @@ import { SkoolProvider } from '@gitroom/nestjs-libraries/integrations/social/sko
 import { WhopProvider } from '@gitroom/nestjs-libraries/integrations/social/whop.provider';
 import { MeweProvider } from '@gitroom/nestjs-libraries/integrations/social/mewe.provider';
 import { TumblrProvider } from '@gitroom/nestjs-libraries/integrations/social/tumblr.provider';
+import { resolvePlatformCapabilityV2 } from '@gitroom/helpers/utils/platform.capability.resolver';
+import type {
+  CapabilityResolutionContext,
+  ResolvedPlatformCapabilityV2,
+} from '@gitroom/helpers/utils/platform.capability.types';
+import type { Integration } from '@prisma/client';
+import { parseEnabledSocialIntegrations } from '@gitroom/nestjs-libraries/integrations/enabled.social.integrations';
 
 export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new XProvider(),
@@ -82,14 +89,35 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
 
 @Injectable()
 export class IntegrationManager {
+  private readonly socialIntegrationAllowlist = parseEnabledSocialIntegrations(
+    process.env.ENABLED_SOCIAL_INTEGRATIONS,
+    socialIntegrationList.map(({ identifier }) => identifier)
+  );
+
+  constructor() {
+    if (this.socialIntegrationAllowlist.unknown.length) {
+      console.warn(
+        `[integrations] Ignoring unknown ENABLED_SOCIAL_INTEGRATIONS identifiers: ${this.socialIntegrationAllowlist.unknown.join(
+          ', '
+        )}`
+      );
+    }
+  }
+
   async getAllIntegrations() {
     return {
       social: await Promise.all(
         socialIntegrationList.map(async (p) => ({
           name: p.name,
           identifier: p.identifier,
+          canConnect: this.isSocialIntegrationAllowed(p.identifier),
           toolTip: p.toolTip,
           editor: p.editor,
+          capabilitiesV2: await this.resolveCapabilitiesV2({
+            providerName: p.identifier,
+            settings: {},
+            media: [],
+          }),
           isExternal: !!p.externalUrl,
           isWeb3: !!p.isWeb3,
           isChromeExtension: !!p.isChromeExtension,
@@ -176,8 +204,57 @@ export class IntegrationManager {
   }
 
   getAllowedSocialsIntegrations() {
-    return socialIntegrationList.map((p) => p.identifier);
+    return [...this.socialIntegrationAllowlist.allowed];
   }
+
+  isSocialIntegrationAllowed(identifier: string) {
+    return this.socialIntegrationAllowlist.allowed.includes(identifier);
+  }
+
+  async resolveCapabilitiesV2({
+    providerName,
+    settings,
+    media,
+    integration,
+  }: {
+    providerName: string;
+    settings: unknown;
+    media: CapabilityResolutionContext['media'];
+    integration?: Integration;
+  }): Promise<ResolvedPlatformCapabilityV2> {
+    const provider = this.getSocialIntegration(providerName);
+    let additionalSettings: unknown = undefined;
+    if (integration) {
+      try {
+        additionalSettings = JSON.parse(integration.additionalSettings || '[]');
+      } catch {
+        additionalSettings = [];
+      }
+    }
+    const runtimeOverlay =
+      integration && provider.fetchCapabilityRuntime
+        ? await provider.fetchCapabilityRuntime(
+            integration,
+            (settings ?? {}) as Readonly<Record<string, unknown>>
+          )
+        : undefined;
+
+    return resolvePlatformCapabilityV2({
+      identifier: providerName,
+      settings: (settings ?? {}) as Readonly<Record<string, unknown>>,
+      media,
+      ...(runtimeOverlay ? { runtimeOverlay } : {}),
+      adapter: {
+        editor: provider.editor,
+        maximum: provider.maxLength(additionalSettings),
+        stripRawUrls: !!provider.stripLinks?.(),
+        ...(provider.capabilityMeasurement
+          ? { measurement: provider.capabilityMeasurement }
+          : {}),
+      },
+    });
+  }
+
   getSocialIntegration(integration: string): SocialProvider {
     return socialIntegrationList.find((i) => i.identifier === integration)!;
   }

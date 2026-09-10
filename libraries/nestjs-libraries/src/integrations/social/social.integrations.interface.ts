@@ -1,4 +1,8 @@
 import { Integration } from '@prisma/client';
+import type {
+  CapabilityRuntimeOverlay,
+  ContentLimit,
+} from '@gitroom/helpers/utils/platform.capability.types';
 
 export interface ClientInformation {
   client_id: string;
@@ -32,7 +36,7 @@ export interface IAuthenticator {
     integrationId: string,
     accessToken: string,
     postId: string,
-    fromDate: number,
+    fromDate: number
   ): Promise<AnalyticsData[]>;
   changeNickname?(
     id: string,
@@ -55,7 +59,6 @@ export interface AnalyticsData {
   data: Array<{ total: string; date: string }>;
   percentageChange: number;
 }
-
 
 export type GenerateAuthUrlResponse = {
   url: string;
@@ -109,6 +112,9 @@ export type PostResponse = {
 export type PostDetails<T = any> = {
   id: string;
   message: string;
+  fields?: Readonly<
+    Record<string, { value: string; facets?: readonly unknown[] }>
+  >;
   settings: T;
   media?: MediaContent[];
   poll?: PollDetails;
@@ -169,6 +175,11 @@ export interface SocialProvider
   refreshCron?: boolean;
   dto?: any;
   maxLength: (additionalSettings?: any) => number;
+  capabilityMeasurement?: Pick<ContentLimit, 'unit' | 'counter'>;
+  fetchCapabilityRuntime?(
+    integration: Integration,
+    settings?: unknown
+  ): Promise<CapabilityRuntimeOverlay | undefined>;
   checkValidity(
     posts: Array<{ path: string; thumbnail?: string }[]>,
     settings: any,

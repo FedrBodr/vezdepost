@@ -1,9 +1,6 @@
 'use client';
 
-import {
-  FC,
-  useMemo,
-} from 'react';
+import { FC, useMemo } from 'react';
 import {
   PostComment,
   withProvider,
@@ -26,7 +23,9 @@ const TikTokSettings: FC<{
   const t = useT();
 
   const isTitle = useMemo(() => {
-    return value?.[0]?.image?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) === -1);
+    return value?.[0]?.image?.some(
+      (p) => (p?.path?.indexOf?.('mp4') ?? -1) === -1
+    );
   }, [value]);
 
   const hasMedia = (value?.[0]?.image?.length ?? 0) > 0;
@@ -119,7 +118,7 @@ const TikTokSettings: FC<{
           <div>{tiktokRestrictionNotice}</div>
         </div>
       )}
-      {isTitle && <Input label="Title" {...register('title')} maxLength={89} />}
+      {isTitle && <Input label="Title" {...register('title')} maxLength={90} />}
       <Select
         label={t('label_who_can_see_this_video', 'Who can see this video?')}
         disabled={isUploadMode}
@@ -154,7 +153,12 @@ const TikTokSettings: FC<{
           </option>
         ))}
       </Select>
-      {isUploadMode && <div className="-mt-[23px] mb-[23px] text-red-600">After posting you fill find a notification inside your Inbox about your post (not content studio)</div>}
+      {isUploadMode && (
+        <div className="-mt-[23px] mb-[23px] text-red-600">
+          After posting you fill find a notification inside your Inbox about
+          your post (not content studio)
+        </div>
+      )}
       <Select
         label={t('label_auto_add_music', 'Auto add music')}
         {...register('autoAddMusic', {
@@ -257,7 +261,12 @@ const TikTokSettings: FC<{
           )}
         </div>
       </div>
-      <div className={clsx(!disclose && 'invisible h-0 overflow-hidden', 'mt-[20px]')}>
+      <div
+        className={clsx(
+          !disclose && 'invisible h-0 overflow-hidden',
+          'mt-[20px]'
+        )}
+      >
         <Checkbox
           variant="hollow"
           label={t('label_your_brand', 'Your brand')}

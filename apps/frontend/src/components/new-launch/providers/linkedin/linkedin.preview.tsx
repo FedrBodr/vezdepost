@@ -5,6 +5,7 @@ import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validatio
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
 import { FC } from 'react';
 import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
+import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 
 const Icons = () => {
   return (
@@ -273,15 +274,15 @@ export const LinkedinPreview: FC<{
       newContent
         .slice(start, end)
         .replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
-          return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
+          return `<span class="font-bold font-[arial] text-[#ae8afc]">${match1}</span>`;
         }) +
       `<mark class="bg-red-500" data-tooltip-id="tooltip" data-tooltip-content="This text will be cropped">` +
       newContent.slice(end).replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
-        return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
+        return `<span class="font-bold font-[arial] text-[#ae8afc]">${match1}</span>`;
       }) +
       `</mark>`;
 
-    return { text: finalValue, images: p.image };
+    return { text: sanitizePostContent(finalValue), images: p.image };
   });
   return (
     <div className="py-[15px] flex flex-col px-[15px] w-full gap-[20px] bg-bgLinkedin rounded-[12px]">

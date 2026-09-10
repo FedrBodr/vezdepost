@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { rmSync, writeSync } from 'node:fs';
+import { writeSync } from 'node:fs';
 import {
   chmod,
   mkdtemp,
@@ -16,7 +16,7 @@ const API_ROOT = 'https://api.vk.com/method/';
 const API_VERSION = '5.251';
 const REQUEST_TIMEOUT_MS = 30_000;
 const MESSAGE_PREFIX = 'Vezdepost VK Group photo capability check';
-const activeWorkspaces = new Set();
+const activeSignalStates = new Set();
 
 class SafeFailure extends Error {
   constructor(phase, method, errorCode, creationUncertain = false) {
@@ -34,14 +34,14 @@ class LocalCleanupFailure extends Error {
   }
 }
 
-function stopRecord(failure) {
+function noGoRecord(failure) {
   return {
     phase: failure.phase,
     method: failure.method,
     ...(Number.isInteger(failure.errorCode)
       ? { error_code: failure.errorCode }
       : {}),
-    status: 'STOP',
+    status: 'NO_GO',
   };
 }
 
@@ -78,8 +78,9 @@ function parseArgs(args) {
 async function validateInputs(args, env) {
   if (
     env.VK_GROUP_CAPABILITY_AUTHORIZED !== '1' ||
-    typeof env.VK_GROUP_CAPABILITY_TOKEN !== 'string' ||
-    env.VK_GROUP_CAPABILITY_TOKEN.length < 10
+    'VK_GROUP_CAPABILITY_TOKEN' in env ||
+    typeof env.VK_GROUP_CAPABILITY_USER_TOKEN !== 'string' ||
+    env.VK_GROUP_CAPABILITY_USER_TOKEN.length < 10
   ) {
     throw new SafeFailure('preflight');
   }
@@ -103,7 +104,7 @@ async function validateInputs(args, env) {
   }
 
   return {
-    accessToken: env.VK_GROUP_CAPABILITY_TOKEN,
+    accessToken: env.VK_GROUP_CAPABILITY_USER_TOKEN,
     groupId: values['--group-id'],
     mediaFile,
   };
@@ -117,7 +118,6 @@ async function createPrivateWorkspace(
   const directory = await mkdtemp(
     join(tempRoot || tmpdir(), 'vk-group-photo-capability-')
   );
-  activeWorkspaces.add(directory);
   try {
     await chmodWorkspaceImpl(directory, 0o700);
   } catch {
@@ -153,45 +153,45 @@ async function removeWorkspace(workspace, removeWorkspaceImpl) {
       recursive: true,
       force: true,
     });
-    activeWorkspaces.delete(workspace.directory);
     return true;
   } catch {
     return false;
   }
 }
 
-function removeActiveWorkspacesSync(removeWorkspaceSyncImpl = rmSync) {
-  let removed = true;
-  for (const directory of activeWorkspaces) {
-    try {
-      removeWorkspaceSyncImpl(directory, { recursive: true, force: true });
-      activeWorkspaces.delete(directory);
-    } catch {
-      removed = false;
-    }
+function signalExitCode(signal) {
+  return signal === 'SIGINT' ? 130 : 143;
+}
+
+function throwIfSignalRequested(signalState, creationUncertain = false) {
+  if (signalState.signal) {
+    throw new SafeFailure('signal', undefined, undefined, creationUncertain);
   }
-  return removed;
 }
 
 export function terminateForSignal({
   signal,
   exitImpl = process.exit,
-  removeWorkspaceSyncImpl = rmSync,
   writeSyncImpl = writeSync,
 } = {}) {
-  if (!removeActiveWorkspacesSync(removeWorkspaceSyncImpl)) {
-    try {
-      writeSyncImpl(
-        process.stdout.fd,
-        '{"phase":"local-cleanup","status":"PENDING_LOCAL_CLEANUP"}\n'
-      );
-    } catch {
-      // A broken stdout cannot carry the safe record; exit still remains non-GO.
+  if (activeSignalStates.size > 0) {
+    for (const signalState of activeSignalStates) {
+      signalState.signal ||= signal;
     }
-    exitImpl(4);
     return;
   }
-  exitImpl(signal === 'SIGINT' ? 130 : 143);
+
+  try {
+    writeSyncImpl(process.stdout.fd, '{"phase":"signal","status":"NO_GO"}\n');
+  } catch {
+    // A broken stdout cannot carry the safe record; the exit remains non-GO.
+  } finally {
+    try {
+      exitImpl(signalExitCode(signal));
+    } catch {
+      // There is no safe fallback if the injected exit implementation fails.
+    }
+  }
 }
 
 async function readJsonResponse(
@@ -219,12 +219,15 @@ async function readJsonResponse(
 function unwrapVk(payload, phase, method, creationUncertain = false) {
   if (payload?.error !== undefined && payload?.error !== null) {
     const rawCode = payload?.error?.error_code;
+    const errorCode =
+      typeof rawCode === 'number' && Number.isInteger(rawCode)
+        ? rawCode
+        : undefined;
     throw new SafeFailure(
       phase,
       method,
-      typeof rawCode === 'number' && Number.isInteger(rawCode)
-        ? rawCode
-        : undefined
+      errorCode,
+      creationUncertain && errorCode === undefined
     );
   }
   if (payload?.response === undefined || payload?.response === null) {
@@ -297,112 +300,48 @@ function responseItems(response) {
   return Array.isArray(response?.items) ? response.items : undefined;
 }
 
-function responseGroups(response) {
-  if (Array.isArray(response)) {
-    return response;
-  }
-  return Array.isArray(response?.groups) ? response.groups : undefined;
-}
-
-function exactGroupId(response) {
-  const groups = responseGroups(response);
-  if (groups?.length !== 1 || !groups[0] || typeof groups[0] !== 'object') {
-    return undefined;
-  }
-  return integerString(groups[0].id);
-}
-
-function hasRequiredPermissions(response) {
-  if (!response || typeof response !== 'object') {
-    return false;
-  }
-  const permissions = response.permissions;
-  if (!Array.isArray(permissions)) {
+function hasExactManagedTarget(response, groupId) {
+  if (
+    !response ||
+    typeof response !== 'object' ||
+    !Number.isSafeInteger(response.count) ||
+    response.count < 0 ||
+    !Array.isArray(response.items) ||
+    response.count < response.items.length
+  ) {
     return false;
   }
 
-  const enabledNames = new Set();
-  for (const permission of permissions) {
-    if (!permission || typeof permission !== 'object') {
-      return false;
-    }
-    const { name, setting } = permission;
-    const validSetting =
-      (typeof setting === 'number' &&
-        Number.isSafeInteger(setting) &&
-        setting >= 0) ||
-      (typeof setting === 'string' && /^(?:0|[1-9]\d*)$/.test(setting));
-    if (typeof name !== 'string' || !name || !validSetting) {
-      return false;
-    }
-    if (
-      (typeof setting === 'number' && setting > 0) ||
-      (typeof setting === 'string' && /[1-9]/.test(setting))
-    ) {
-      enabledNames.add(name);
-    }
-  }
-
-  const requiredNames = ['manage', 'wall', 'photos'];
+  const groupIds = response.items.map((group) =>
+    group && typeof group === 'object' ? integerString(group.id) : undefined
+  );
   return (
-    enabledNames.size === requiredNames.length &&
-    requiredNames.every((name) => enabledNames.has(name))
+    groupIds.every(Boolean) &&
+    groupIds.filter((candidate) => candidate === groupId).length === 1
   );
 }
 
-async function authorizeCommunityToken({
+async function authorizeUserTarget({
   fetchImpl,
   workspace,
   accessToken,
   groupId,
   events,
 }) {
-  const requestedGroup = await callVk({
+  const managedGroups = await callVk({
     fetchImpl,
     workspace,
     accessToken,
     phase: 'authorization',
-    method: 'groups.getById',
-    params: { group_ids: groupId },
+    method: 'groups.get',
+    params: { filter: 'admin', extended: '1' },
   });
-  if (exactGroupId(requestedGroup) !== groupId) {
-    throw new SafeFailure('authorization', 'groups.getById');
+  if (!hasExactManagedTarget(managedGroups, groupId)) {
+    throw new SafeFailure('authorization', 'groups.get');
   }
   events.push({
     phase: 'authorization',
-    method: 'groups.getById',
-    status: 'PASS',
-  });
-
-  const tokenOwner = await callVk({
-    fetchImpl,
-    workspace,
-    accessToken,
-    phase: 'authorization',
-    method: 'groups.getById',
-  });
-  if (exactGroupId(tokenOwner) !== groupId) {
-    throw new SafeFailure('authorization', 'groups.getById');
-  }
-  events.push({
-    phase: 'authorization',
-    method: 'groups.getById',
-    status: 'PASS',
-  });
-
-  const permissions = await callVk({
-    fetchImpl,
-    workspace,
-    accessToken,
-    phase: 'authorization',
-    method: 'groups.getTokenPermissions',
-  });
-  if (!hasRequiredPermissions(permissions)) {
-    throw new SafeFailure('authorization', 'groups.getTokenPermissions');
-  }
-  events.push({
-    phase: 'authorization',
-    method: 'groups.getTokenPermissions',
+    method: 'groups.get',
     status: 'PASS',
   });
 }
@@ -576,11 +515,16 @@ export async function runCapabilityCheck({
   chmodWorkspaceImpl = chmod,
   markerFactory = randomUUID,
 } = {}) {
+  const signalState = { signal: undefined };
+  activeSignalStates.add(signalState);
   let inputs;
   try {
     inputs = await validateInputs(args, env);
   } catch {
-    stdout.write(`${JSON.stringify({ phase: 'preflight', status: 'STOP' })}\n`);
+    activeSignalStates.delete(signalState);
+    stdout.write(
+      `${JSON.stringify({ phase: 'preflight', status: 'NO_GO' })}\n`
+    );
     return 2;
   }
 
@@ -588,6 +532,7 @@ export async function runCapabilityCheck({
   let outputRecords;
   let exitCode = 2;
   let photo;
+  let verifiedPhotoCleanupTarget;
   let postId;
   let candidatePostId;
   const events = [];
@@ -597,13 +542,15 @@ export async function runCapabilityCheck({
       chmodWorkspaceImpl,
       removeWorkspaceImpl
     );
-    await authorizeCommunityToken({
+    throwIfSignalRequested(signalState);
+    await authorizeUserTarget({
       fetchImpl,
       workspace,
       accessToken: inputs.accessToken,
       groupId: inputs.groupId,
       events,
     });
+    throwIfSignalRequested(signalState);
     const uploadServer = await callVk({
       fetchImpl,
       workspace,
@@ -621,6 +568,7 @@ export async function runCapabilityCheck({
       method: 'photos.getWallUploadServer',
       status: 'PASS',
     });
+    throwIfSignalRequested(signalState);
 
     const upload = await uploadPhoto({
       fetchImpl,
@@ -629,6 +577,7 @@ export async function runCapabilityCheck({
       mediaFile: inputs.mediaFile,
     });
     events.push({ phase: 'upload', method: 'upload', status: 'PASS' });
+    throwIfSignalRequested(signalState);
 
     const saved = await callVk({
       fetchImpl,
@@ -648,11 +597,7 @@ export async function runCapabilityCheck({
     const savedPhoto = savedItems?.[0];
     const ownerId = integerString(savedPhoto?.owner_id, { signed: true });
     const photoId = integerString(savedPhoto?.id);
-    if (
-      savedItems?.length !== 1 ||
-      ownerId !== `-${inputs.groupId}` ||
-      !photoId
-    ) {
+    if (savedItems?.length !== 1 || !ownerId || !photoId) {
       throw new SafeFailure(
         'save-photo',
         'photos.saveWallPhoto',
@@ -666,6 +611,7 @@ export async function runCapabilityCheck({
       method: 'photos.saveWallPhoto',
       status: 'PASS',
     });
+    throwIfSignalRequested(signalState);
 
     const markerMessage = `${MESSAGE_PREFIX} ${markerFactory()}`;
     const published = await callVk({
@@ -696,6 +642,7 @@ export async function runCapabilityCheck({
       status: 'PASS',
       post_id: Number(candidatePostId),
     });
+    throwIfSignalRequested(signalState, true);
 
     let wallPost;
     try {
@@ -734,30 +681,37 @@ export async function runCapabilityCheck({
       );
     }
     postId = candidatePostId;
+    verifiedPhotoCleanupTarget = photo;
     events.push({
       phase: 'verify-authorship',
       method: 'wall.getById',
       status: 'PASS',
       post_id: Number(postId),
     });
+    throwIfSignalRequested(signalState);
 
+    const completedPostId = postId;
     const cleanupFailure = await cleanupArtifacts({
       fetchImpl,
       workspace,
       accessToken: inputs.accessToken,
       groupId: inputs.groupId,
       postId,
-      photo,
+      photo: verifiedPhotoCleanupTarget,
       events,
     });
     if (cleanupFailure) {
       outputRecords = [pendingCleanupRecord(cleanupFailure)];
       exitCode = 3;
     } else {
+      postId = undefined;
+      photo = undefined;
+      verifiedPhotoCleanupTarget = undefined;
+      throwIfSignalRequested(signalState);
       events.push({
         phase: 'complete',
         status: 'GO',
-        post_id: Number(postId),
+        post_id: Number(completedPostId),
       });
       outputRecords = events;
       exitCode = 0;
@@ -772,34 +726,49 @@ export async function runCapabilityCheck({
       const failure =
         error instanceof SafeFailure ? error : new SafeFailure('preflight');
       let pendingFailure = failure.creationUncertain ? failure : undefined;
-      if (workspace && (postId || photo)) {
+      if (workspace && (postId || verifiedPhotoCleanupTarget)) {
         const cleanupFailure = await cleanupArtifacts({
           fetchImpl,
           workspace,
           accessToken: inputs.accessToken,
           groupId: inputs.groupId,
           postId,
-          photo,
+          photo: verifiedPhotoCleanupTarget,
           events: [],
         });
         if (cleanupFailure) {
           pendingFailure ||= cleanupFailure;
+        } else {
+          postId = undefined;
+          photo = undefined;
+          verifiedPhotoCleanupTarget = undefined;
         }
+      }
+      if (photo) {
+        pendingFailure ||= failure;
       }
       if (pendingFailure) {
         outputRecords = [pendingCleanupRecord(pendingFailure)];
         exitCode = 3;
       } else {
-        outputRecords = [stopRecord(failure)];
+        const finalFailure = signalState.signal
+          ? new SafeFailure('signal')
+          : failure;
+        outputRecords = [noGoRecord(finalFailure)];
+        exitCode = signalState.signal ? signalExitCode(signalState.signal) : 2;
       }
     }
   } finally {
     const removed = await removeWorkspace(workspace, removeWorkspaceImpl);
+    activeSignalStates.delete(signalState);
     if (!removed) {
       outputRecords = [
         { phase: 'local-cleanup', status: 'PENDING_LOCAL_CLEANUP' },
       ];
       exitCode = 4;
+    } else if (signalState.signal && ![3, 4].includes(exitCode)) {
+      outputRecords = [noGoRecord(new SafeFailure('signal'))];
+      exitCode = signalExitCode(signalState.signal);
     }
   }
 
@@ -813,10 +782,14 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  const terminate = (signal) => {
-    terminateForSignal({ signal });
-  };
-  process.once('SIGINT', () => terminate('SIGINT'));
-  process.once('SIGTERM', () => terminate('SIGTERM'));
-  process.exitCode = await runCapabilityCheck();
+  const terminateForSigint = () => terminateForSignal({ signal: 'SIGINT' });
+  const terminateForSigterm = () => terminateForSignal({ signal: 'SIGTERM' });
+  process.on('SIGINT', terminateForSigint);
+  process.on('SIGTERM', terminateForSigterm);
+  try {
+    process.exitCode = await runCapabilityCheck();
+  } finally {
+    process.removeListener('SIGINT', terminateForSigint);
+    process.removeListener('SIGTERM', terminateForSigterm);
+  }
 }

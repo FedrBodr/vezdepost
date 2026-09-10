@@ -22,6 +22,7 @@ import { InternalChannels } from '@gitroom/frontend/components/launches/internal
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import SafeImage from '@gitroom/react/helpers/safe.image';
+import { resolveEditorCapabilityV2 } from '@gitroom/frontend/components/new-launch/platform.editor.capabilities';
 
 class Empty {
   @IsOptional()
@@ -79,6 +80,7 @@ export const withProvider = function <T extends object>(params: {
       setChars,
       setComments,
       setHide,
+      setSelectedIntegrationSettings,
     } = useLaunchStore(
       useShallow((state) => ({
         date: state.date,
@@ -98,27 +100,43 @@ export const withProvider = function <T extends object>(params: {
         setPostComment: state.setPostComment,
         setEditor: state.setEditor,
         setChars: state.setChars,
+        setSelectedIntegrationSettings: state.setSelectedIntegrationSettings,
         selectedIntegration: state.selectedIntegrations.find(
           (p) => p.integration.id === props.id
         ),
       }))
     );
 
+    const value = useMemo(() => {
+      if (internal?.integrationValue?.length) {
+        return internal.integrationValue;
+      }
+
+      return global;
+    }, [internal, global, isGlobal]);
+    const activePreviewLimit = resolveEditorCapabilityV2(
+      props.id,
+      [selectedIntegration],
+      [],
+      value[0]?.content ?? '',
+      value[0]?.media ?? []
+    ).destinations[0]?.activeField?.limit?.max;
+    const resolvedMaximumCharacters =
+      activePreviewLimit ??
+      (typeof maximumCharacters === 'number'
+        ? maximumCharacters
+        : maximumCharacters(
+            JSON.parse(
+              selectedIntegration.integration.additionalSettings || '[]'
+            )
+          ));
+
     useEffect(() => {
       if (!setTotalChars) {
         return;
       }
 
-      setChars(
-        props.id,
-        typeof maximumCharacters === 'number'
-          ? maximumCharacters
-          : maximumCharacters(
-              JSON.parse(
-                selectedIntegration.integration.additionalSettings || '[]'
-              )
-            )
-      );
+      setChars(props.id, resolvedMaximumCharacters);
 
       if (isGlobal) {
         setComments(true);
@@ -133,17 +151,15 @@ export const withProvider = function <T extends object>(params: {
         );
         setEditor(selectedIntegration?.integration.editor);
         setPostComment(postComment);
-        setTotalChars(
-          typeof maximumCharacters === 'number'
-            ? maximumCharacters
-            : maximumCharacters(
-                JSON.parse(
-                  selectedIntegration.integration.additionalSettings || '[]'
-                )
-              )
-        );
+        setTotalChars(resolvedMaximumCharacters);
       }
-    }, [justCurrent, current, isGlobal, setTotalChars]);
+    }, [
+      justCurrent,
+      current,
+      isGlobal,
+      setTotalChars,
+      resolvedMaximumCharacters,
+    ]);
 
     const getInternalPlugs = useCallback(async () => {
       return (
@@ -160,14 +176,6 @@ export const withProvider = function <T extends object>(params: {
       }
     );
 
-    const value = useMemo(() => {
-      if (internal?.integrationValue?.length) {
-        return internal.integrationValue;
-      }
-
-      return global;
-    }, [internal, global, isGlobal]);
-
     const form = useForm({
       resolver: classValidatorResolver(dto || Empty),
       ...(Object.keys(selectedIntegration.settings).length > 0
@@ -177,6 +185,14 @@ export const withProvider = function <T extends object>(params: {
       criteriaMode: 'all',
       reValidateMode: 'onChange',
     });
+
+    useEffect(() => {
+      const subscription = form.watch((settings) => {
+        setSelectedIntegrationSettings(props.id, { ...settings });
+      });
+
+      return () => subscription.unsubscribe();
+    }, [form, props.id, setSelectedIntegrationSettings]);
 
     useImperativeHandle(
       ref,
@@ -191,14 +207,7 @@ export const withProvider = function <T extends object>(params: {
             err: form.formState.errors,
             settings,
             values: value,
-            maximumCharacters:
-              typeof maximumCharacters === 'number'
-                ? maximumCharacters
-                : maximumCharacters(
-                    JSON.parse(
-                      selectedIntegration.integration.additionalSettings || '[]'
-                    )
-                  ),
+            maximumCharacters: resolvedMaximumCharacters,
             fix: () => {
               setCurrent(props.id);
               setHide(true);
@@ -221,7 +230,7 @@ export const withProvider = function <T extends object>(params: {
           return form.trigger();
         },
       }),
-      [value]
+      [value, resolvedMaximumCharacters]
     );
 
     return (
@@ -261,34 +270,23 @@ export const withProvider = function <T extends object>(params: {
               !!value?.[0]?.content?.length &&
               (CustomPreviewComponent ? (
                 <CustomPreviewComponent
-                  maximumCharacters={
-                    typeof maximumCharacters === 'number'
-                      ? maximumCharacters
-                      : maximumCharacters(
-                          JSON.parse(
-                            selectedIntegration.integration
-                              .additionalSettings || '[]'
-                          )
-                        )
-                  }
+                  maximumCharacters={resolvedMaximumCharacters}
                 />
               ) : (
                 <GeneralPreviewComponent
-                  maximumCharacters={
-                    typeof maximumCharacters === 'number'
-                      ? maximumCharacters
-                      : maximumCharacters(
-                          JSON.parse(
-                            selectedIntegration.integration
-                              .additionalSettings || '[]'
-                          )
-                        )
-                  }
+                  maximumCharacters={resolvedMaximumCharacters}
                 />
               ))}
             {(SettingsComponent || !!data?.internalPlugs?.length) &&
               createPortal(
-                <div data-id={props.id} className={isGlobal ? 'bg-newSettings pb-[12px] px-[12px]' : 'hidden bg-newSettings px-[12px] pb-[12px]'}>
+                <div
+                  data-id={props.id}
+                  className={
+                    isGlobal
+                      ? 'bg-newSettings pb-[12px] px-[12px]'
+                      : 'hidden bg-newSettings px-[12px] pb-[12px]'
+                  }
+                >
                   {isGlobal && (
                     <style>{`#wrapper-settings {display: flex !important} #social-empty {display: block !important;}`}</style>
                   )}
@@ -310,7 +308,9 @@ export const withProvider = function <T extends object>(params: {
                           src={`/icons/platforms/${selectedIntegration?.integration.identifier}.png`}
                         />
                       </div>
-                      <div className="text-[20px]">{selectedIntegration?.integration.name}</div>
+                      <div className="text-[20px]">
+                        {selectedIntegration?.integration.name}
+                      </div>
                     </div>
                   )}
                   <SettingsComponent />

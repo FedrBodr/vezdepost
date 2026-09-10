@@ -695,5 +695,11 @@
   "watch_tutorial_description": "この短い動画を見て、Postizを最大限に活用する方法を学びましょう",
   "back": "戻る",
   "get_started": "開始",
-  "kick_select_channel": "チャンネルを選択"
+  "kick_select_channel": "チャンネルを選択",
+  "missing_platform_prompt": "必要なプラットフォームが見つかりませんか？",
+  "missing_platform_email": "メールでお知らせください。追加を検討します。",
+  "request_platform": "リクエスト",
+  "platform_requested": "リクエスト済み",
+  "request_new_platform_email_subject": "Vezdepost に新しいプラットフォームをリクエスト",
+  "provider_connection_help_email_subject": "Vezdepost で {{platform}} に接続できません"
 }

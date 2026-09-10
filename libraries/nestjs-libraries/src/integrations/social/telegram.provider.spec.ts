@@ -26,6 +26,13 @@ vi.mock('@gitroom/nestjs-libraries/services/make.is', () => ({
 vi.mock('@gitroom/nestjs-libraries/integrations/social.abstract', () => ({
   SocialAbstract: class {},
 }));
+const callTelegramApiMock = vi.hoisted(() => vi.fn());
+vi.mock(
+  '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api',
+  () => ({
+    callTelegramApi: callTelegramApiMock,
+  })
+);
 vi.mock(
   '@gitroom/helpers/utils/telegram.constraints',
   () => import('../../../../helpers/src/utils/telegram.constraints')
@@ -93,23 +100,142 @@ const makeBot = () => {
 describe('TelegramProvider media captions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('TELEGRAM_TOKEN', 'test-token');
   });
 
-  it('sends a 4096-character text-only post as one complete message', async () => {
+  describe('rich messages', () => {
+    beforeEach(() => {
+      callTelegramApiMock.mockReset();
+      callTelegramApiMock.mockResolvedValue({ message_id: 77 });
+    });
+
+    it('sends the main post through sendRichMessage and skips legacy transports', async () => {
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      const result = await provider.post(
+        'channel',
+        '-1001',
+        details('<p>Hello <b>world</b></p>', [])
+      );
+
+      expect(callTelegramApiMock).toHaveBeenCalledTimes(1);
+      expect(callTelegramApiMock).toHaveBeenCalledWith(
+        'test-token',
+        'sendRichMessage',
+        {
+          chat_id: '-1001',
+          rich_message: JSON.stringify({ html: '<p>Hello <b>world</b></p>' }),
+        }
+      );
+      expect(bot.sendMessage).not.toHaveBeenCalled();
+      expect(bot.sendPhoto).not.toHaveBeenCalled();
+      expect(result[0].postId).toBe('77');
+    });
+
+    it('falls back to the legacy transport when the rich call fails', async () => {
+      callTelegramApiMock.mockRejectedValue(new Error('rich rejected'));
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      const result = await provider.post(
+        'channel',
+        '-1001',
+        details('<h1>Title</h1>\n\n<p><b>Body</b></p>', [])
+      );
+
+      expect(bot.sendMessage).toHaveBeenCalledTimes(1);
+      expect(bot.sendMessage).toHaveBeenCalledWith(
+        '-1001',
+        'Title\n\n<b>Body</b>',
+        { parse_mode: 'HTML' }
+      );
+      expect(result[0].postId).toBe('42');
+    });
+
+    it('falls back to the legacy transport when no bot token is configured', async () => {
+      vi.stubEnv('TELEGRAM_TOKEN', '');
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.post('channel', '-1001', details('<p>text</p>', []));
+
+      expect(callTelegramApiMock).not.toHaveBeenCalled();
+      expect(bot.sendMessage).toHaveBeenCalled();
+    });
+
+    it('falls back to the legacy transport for local-file media', async () => {
+      const { calls, bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.post(
+        'channel',
+        '-1001',
+        details('caption', [
+          { id: 'media', path: '/var/postiz/uploads/2026/08/21/photo.jpg' },
+        ])
+      );
+
+      expect(callTelegramApiMock).not.toHaveBeenCalled();
+      expect(calls).toEqual(['photo:caption']);
+      expect(bot.sendPhoto).toHaveBeenCalled();
+    });
+
+    it('keeps the legacy transport for comments', async () => {
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.comment(
+        'channel',
+        '1',
+        undefined,
+        '-1001',
+        details('reply', []),
+        {} as any
+      );
+      expect(callTelegramApiMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it('sends a 4096-character text-only post as one rich message', async () => {
     const { bot } = makeBot();
     const provider = new TelegramProvider(bot as any);
     const text = 'x'.repeat(4096);
 
     const result = await provider.post('channel', '-1001', details(text, []));
 
-    expect(bot.sendMessage).toHaveBeenCalledTimes(1);
-    expect(bot.sendMessage).toHaveBeenCalledWith('-1001', text, {
-      parse_mode: 'HTML',
-    });
+    expect(callTelegramApiMock).toHaveBeenCalledTimes(1);
+    expect(callTelegramApiMock).toHaveBeenCalledWith(
+      'test-token',
+      'sendRichMessage',
+      {
+        chat_id: '-1001',
+        rich_message: JSON.stringify({ html: text }),
+      }
+    );
+    expect(bot.sendMessage).not.toHaveBeenCalled();
     expect(bot.sendPhoto).not.toHaveBeenCalled();
     expect(bot.sendMediaGroup).not.toHaveBeenCalled();
-    expect(result[0].postId).toBe('42');
-    expect(result[0].releaseURL).toContain('/42');
+    expect(result[0].postId).toBe('77');
+    expect(result[0].releaseURL).toContain('/77');
+  });
+
+  it('safely normalizes text again before Telegram HTML parse mode', async () => {
+    callTelegramApiMock.mockRejectedValue(new Error('rich rejected'));
+    const { bot } = makeBot();
+    const provider = new TelegramProvider(bot as any);
+
+    await provider.post(
+      'channel',
+      '-1001',
+      details('AT&T < launch > &copy; &lt;b&gt;literal&lt;/b&gt; &nbsp;', [])
+    );
+
+    expect(bot.sendMessage).toHaveBeenCalledWith(
+      '-1001',
+      'AT&amp;T &lt; launch &gt; © &lt;b&gt;literal&lt;/b&gt; &#160;',
+      { parse_mode: 'HTML' }
+    );
   });
 
   it('keeps short text attached to a single media item', async () => {
@@ -121,6 +247,30 @@ describe('TelegramProvider media captions', () => {
 
     expect(calls).toEqual([`photo:${shortText}`]);
   });
+
+  it.each([
+    'https://cdn.test/photo.jpg',
+    '/var/postiz/uploads/2026/08/21/photo.jpg',
+  ])(
+    'passes a local or remote media source through byte-identically: %s',
+    async (path) => {
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.post(
+        'channel',
+        '-1001',
+        details('caption', [{ id: 'media', path }])
+      );
+
+      expect(bot.sendPhoto).toHaveBeenCalledWith(
+        '-1001',
+        path,
+        expect.objectContaining({ caption: 'caption' }),
+        expect.objectContaining({ filename: 'photo.jpg' })
+      );
+    }
+  );
 
   it('sends captionless single media before the full long text', async () => {
     const { calls, bot } = makeBot();
@@ -182,10 +332,10 @@ describe('TelegramProvider media captions', () => {
       details(overBoundaryText)
     );
 
-    expect(attached.calls).toEqual([`photo:${boundaryText}`]);
+    expect(attached.calls).toEqual([`photo:${'😀'.repeat(512)}`]);
     expect(split.calls).toEqual([
       'photo:undefined',
-      `text:${overBoundaryText}`,
+      `text:${'😀'.repeat(513)}`,
     ]);
   });
 
@@ -198,7 +348,7 @@ describe('TelegramProvider media captions', () => {
 
     await provider.post('channel', '-1001', details(link));
 
-    expect(calls).toEqual(['photo:short label']);
+    expect(calls).toEqual([`photo:${link}`]);
   });
 
   it('keeps short text attached to the first album item', async () => {
@@ -246,6 +396,29 @@ describe('TelegramProvider media captions', () => {
     expect(result[0].postId).toBe('51');
     expect(result[0].releaseURL).toContain('/51');
   });
+
+  it.each([
+    [11, [9, 2]],
+    [21, [10, 9, 2]],
+  ] as const)(
+    'keeps every Telegram album within the 2-to-10 item transport contract for %i media',
+    async (count, expectedGroupSizes) => {
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.post(
+        'channel',
+        '-1001',
+        details('album', mediaItems(count))
+      );
+
+      const groupSizes = bot.sendMediaGroup.mock.calls.map(
+        ([, group]) => group.length
+      );
+      expect(groupSizes).toEqual(expectedGroupSizes);
+      expect(groupSizes.every((size) => size >= 2 && size <= 10)).toBe(true);
+    }
+  );
 
   it('does not send text when a later media group fails', async () => {
     const { calls, bot } = makeBot();
@@ -327,10 +500,7 @@ describe('Telegram connection discovery', () => {
 
   it.each([
     ['/start nonce_123', { kind: 'start', nonce: 'nonce_123' }],
-    [
-      '/start@vezdepost_bot nonce-123',
-      { kind: 'start', nonce: 'nonce-123' },
-    ],
+    ['/start@vezdepost_bot nonce-123', { kind: 'start', nonce: 'nonce-123' }],
     ['/connect nonce_123', { kind: 'connect', nonce: 'nonce_123' }],
   ])('parses %s', (text, expected) => {
     expect(parseTelegramConnectionMessage(text)).toEqual(expected);

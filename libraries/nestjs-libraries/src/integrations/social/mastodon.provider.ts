@@ -7,11 +7,26 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { number, string } from 'yup';
+import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
+import { lookup } from 'mime-types';
+
+export const MASTODON_CAPABILITY_RUNTIME_TIMEOUT_MS = 2_000;
+export const MASTODON_CAPABILITY_RUNTIME_CACHE_TTL_MS = 5 * 60_000;
 
 export class MastodonProvider extends SocialAbstract implements SocialProvider {
+  private capabilityRuntimeCache?: {
+    url: string;
+    expiresAt: number;
+    overlay: CapabilityRuntimeOverlay;
+  };
+  private capabilityRuntimeInFlight?: {
+    url: string;
+    request: Promise<CapabilityRuntimeOverlay | undefined>;
+  };
   override maxConcurrentJob = 5; // Mastodon instances typically have generous limits
   identifier = 'mastodon';
   name = 'Mastodon';
@@ -20,6 +35,96 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
   editor = 'normal' as const;
   maxLength() {
     return 500;
+  }
+
+  async fetchCapabilityRuntime(
+    _integration: Integration,
+    _settings?: unknown
+  ): Promise<CapabilityRuntimeOverlay | undefined> {
+    const url =
+      (process.env.MASTODON_URL || 'https://mastodon.social') +
+      '/api/v2/instance';
+    if (
+      this.capabilityRuntimeCache?.url === url &&
+      this.capabilityRuntimeCache.expiresAt > Date.now()
+    ) {
+      return this.capabilityRuntimeCache.overlay;
+    }
+    if (this.capabilityRuntimeInFlight?.url === url) {
+      return this.capabilityRuntimeInFlight.request;
+    }
+
+    const request = this.requestCapabilityRuntime(url);
+    this.capabilityRuntimeInFlight = { url, request };
+    try {
+      const overlay = await request;
+      if (overlay) {
+        this.capabilityRuntimeCache = {
+          url,
+          expiresAt: Date.now() + MASTODON_CAPABILITY_RUNTIME_CACHE_TTL_MS,
+          overlay,
+        };
+      }
+      return overlay;
+    } finally {
+      if (this.capabilityRuntimeInFlight?.request === request) {
+        this.capabilityRuntimeInFlight = undefined;
+      }
+    }
+  }
+
+  private async requestCapabilityRuntime(
+    url: string
+  ): Promise<CapabilityRuntimeOverlay | undefined> {
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      MASTODON_CAPABILITY_RUNTIME_TIMEOUT_MS
+    );
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+        dispatcher: getSsrfSafeDispatcher(),
+      });
+      if (!response.ok) {
+        return undefined;
+      }
+
+      const configuration = (await response.json())?.configuration?.statuses;
+      const maximumCharacters = configuration?.max_characters;
+      const maximumMedia = configuration?.max_media_attachments;
+      if (
+        !Number.isInteger(maximumCharacters) ||
+        maximumCharacters <= 0 ||
+        !Number.isInteger(maximumMedia) ||
+        maximumMedia <= 0
+      ) {
+        return undefined;
+      }
+
+      return {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          body: {
+            max: maximumCharacters,
+            unit: 'graphemes',
+            source: 'runtime',
+          },
+        },
+        mediaRule: {
+          type: 'optional',
+          images: { min: 1, max: maximumMedia },
+          videos: { min: 1, max: maximumMedia },
+          mixed: true,
+          maxTotal: maximumMedia,
+        },
+      };
+    } catch {
+      return undefined;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   override handleErrors(
@@ -138,12 +243,12 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
     alt?: string
   ) {
     const form = new FormData();
+    const file = await readMediaSourceBuffer(fileUrl);
     form.append(
       'file',
-      await fetch(fileUrl, {
-        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
-        dispatcher: getSsrfSafeDispatcher(),
-      }).then((r) => r.blob())
+      new Blob([file], {
+        type: lookup(fileUrl.split(/[?#]/, 1)[0]) || 'application/octet-stream',
+      })
     );
     if (alt) {
       form.append('description', alt);

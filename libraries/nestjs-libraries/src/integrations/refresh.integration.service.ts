@@ -16,12 +16,19 @@ export class RefreshIntegrationService {
     private _integrationService: IntegrationService,
     private _temporalService: TemporalService
   ) {}
-  async refresh(integration: Integration, cause = ''): Promise<false | AuthTokenDetails> {
+  async refresh(
+    integration: Integration,
+    cause = ''
+  ): Promise<false | AuthTokenDetails> {
     const socialProvider = this._integrationManager.getSocialIntegration(
       integration.providerIdentifier
     );
 
-    const refresh = await this.refreshProcess(integration, socialProvider, cause);
+    const refresh = await this.refreshProcess(
+      integration,
+      socialProvider,
+      cause
+    );
 
     if (!refresh) {
       return false as const;
@@ -53,19 +60,26 @@ export class RefreshIntegrationService {
     );
   }
 
-  public async startRefreshWorkflow(orgId: string, id: string, integration: SocialProvider) {
+  public async startRefreshWorkflow(
+    orgId: string,
+    id: string,
+    integration: SocialProvider
+  ) {
     if (!integration.refreshCron) {
       return false;
     }
 
-    return this._temporalService.client
-      .getRawClient()
-      ?.workflow.start(`refreshTokenWorkflow`, {
-        workflowId: `refresh_${id}`,
-        args: [{integrationId: id, organizationId: orgId}],
-        taskQueue: 'main',
-        workflowIdConflictPolicy: 'TERMINATE_EXISTING',
-      });
+    const client = this._temporalService.client.getRawClient();
+    if (!client) {
+      throw new Error('Temporal client is unavailable');
+    }
+
+    return client.workflow.start(`refreshTokenWorkflow`, {
+      workflowId: `refresh_${id}`,
+      args: [{ integrationId: id, organizationId: orgId }],
+      taskQueue: 'main',
+      workflowIdConflictPolicy: 'TERMINATE_EXISTING',
+    });
   }
 
   private async refreshProcess(

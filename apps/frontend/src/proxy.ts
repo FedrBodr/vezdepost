@@ -5,10 +5,24 @@ import { internalFetch } from '@gitroom/helpers/utils/internal.fetch';
 import acceptLanguage from 'accept-language';
 import {
   cookieName,
+  fallbackLng,
   headerName,
+  isSupportedLanguage,
+  languageCookieMaxAgeSeconds,
   languages,
 } from '@gitroom/react/translation/i18n.config';
 acceptLanguage.languages(languages);
+
+export const resolveProxyLanguage = (
+  cookieLanguage: string | undefined,
+  acceptLanguageHeader: string | null
+): string => {
+  if (typeof cookieLanguage !== 'undefined') {
+    return isSupportedLanguage(cookieLanguage) ? cookieLanguage : fallbackLng;
+  }
+
+  return acceptLanguage.get(acceptLanguageHeader || '') || fallbackLng;
+};
 
 // This function can be marked `async` if using `await` inside
 export async function proxy(request: NextRequest) {
@@ -17,17 +31,14 @@ export async function proxy(request: NextRequest) {
     request.cookies.get('auth') ||
     request.headers.get('auth') ||
     nextUrl.searchParams.get('loggedAuth');
-  const lng = request.cookies.has(cookieName)
-    ? acceptLanguage.get(request.cookies.get(cookieName).value)
-    : acceptLanguage.get(
-        request.headers.get('Accept-Language') ||
-          request.headers.get('accept-language')
-      );
+  const lng = resolveProxyLanguage(
+    request.cookies.get(cookieName)?.value,
+    request.headers.get('Accept-Language') ||
+      request.headers.get('accept-language')
+  );
 
   const requestHeaders = new Headers(request.headers);
-  if (lng) {
-    requestHeaders.set(headerName, lng);
-  }
+  requestHeaders.set(headerName, lng);
 
   const topResponse = NextResponse.next({
     request: {
@@ -35,9 +46,15 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  if (lng) {
-    topResponse.headers.set(cookieName, lng);
-  }
+  topResponse.cookies.set({
+    name: cookieName,
+    value: lng,
+    path: '/',
+    maxAge: languageCookieMaxAgeSeconds,
+    sameSite: 'lax',
+    secure: nextUrl.protocol === 'https:',
+    httpOnly: false,
+  });
 
   if (nextUrl.pathname.startsWith('/modal/') && !authCookie) {
     return NextResponse.redirect(new URL(`/auth/login-required`, nextUrl.href));

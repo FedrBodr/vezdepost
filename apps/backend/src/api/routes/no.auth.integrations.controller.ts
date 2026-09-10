@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpException,
+  HttpStatus,
   Param,
   Post,
   UseFilters,
@@ -23,6 +25,7 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
+import { VK_GROUP_PAGE_LOAD_ERROR } from '@gitroom/nestjs-libraries/integrations/social/vk.group.errors';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -51,7 +54,7 @@ export class NoAuthIntegrationsController {
         .getAllowedSocialsIntegrations()
         .includes(integration)
     ) {
-      throw new Error('Integration not allowed');
+      throw new ForbiddenException('Integration not available');
     }
 
     const integrationProvider =
@@ -239,11 +242,11 @@ export class NoAuthIntegrationsController {
           : undefined
       );
 
-    this._refreshIntegrationService
-      .startRefreshWorkflow(org.id, createUpdate.id, integrationProvider)
-      .catch((err) => {
-        console.log(err);
-      });
+    if (!integrationProvider.isBetweenSteps || refresh) {
+      this._refreshIntegrationService
+        .startRefreshWorkflow(org.id, createUpdate.id, integrationProvider)
+        .catch(() => undefined);
+    }
 
     // Fetch pages if this is a two-step provider and not a refresh
     let pages: any[] = [];
@@ -261,8 +264,13 @@ export class NoAuthIntegrationsController {
           // @ts-ignore - dynamic method call
           pages = await integrationProvider[fetchMethod](accessToken);
         }
-      } catch (err) {
-        console.log('Failed to fetch pages:', err);
+      } catch {
+        throw new HttpException(
+          integration === 'vk-group'
+            ? VK_GROUP_PAGE_LOAD_ERROR
+            : 'Could not load provider pages',
+          HttpStatus.BAD_REQUEST
+        );
       }
     }
 
@@ -354,6 +362,17 @@ export class NoAuthIntegrationsController {
     );
     if (!integration || integration.internalId !== internalId) {
       throw new HttpException('Integration not found', 404);
+    }
+
+    if (
+      !this._integrationManager.isSocialIntegrationAllowed(
+        integration.providerIdentifier
+      )
+    ) {
+      throw new HttpException(
+        'Integration not available',
+        HttpStatus.FORBIDDEN
+      );
     }
 
     const integrationProvider =

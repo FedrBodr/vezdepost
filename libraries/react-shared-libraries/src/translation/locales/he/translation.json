@@ -695,5 +695,11 @@
   "watch_tutorial_description": "צפה בסרטון הקצר הזה ולמד כיצד להפיק את המרב מ-Postiz",
   "back": "חזרה",
   "get_started": "התחלה",
-  "kick_select_channel": "בחר ערוץ"
+  "kick_select_channel": "בחר ערוץ",
+  "missing_platform_prompt": "לא מצאתם את הפלטפורמה שאתם צריכים?",
+  "missing_platform_email": "שלחו לנו אימייל — ננסה להוסיף אותה.",
+  "request_platform": "בקשה",
+  "platform_requested": "התבקש",
+  "request_new_platform_email_subject": "בקשה לפלטפורמה חדשה ב-Vezdepost",
+  "provider_connection_help_email_subject": "לא ניתן לחבר את {{platform}} ב-Vezdepost"
 }

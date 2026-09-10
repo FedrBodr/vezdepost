@@ -11,6 +11,9 @@
 ## Global Constraints
 
 - Never print, commit, log, or paste `TUMBLR_CLIENT_SECRET` or production `.env` contents.
+- Never pass either Tumblr credential through command arguments (including
+  `awk -v`); update `.env` with shell built-ins so secrets are not exposed in
+  the process list.
 - Report credential status only as `задана` or `отсутствует`.
 - Preserve unrelated tracked and untracked files.
 - Back up `.env` and `docker-compose.override.yaml` before mutation.
@@ -139,22 +142,29 @@ cleanup() {
 }
 trap cleanup EXIT
 
-awk -v client_id="$client_id" -v client_secret="$client_secret" '
-  BEGIN { id_written=0; secret_written=0 }
-  /^TUMBLR_CLIENT_ID=/ {
-    if (!id_written) { print "TUMBLR_CLIENT_ID=" client_id; id_written=1 }
-    next
-  }
-  /^TUMBLR_CLIENT_SECRET=/ {
-    if (!secret_written) { print "TUMBLR_CLIENT_SECRET=" client_secret; secret_written=1 }
-    next
-  }
-  { print }
-  END {
-    if (!id_written) print "TUMBLR_CLIENT_ID=" client_id
-    if (!secret_written) print "TUMBLR_CLIENT_SECRET=" client_secret
-  }
-' "$ENV_FILE" > "$env_tmp"
+# Read the existing file line-by-line and emit replacements with shell
+# built-ins. Do not pass client_id or client_secret to awk/sed/perl arguments.
+id_written=0
+secret_written=0
+while IFS= read -r line || [[ -n "$line" ]]; do
+  case "$line" in
+    TUMBLR_CLIENT_ID=*)
+      if [[ "$id_written" -eq 0 ]]; then
+        printf 'TUMBLR_CLIENT_ID=%s\n' "$client_id"
+        id_written=1
+      fi
+      ;;
+    TUMBLR_CLIENT_SECRET=*)
+      if [[ "$secret_written" -eq 0 ]]; then
+        printf 'TUMBLR_CLIENT_SECRET=%s\n' "$client_secret"
+        secret_written=1
+      fi
+      ;;
+    *) printf '%s\n' "$line" ;;
+  esac
+done < "$ENV_FILE" > "$env_tmp"
+[[ "$id_written" -eq 1 ]] || printf 'TUMBLR_CLIENT_ID=%s\n' "$client_id" >> "$env_tmp"
+[[ "$secret_written" -eq 1 ]] || printf 'TUMBLR_CLIENT_SECRET=%s\n' "$client_secret" >> "$env_tmp"
 chmod 600 "$env_tmp"
 mv "$env_tmp" "$ENV_FILE"
 
@@ -311,4 +321,3 @@ Expected: one active `tumblr` row for the selected blog, `disabled=false`, and `
 Create a draft in Vezdepost with a short text and one image, ensure Tumblr validation passes, and leave it unpublished.
 
 Expected: draft is saved; no Tumblr public URL is created and no public Tumblr post appears.
-

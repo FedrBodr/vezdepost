@@ -13,11 +13,19 @@ import {
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { lookup } from 'mime-types';
-import axios from 'axios';
+import {
+  authorizeMediaSource,
+  readMediaSourceBuffer,
+} from '@gitroom/helpers/utils/media.source';
 import WebSocket from 'ws';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Integration } from '@prisma/client';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import type { CapabilityRuntimeOverlay } from '@gitroom/helpers/utils/platform.capability.types';
+import {
+  SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+  SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+} from '@gitroom/helpers/utils/ssrf.safe.fetch';
 
 // @ts-ignore
 global.WebSocket = WebSocket;
@@ -33,6 +41,96 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
 
   maxLength() {
     return 10000;
+  }
+
+  private extractSubreddits(settings: unknown): string[] {
+    type SubredditEntry = string | {
+      value?: string | { subreddit?: string };
+    };
+    const list = (settings as any)?.subreddit;
+    const rawList: SubredditEntry[] = Array.isArray(list)
+      ? (list as SubredditEntry[])
+      : list === undefined || list === null
+        ? []
+        : [list as SubredditEntry];
+    const names = new Set<string>();
+    for (const raw of rawList) {
+      const value =
+        typeof raw === 'string'
+          ? raw
+          : typeof raw?.value === 'string'
+            ? raw.value
+            : raw?.value?.subreddit;
+      if (typeof value !== 'string') {
+        continue;
+      }
+      const name = value.split('/r/').pop()?.trim().toLowerCase();
+      if (name) {
+        names.add(name);
+      }
+    }
+    return [...names].slice(0, 10);
+  }
+
+  async fetchCapabilityRuntime(
+    integration: Integration,
+    settings?: unknown
+  ): Promise<CapabilityRuntimeOverlay | undefined> {
+    try {
+      const subreddits = this.extractSubreddits(settings);
+      if (!subreddits.length) {
+        return undefined;
+      }
+
+      const titleMaxima = await Promise.all(
+        subreddits.map(async (subreddit) => {
+          try {
+            const { title_required_max: titleMax } = await (
+              await this.fetch(
+                `https://oauth.reddit.com/api/v1/${subreddit}/post_requirements`,
+                {
+                  method: 'GET',
+                  headers: {
+                    Authorization: `Bearer ${integration.token}`,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                  },
+                },
+                'reddit',
+                0,
+                false
+              )
+            ).json();
+            return Number.isInteger(titleMax) &&
+              titleMax > 0 &&
+              titleMax < 300
+              ? (titleMax as number)
+              : undefined;
+          } catch {
+            return undefined;
+          }
+        })
+      );
+
+      const validMaxima = titleMaxima.filter(
+        (titleMax): titleMax is number => typeof titleMax === 'number'
+      );
+      if (!validMaxima.length) {
+        return undefined;
+      }
+
+      return {
+        observedAt: new Date().toISOString(),
+        textLimits: {
+          title: {
+            max: Math.min(...validMaxima),
+            unit: 'utf16-code-units',
+            source: 'runtime',
+          },
+        },
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   override async checkValidity(
@@ -153,11 +251,16 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  private async uploadFileToReddit(accessToken: string, path: string) {
+  private async uploadFileToReddit(
+    accessToken: string,
+    path: string,
+    retainedData?: Buffer
+  ) {
     const mimeType = lookup(path);
     const formData = new FormData();
     formData.append('filepath', path.split('/').pop());
     formData.append('mimetype', mimeType || 'application/octet-stream');
+    const data = retainedData ?? (await readMediaSourceBuffer(path));
 
     const {
       args: { action, fields },
@@ -176,10 +279,6 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
         true
       )
     ).json();
-
-    const { data } = await axios.get(path, {
-      responseType: 'arraybuffer',
-    });
 
     const upload = (fields as { name: string; value: string }[]).reduce(
       (acc, value) => {
@@ -208,6 +307,22 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     postDetails: PostDetails<RedditSettingsDto>[]
   ): Promise<PostResponse[]> {
     const [post] = postDetails;
+    let thumbnailData: Buffer | undefined;
+
+    if (
+      post.settings.subreddit.some(({ value }) => value.type === 'media') &&
+      hasExtension(post.media[0].path, 'mp4')
+    ) {
+      const thumbnail = post.media[0].thumbnail;
+      if (typeof thumbnail !== 'string' || !thumbnail.trim()) {
+        throw new Error('Invalid secondary media source');
+      }
+      await authorizeMediaSource(thumbnail);
+      thumbnailData = await readMediaSourceBuffer(thumbnail, {
+        maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
+        bodyTimeoutMs: SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+      });
+    }
 
     const valueArray: PostResponse[] = [];
     for (const firstPostSettings of post.settings.subreddit) {
@@ -242,7 +357,8 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
                 ? {
                     video_poster_url: await this.uploadFileToReddit(
                       accessToken,
-                      post.media[0].thumbnail
+                      post.media[0].thumbnail,
+                      thumbnailData
                     ),
                   }
                 : {}),

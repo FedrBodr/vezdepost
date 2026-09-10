@@ -506,7 +506,17 @@ describe('platform content normalization', () => {
         '<h1>Title</h1><p><strong>Bold</strong> <a href="https://x.test">Link</a></p>',
         getPlatformCapabilities('telegram')
       )
-    ).toBe('Title\n<b>Bold</b> Link\n');
+    ).toBe('Title\n<b>Bold</b> Link');
+  });
+
+  it('keeps Telegram normalization idempotent', () => {
+    const once = normalizePlatformContent(
+      '<p><strong>Bold</strong></p>',
+      getPlatformCapabilities('telegram')
+    );
+    expect(
+      normalizePlatformContent(once, getPlatformCapabilities('telegram'))
+    ).toBe(once);
   });
 
   it('reports Telegram long-media split as information', () => {
@@ -775,16 +785,22 @@ ordering below so unsupported headings and links retain visible text while
 headings retain a line break:
 
 ```ts
-export const normalizeTelegramHtml = (value: string): string =>
-  striptags(
+export const normalizeTelegramHtml = (value: string): string => {
+  const hasTrailingParagraph = /<\/p>\s*$/i.test(value);
+  const normalized = striptags(
     value
-      .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gis, '$1\n')
-      .replace(/<a[^>]*>(.*?)<\/a>/gis, '$1'),
-    ['u', 'strong', 'p']
+      .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, '$1\n')
+      .replace(/<a[^>]*>([\s\S]*?)<\/a>/gi, '$1'),
+    ['u', 'strong', 'b', 'p']
   )
     .replace(/<strong>/g, '<b>')
     .replace(/<\/strong>/g, '</b>')
-    .replace(/<p>(.*?)<\/p>/gs, '$1\n');
+    .replace(/<p>([\s\S]*?)<\/p>/g, '$1\n');
+
+  return hasTrailingParagraph
+    ? normalized.replace(/\n(?=[^\S\r\n]*$)/, '')
+    : normalized;
+};
 ```
 
 - [ ] **Step 4: Run content and existing Telegram tests**

@@ -101,6 +101,32 @@ ssh vezdepost 'nano /root/vezdepost-backup.env'   # fill B2_ACCOUNT_ID / B2_APP_
 If `B2_APP_KEY` is still the placeholder, the script keeps the dump **local only**
 and logs "skipped upload" — it never fails the run for a missing offsite target.
 
+## KSY Deals staging backup isolation
+
+KSY reuses the configured B2 application credentials but not the Vezdepost
+database, local directory, schedule or remote namespace. Numbered script
+`22-install-ksy-backup.sh` installs:
+
+| Piece | KSY location |
+|---|---|
+| Host wrapper | `/usr/local/sbin/ksy-deals-backup` |
+| Cron | `/etc/cron.d/ksy-deals-backup` at 03:37 Europe/Moscow |
+| Log | `/var/log/ksy-deals-backup.log` |
+| Local encrypted artifacts | `/var/backups/ksy-deals/` |
+| Remote encrypted artifacts | `B2:$B2_BUCKET/ksy-deals/` |
+
+The wrapper invokes only the KSY Compose maintenance service, requires exactly
+one new nonempty `ksy-deals-*.dump.gpg`, and uploads only that encrypted file.
+Local retention remains the KSY image's 14-day policy; the separate remote
+prefix removes objects older than 90 days. Database URLs, encryption
+passphrases and B2 credentials stay in mode-0600 env files and are never placed
+in cron, command arguments or logs.
+
+A successful upload is not restore proof. Download or select the encrypted
+artifact, restore it only into `ksy_deals_restore` with
+`RESTORE_CONFIRM=RESTORE_KSY_DEALS_DISPOSABLE`, verify the live-smoke marker or
+row counts, and then drop only the disposable database.
+
 ---
 
 ## Hardening backlog (not yet done)
