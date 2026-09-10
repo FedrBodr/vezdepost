@@ -495,16 +495,16 @@ export class IntegrationsController {
         claimUrl: result.claim_url,
         verificationCode: result.verification_code,
       };
-    } catch (err: any) {
-      return { error: err.message || 'Registration failed' };
+    } catch {
+      return { error: 'Registration failed' };
     }
   }
 
-  @Get('/moltbook/status')
-  async moltbookStatus(@Query('apiKey') apiKey: string) {
+  @Post('/moltbook/status')
+  async moltbookStatus(@Body() body: { apiKey: string }) {
     try {
       const provider = new MoltbookProvider();
-      const result = await provider.checkAgentStatus(apiKey);
+      const result = await provider.checkAgentStatus(body.apiKey);
       return { claimed: result?.status === 'claimed' };
     } catch (err) {
       return { claimed: false };

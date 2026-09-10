@@ -6,168 +6,219 @@ import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Input } from '@gitroom/react/form/input';
 import { Button } from '@gitroom/react/form/button';
-import copy from 'copy-to-clipboard';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { isAllowedMoltbookClaimUrl } from './moltbook.connection';
 
-export const MoltbookProvider: FC<Web3ProviderInterface> = (props) => {
-  const { onComplete, nonce } = props;
+type MoltbookStep = 'init' | 'registering' | 'waiting' | 'timeout' | 'error';
+
+export const MoltbookProvider: FC<Web3ProviderInterface> = ({
+  onComplete,
+  nonce,
+}) => {
   const fetch = useFetch();
-  const stop = useRef(false);
-  const [step, setStep] = useState<'init' | 'registering' | 'waiting' | 'error'>('init');
+  const toaster = useToaster();
+  const t = useT();
+  const attempt = useRef(0);
+  const apiKey = useRef('');
+  const [step, setStep] = useState<MoltbookStep>('init');
   const [agentName, setAgentName] = useState('');
   const [agentDescription, setAgentDescription] = useState('');
   const [claimUrl, setClaimUrl] = useState('');
-  const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState('');
-  const toaster = useToaster();
-  const t = useT();
 
-  const register = async () => {
+  useEffect(
+    () => () => {
+      attempt.current += 1;
+      apiKey.current = '';
+    },
+    []
+  );
+
+  const pollForClaim = useCallback(async () => {
+    const key = apiKey.current;
+    if (!key) return;
+    const currentAttempt = ++attempt.current;
+    const deadline = Date.now() + 120_000;
+    setStep('waiting');
+
+    while (Date.now() < deadline && attempt.current === currentAttempt) {
+      try {
+        const response = await fetch('/integrations/moltbook/status', {
+          method: 'POST',
+          body: JSON.stringify({ apiKey: key }),
+        });
+        const data = await response.json();
+        if (attempt.current !== currentAttempt) return;
+        if (data.claimed === true) {
+          onComplete(key, nonce);
+          return;
+        }
+      } catch {
+        if (attempt.current !== currentAttempt) return;
+      }
+      await timer(3000);
+    }
+
+    if (attempt.current === currentAttempt) {
+      setStep('timeout');
+    }
+  }, [fetch, nonce, onComplete]);
+
+  const register = useCallback(async () => {
     if (!agentName.trim()) {
-      toaster.show('Please enter an agent name', 'warning');
+      toaster.show(
+        t('moltbook_enter_agent_name', 'Enter an agent name.'),
+        'warning'
+      );
       return;
     }
 
+    attempt.current += 1;
     setStep('registering');
     setError('');
-
     try {
       const response = await fetch('/integrations/moltbook/register', {
         method: 'POST',
         body: JSON.stringify({
           name: agentName.trim(),
-          description: agentDescription.trim() || 'Postiz social media scheduler',
+          description:
+            agentDescription.trim() || 'Vezdepost social media scheduler',
         }),
       });
-
       const data = await response.json();
-
-      if (data.error) {
-        setError(data.error);
+      if (
+        !response.ok ||
+        typeof data.apiKey !== 'string' ||
+        typeof data.claimUrl !== 'string'
+      ) {
+        throw new Error('registration failed');
+      }
+      if (!isAllowedMoltbookClaimUrl(data.claimUrl)) {
+        apiKey.current = '';
+        setError(
+          t(
+            'moltbook_invalid_claim_url',
+            'Moltbook returned an invalid claim link. Try again.'
+          )
+        );
         setStep('error');
         return;
       }
 
-      setApiKey(data.apiKey);
+      apiKey.current = data.apiKey;
       setClaimUrl(data.claimUrl);
       setStep('waiting');
-
-      pollForClaim(data.apiKey);
-    } catch (err) {
-      setError('Failed to register agent');
+      void pollForClaim();
+    } catch {
+      apiKey.current = '';
+      setError(
+        t(
+          'moltbook_registration_error',
+          'Could not create the Moltbook agent. Try again.'
+        )
+      );
       setStep('error');
     }
-  };
-
-  const pollForClaim = async (key: string) => {
-    stop.current = false;
-
-    while (!stop.current) {
-      try {
-        const response = await fetch(`/integrations/moltbook/status?apiKey=${encodeURIComponent(key)}`);
-        const data = await response.json();
-
-        if (data.claimed) {
-          onComplete(key, nonce);
-          return;
-        }
-      } catch (err) {
-        // Continue polling
-      }
-
-      await timer(3000);
-    }
-  };
-
-  const copyClaimUrl = useCallback(() => {
-    copy(claimUrl);
-    toaster.show('Claim URL copied to clipboard', 'success');
-  }, [claimUrl, toaster]);
-
-  useEffect(() => {
-    return () => {
-      stop.current = true;
-    };
-  }, []);
+  }, [agentDescription, agentName, fetch, pollForClaim, t, toaster]);
 
   return (
-    <div className="justify-center items-center flex flex-col pt-[16px]">
-      {step === 'init' && (
+    <div className="flex flex-col gap-[14px] pt-[16px]">
+      {(step === 'init' || step === 'registering' || step === 'error') && (
         <>
-          <div className="text-center mb-[16px]">
-            {t('moltbook_register_description', 'Register your Moltbook agent to connect:')}
+          <div className="rounded-[8px] border border-tableBorder p-[12px] text-[14px]">
+            <p>
+              {t(
+                'moltbook_connection_creates_agent',
+                'Vezdepost creates a Moltbook agent for scheduled publishing.'
+              )}
+            </p>
+            <p className="mt-[6px] text-textColor/70">
+              {t(
+                'moltbook_connection_owner_claim',
+                'After creation, the human owner must claim it on Moltbook.'
+              )}
+            </p>
           </div>
-          <div className="w-full space-y-[12px]">
-            <Input
-              label={t('agent_name', 'Agent Name')}
-              value={agentName}
-              name="agentName"
-              disableForm={true}
-              onChange={(e) => setAgentName(e.target.value)}
-              placeholder="MyPostizAgent"
-            />
-            <Input
-              label={t('description_optional', 'Description (optional)')}
-              value={agentDescription}
-              name="agentDescription"
-              disableForm={true}
-              onChange={(e) => setAgentDescription(e.target.value)}
-              placeholder="Social media scheduler"
-            />
-            <Button className="w-full" onClick={register}>
-              {t('register_agent', 'Register Agent')}
-            </Button>
-          </div>
+          <Input
+            label={t('agent_name', 'Agent Name')}
+            value={agentName}
+            name="agentName"
+            disableForm={true}
+            onChange={(event) => setAgentName(event.target.value)}
+            placeholder="MyVezdepostAgent"
+          />
+          <Input
+            label={t('description_optional', 'Description (optional)')}
+            value={agentDescription}
+            name="agentDescription"
+            disableForm={true}
+            onChange={(event) => setAgentDescription(event.target.value)}
+            placeholder="Social media scheduler"
+          />
+          {step === 'error' ? (
+            <p className="text-red-500" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            onClick={register}
+            disabled={step === 'registering'}
+          >
+            {step === 'registering'
+              ? t('moltbook_registering_agent', 'Creating agent…')
+              : t('moltbook_create_agent', 'Create agent')}
+          </Button>
         </>
       )}
 
-      {step === 'registering' && (
-        <div className="text-center">
-          {t('registering_agent', 'Registering agent...')}
-        </div>
-      )}
-
-      {step === 'waiting' && (
-        <div className="w-full text-center">
-          <div className="mb-[16px]">
-            {t('moltbook_claim_instructions', 'Please visit the claim URL to verify your agent:')}
+      {(step === 'waiting' || step === 'timeout') && (
+        <>
+          <div className="text-[14px]">
+            <p>
+              {t(
+                'moltbook_open_claim_explanation',
+                'Open the claim page and follow Moltbook’s ownership instructions.'
+              )}
+            </p>
+            <p className="mt-[6px] text-textColor/70">
+              {t(
+                'moltbook_keep_page_open',
+                'Keep this window open; Vezdepost checks the result automatically.'
+              )}
+            </p>
           </div>
-          <div className="flex gap-[8px]">
-            <div className="flex-1">
-              <Input
-                label=""
-                value={claimUrl}
-                name="claimUrl"
-                disableForm={true}
-                readOnly
-              />
+          <a
+            href={claimUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-[8px] bg-accent px-[14px] py-[12px] text-center text-white"
+          >
+            {t('open_claim_page', 'Open claim page')}
+          </a>
+          {step === 'waiting' ? (
+            <div role="status" className="text-center text-textColor/70">
+              {t('waiting_for_claim', 'Waiting for claim confirmation…')}
             </div>
-            <Button onClick={copyClaimUrl}>{t('copy', 'Copy')}</Button>
-          </div>
-          <div className="mt-[16px] text-sm opacity-70">
-            {t('waiting_for_claim', 'Waiting for you to claim your agent...')}
-          </div>
-          <div className="mt-[8px]">
-            <a
-              href={claimUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-500 hover:underline"
-            >
-              {t('open_claim_page', 'Open claim page')}
-            </a>
-          </div>
-        </div>
-      )}
-
-      {step === 'error' && (
-        <div className="w-full text-center">
-          <div className="text-red-500 mb-[16px]">{error}</div>
-          <Button onClick={() => setStep('init')}>
-            {t('try_again', 'Try Again')}
-          </Button>
-        </div>
+          ) : (
+            <div className="rounded-[8px] border border-tableBorder p-[12px]">
+              <p>
+                {t(
+                  'moltbook_claim_timed_out',
+                  'We have not received the claim confirmation yet.'
+                )}
+              </p>
+              <Button
+                type="button"
+                className="mt-[10px]"
+                onClick={pollForClaim}
+              >
+                {t('moltbook_check_again', 'Check again')}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
