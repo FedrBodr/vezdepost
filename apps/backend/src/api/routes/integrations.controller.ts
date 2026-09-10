@@ -471,8 +471,18 @@ export class IntegrationsController {
   }
 
   @Get('/max/updates')
-  async getMaxUpdates(@Query() query: { word: string; id?: number }) {
-    return new MaxProvider().getBotId(query);
+  async getMaxUpdates(
+    @Query() query: { word: string; id?: string; chatId?: string }
+  ) {
+    return new MaxProvider().getBotId({
+      word: query.word,
+      ...(query.id && Number.isFinite(Number(query.id))
+        ? { id: Number(query.id) }
+        : {}),
+      ...(query.chatId && Number.isFinite(Number(query.chatId))
+        ? { chatId: Number(query.chatId) }
+        : {}),
+    });
   }
 
   @Post('/moltbook/register')

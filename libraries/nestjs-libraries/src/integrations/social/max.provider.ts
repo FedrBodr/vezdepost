@@ -19,7 +19,56 @@ import { Bot } from '@maxhub/max-bot-api';
 const bot = new Bot(process.env.MAX_TOKEN || '');
 const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5000';
 
+export type MaxConnectionStatus =
+  | 'waiting'
+  | 'ready'
+  | 'bot_not_admin'
+  | 'missing_permissions'
+  | 'max_error';
+
+export type MaxConnectionResult =
+  | { status: 'waiting'; lastChatId?: number }
+  | { status: 'ready'; chatId: number }
+  | {
+      status: 'bot_not_admin' | 'missing_permissions';
+      candidateChatId: number;
+    }
+  | { status: 'max_error' };
+
+type MaxMembership = {
+  is_admin?: boolean;
+  permissions?: string[] | null;
+};
+
+export const parseMaxConnectionMessage = (text?: string | null) => {
+  const match = text?.match(/^\/connect ([^\s]+)$/);
+  return match ? { nonce: match[1] } : null;
+};
+
+export const evaluateMaxPermissions = (
+  member: MaxMembership
+): Extract<
+  MaxConnectionStatus,
+  'ready' | 'bot_not_admin' | 'missing_permissions'
+> => {
+  if (member.is_admin !== true) {
+    return 'bot_not_admin';
+  }
+  const permissions = member.permissions || [];
+  if (
+    !permissions.includes('read_all_messages') ||
+    !permissions.includes('write')
+  ) {
+    return 'missing_permissions';
+  }
+  return 'ready';
+};
+
 export class MaxProvider extends SocialAbstract implements SocialProvider {
+  constructor(private readonly botClient: Bot['api'] = bot.api) {
+    super();
+  }
+
   override maxConcurrentJob = 3; // ~30 rps API limit; keep concurrency moderate
   identifier = 'max';
   name = 'MAX';
@@ -67,30 +116,57 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     return { url: state, codeVerifier: makeId(10), state };
   }
 
-  // Long-poll the bot's updates for a "/connect <word>" message in the channel.
-  // Returns { chatId } on match, { lastChatId } to advance the poll cursor, or {}.
-  async getBotId(query: { id?: number; word: string }) {
-    const updates: any = await bot.api.getUpdates(
-      ['message_created'],
-      query.id ? { marker: query.id } : {}
-    );
+  private async verifyConnection(chatId: number): Promise<MaxConnectionResult> {
+    const [, membership] = await Promise.all([
+      this.botClient.getChat(chatId),
+      this.botClient.getChatMembership(chatId),
+    ]);
+    const status = evaluateMaxPermissions(membership);
+    return status === 'ready'
+      ? { status, chatId }
+      : { status, candidateChatId: chatId };
+  }
 
-    const list: any[] = Array.isArray(updates) ? updates : updates?.updates || [];
+  async getBotId(query: {
+    id?: number;
+    word: string;
+    chatId?: number;
+  }): Promise<MaxConnectionResult> {
+    try {
+      if (query.chatId !== undefined) {
+        return await this.verifyConnection(query.chatId);
+      }
 
-    const match = list.find(
-      (u) => u?.message?.body?.text === `/connect ${query.word}`
-    );
-    const chatId = match?.message?.recipient?.chat_id;
+      const updates: any = await this.botClient.getUpdates(
+        ['message_created'],
+        query.id !== undefined ? { marker: query.id } : {}
+      );
+      const list: any[] = Array.isArray(updates)
+        ? updates
+        : updates?.updates || [];
+      const match = list.find((update) => {
+        const command = parseMaxConnectionMessage(
+          update?.message?.body?.text
+        );
+        return command?.nonce === query.word;
+      });
+      const chatId = match?.message?.recipient?.chat_id;
 
-    if (chatId) {
-      return { chatId };
+      if (typeof chatId === 'number') {
+        return await this.verifyConnection(chatId);
+      }
+
+      const marker =
+        (!Array.isArray(updates) && updates?.marker) ||
+        list[list.length - 1]?.marker;
+      return {
+        status: 'waiting',
+        ...(typeof marker === 'number' ? { lastChatId: marker } : {}),
+      };
+    } catch (error) {
+      console.error('Failed to verify MAX connection:', error);
+      return { status: 'max_error' };
     }
-
-    const marker =
-      (updates && !Array.isArray(updates) && updates.marker) ||
-      list[list.length - 1]?.marker;
-
-    return marker ? { lastChatId: marker } : {};
   }
 
   async authenticate(params: {
@@ -98,7 +174,7 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     codeVerifier: string;
     refresh?: string;
   }) {
-    const chat: any = await bot.api.getChat(Number(params.code));
+    const chat: any = await this.botClient.getChat(Number(params.code));
 
     return {
       id: String(chat?.chat_id ?? params.code),
@@ -133,8 +209,8 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
       const buffer = Buffer.from(await res.arrayBuffer());
       const attachment =
         m.type === 'video'
-          ? await bot.api.uploadVideo({ source: buffer })
-          : await bot.api.uploadImage({ source: buffer });
+          ? await this.botClient.uploadVideo({ source: buffer })
+          : await this.botClient.uploadImage({ source: buffer });
       // uploadVideo/uploadImage return class instances (VideoAttachment /
       // ImageAttachment) whose wire shape is produced by `.toJson()` —
       // NOT the JS-standard `.toJSON()`. The SDK's client does a plain
@@ -153,7 +229,7 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
   ) {
     const attachments = await this.buildAttachments(post.media);
 
-    const message: any = await bot.api.sendMessageToChat(
+    const message: any = await this.botClient.sendMessageToChat(
       Number(accessToken),
       this.normalizeText(post.message),
       {
