@@ -1,0 +1,11 @@
+# KSY Telegram ingress relay
+The owner approved completing the incident fix on 2026-09-13 after discussing the existing Netherlands VPS as the fastest workaround. Telegram IPv4 connections to Timeweb are intermittent; persisted relay messages complete within about one second. The exact upstream loss point remains unproven.
+
+Use systemd-socket-proxyd on 185.158.249.84:443 to pass TCP to 201.51.7.50:443. TLS stays end to end between Telegram and the existing Caddy certificate. Leave DNS, app, database, files, existing 3proxy/VPN services and outgoing Telegram traffic unchanged. UFW already active: add only TCP443 source rules for 149.154.160.0/20, 91.108.4.0/22 and the Timeweb origin for checks. No general proxy, package installation or credentials on EU.
+
+Script 28 installs dedicated socket/service units, validates the exact host, detects port/file collisions, limits resources, verifies TLS and readiness, and removes only changes made by an unsuccessful run. An identical existing installation is checked without replacement. Script 29 runs inside the existing KSY container using runtime secrets only in memory, bounds Bot API requests over the confirmed working IPv6 route and changes one bot at a time. It preserves URL, secret, allowed_updates, max_connections and explicitly sets drop_pending_updates=false. It rejects unexpected registration. An ambiguous mutation stops and requires status reconciliation, never retries or deletes updates automatically.
+
+Register order first using setWebhook.ip_address, observe queue/error and a normal owner test, then catalogue. Rollback each bot to 201.51.7.50; leave the unused relay installed until a separately reviewed removal. Routine release script27 does not register webhooks. Legacy script23 must preserve an existing registration and its relay IP when URL matches; it must not silently reset it.
+
+Local tests cover preserved registration, wrong inputs, failed preflight, ambiguous API result, wrong postcondition, sanitized output, owned-only installation and rollback. Verify systemd units on Ubuntu, readiness and webhook authentication through the TLS relay before switching. No synthetic real messages or orders. Document final status honestly if owner end-to-end test is pending.
+
