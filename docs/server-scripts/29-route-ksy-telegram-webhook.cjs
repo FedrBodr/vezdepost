@@ -35,7 +35,7 @@ async function apiRequest(token,method,body={}) {
   return json.result;
 }
 async function probeTarget(ip,cfg,send=request) {
-  const connection={hostname:HOST,servername:HOST,lookup:(_host,_opts,cb)=>cb(null,ip,4)};
+  const connection={hostname:HOST,servername:HOST,family:4,lookup:(_host,_opts,cb)=>cb(null,ip,4)};
   const result=await send({...connection,path:'/health/ready',method:'GET'});
   if(result.status!==200)fail('TARGET_NOT_READY');
   for(const [secret,expected] of [['ksy-invalid-preflight',403],[cfg.secret,204]]){

@@ -1,6 +1,18 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {run}=require('./29-route-ksy-telegram-webhook.cjs');
+test('real Node22 HTTPS target lookup reaches fixed IPv4 socket',async()=>{
+  const net=require('node:net');
+  const {probeTarget,request}=require('./29-route-ksy-telegram-webhook.cjs');
+  let connections=0;
+  const server=net.createServer(socket=>{connections++;socket.destroy();});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try {
+    const port=server.address().port;
+    await assert.rejects(probeTarget('127.0.0.1',{url:'https://ksy-deals.fedrbodr.com/telegram/webhook',secret:'fixture'},(options,body)=>request({...options,port},body)));
+    assert.equal(connections,1,'TLS failure must occur after connecting, not in DNS address handling');
+  } finally {await new Promise(resolve=>server.close(resolve));}
+});
 test('target preflight verifies TLS hostname and both webhook authentication outcomes',async()=>{
   const {probeTarget}=require('./29-route-ksy-telegram-webhook.cjs');
   const calls=[];

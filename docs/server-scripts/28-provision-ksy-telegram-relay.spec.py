@@ -9,6 +9,9 @@ relay=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(relay)
 
 class Tests(unittest.TestCase):
+    def test_socket_can_bind_before_public_address_is_assigned(self):
+        self.assertIn("FreeBind=yes",relay.SOCKET)
+
     def setup_case(self):
         tmp=tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

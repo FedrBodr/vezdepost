@@ -16,6 +16,7 @@ Description=KSY Telegram TLS passthrough socket
 
 [Socket]
 ListenStream=185.158.249.84:443
+FreeBind=yes
 Accept=no
 NoDelay=yes
 KeepAlive=yes
@@ -149,4 +150,3 @@ if __name__=="__main__":
     except Exception as exc:
         print(json.dumps({"status":"failed","code":str(exc) if isinstance(exc,RuntimeError) else type(exc).__name__}),file=sys.stderr)
         sys.exit(1)
-
