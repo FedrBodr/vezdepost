@@ -55,11 +55,12 @@ async function run({action,bot,env=process.env,api,probe=probeTarget,log=console
   if(action==='status')return;
   if(before.url!==cfg.url||![ORIGIN,RELAY].includes(before.ip_address)||before.has_custom_certificate!==false||
      !Number.isInteger(before.max_connections)||before.max_connections<1||before.max_connections>100||
-     !Array.isArray(before.allowed_updates)||!before.allowed_updates.every(x=>typeof x==='string'))fail('REGISTRATION_UNEXPECTED');
+     (before.allowed_updates!==undefined&&(!Array.isArray(before.allowed_updates)||!before.allowed_updates.every(x=>typeof x==='string'))))fail('REGISTRATION_UNEXPECTED');
   const target=action==='relay'?RELAY:ORIGIN;
   await probe(target,cfg);
   if(before.ip_address===target){log(safeSnapshot(bot,before,'already_configured'));return;}
-  const body={url:cfg.url,ip_address:target,secret_token:cfg.secret,drop_pending_updates:false,max_connections:before.max_connections,allowed_updates:before.allowed_updates};
+  const body={url:cfg.url,ip_address:target,secret_token:cfg.secret,drop_pending_updates:false,max_connections:before.max_connections,
+    ...(before.allowed_updates===undefined?{}:{allowed_updates:before.allowed_updates})};
   try{if(await api('setWebhook',body)!==true)fail('SET_FAILED');}catch{fail('MUTATION_UNCONFIRMED_RUN_STATUS');}
   let after;try{after=await api('getWebhookInfo');}catch{fail('MUTATION_UNCONFIRMED_RUN_STATUS');}
   if(after.url!==cfg.url||after.ip_address!==target||after.max_connections!==before.max_connections||

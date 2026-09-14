@@ -44,6 +44,12 @@ test('preserves URL, secret, update filter, connections and pending queue',async
   assert.equal(f.logs.at(-1).pendingUpdateCount,15);assert.equal(f.logs.at(-1).ipAddress,'185.158.249.84');
   assert.ok(!JSON.stringify(f.logs).includes('fixture'));
 });
+test('preserves default allowed updates by omitting optional field when Telegram omits it',async()=>{
+  const f=fixture();const old=f.api;
+  f.api=async(m,b)=>{const result=await old(m,b);if(typeof result==='object')delete result.allowed_updates;return result;};
+  await run(f);
+  assert.equal(Object.hasOwn(f.calls.find(x=>x.method==='setWebhook').body,'allowed_updates'),false);
+});
 test('status never probes or mutates',async()=>{const f=fixture({action:'status',probe:()=>{throw Error('unexpected');}});await run(f);assert.deepEqual(f.calls.map(x=>x.method),['getWebhookInfo']);});
 test('failed TLS preflight prevents mutation',async()=>{const f=fixture({probe:async()=>{throw Error('TLS');}});await assert.rejects(run(f));assert.ok(!f.calls.some(x=>x.method==='setWebhook'));});
 test('unexpected URL refuses mutation',async()=>{const f=fixture({api:async()=>({url:'https://other.invalid',ip_address:'201.51.7.50'})});await assert.rejects(run(f),/REGISTRATION_UNEXPECTED/);});
