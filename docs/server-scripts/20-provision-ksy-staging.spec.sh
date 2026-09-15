@@ -615,6 +615,45 @@ assert_rejection() {
   assert_synthetic_secrets_absent "$output"
 }
 
+additional_admin_batch() {
+  valid_batch | sed "s/^ADMIN_TELEGRAM_IDS = .*/ADMIN_TELEGRAM_IDS = $TEST_ADMIN_IDS/"
+}
+
+test_additional_admins_persist_in_order_without_leaks() {
+  local case_dir="$TMP_DIR/additional-admins"
+  local output="$case_dir/output"
+  valid_environment
+  TEST_ADMIN_IDS='101,202,303'
+  write_staged_compose "$case_dir/tmp/release/docker-compose.yml"
+  if ! run_stdin_case "$case_dir" "$output" additional_admin_batch; then
+    fail 'three approved administrators were rejected'
+  fi
+  grep -Fxq 'ADMIN_TELEGRAM_IDS=101,202,303' "$case_dir/opt/ksy-deals/.env" ||
+    fail 'additional administrators were not persisted in order'
+  assert_value_absent "$TEST_ADMIN_IDS" "$output" 'administrator IDs leaked to output'
+  assert_value_absent "$TEST_ADMIN_IDS" "$case_dir/opt/ksy-deals/deployment-evidence.json" \
+    'administrator IDs leaked to deployment evidence'
+  run_stdin_case "$case_dir" "$case_dir/output-second" additional_admin_batch
+  assert_eq 1 "$(grep -c '^ADMIN_TELEGRAM_IDS=' "$case_dir/opt/ksy-deals/.env")" \
+    'idempotent provision must retain one administrator assignment'
+}
+
+test_rejects_invalid_admin_allowlists_before_mutation() {
+  local ids index=0
+  valid_environment
+  for ids in '101' '101,202,0' '101,202,-303' '101,202,ksu_fifa' \
+    '101,202,' '101,,303' '101,202, 303' '101,202,3.5' '101,202,0303'; do
+    TEST_ADMIN_IDS=$ids
+    index=$((index + 1))
+    assert_stdin_rejection "invalid-admins-$index" ADMIN_TELEGRAM_IDS_INVALID additional_admin_batch
+  done
+  for ids in '101,101' '101,202,101' '101,202,202' '101,202,303,303'; do
+    TEST_ADMIN_IDS=$ids
+    index=$((index + 1))
+    assert_stdin_rejection "duplicate-admins-$index" ADMIN_TELEGRAM_IDS_DUPLICATE additional_admin_batch
+  done
+}
+
 test_rejects_full_disk_before_mutation() {
   local case_dir="$TMP_DIR/full-disk"
   local output="$case_dir/output"
@@ -1694,6 +1733,8 @@ test_bootstrap_contract_names_eighteen_hidden_fields() {
     fail 'bootstrap prompt no longer names the eighteen-field hidden batch'
 }
 
+test_additional_admins_persist_in_order_without_leaks
+test_rejects_invalid_admin_allowlists_before_mutation
 test_rejects_full_disk_before_mutation
 test_synthetic_leak_assertion_rejects_scan_errors
 test_value_absence_assertion_distinguishes_scan_results

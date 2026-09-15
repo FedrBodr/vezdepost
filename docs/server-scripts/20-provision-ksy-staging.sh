@@ -432,10 +432,14 @@ else
     fail PLATPRICES_PROXY_URL_INVALID
   [[ "$ORDER_TELEGRAM_URL" == "$APPROVED_ORDER_TELEGRAM_URL" ]] ||
     fail ORDER_TELEGRAM_URL_INVALID
-  [[ "$ADMIN_TELEGRAM_IDS" =~ ^([1-9][0-9]*),([1-9][0-9]*)$ ]] ||
+  [[ "$ADMIN_TELEGRAM_IDS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)+$ ]] ||
     fail ADMIN_TELEGRAM_IDS_INVALID
-  [[ "${BASH_REMATCH[1]}" != "${BASH_REMATCH[2]}" ]] ||
-    fail ADMIN_TELEGRAM_IDS_DUPLICATE
+  IFS=',' read -r -a admin_ids <<< "$ADMIN_TELEGRAM_IDS"
+  seen_admin_ids=','
+  for admin_id in "${admin_ids[@]}"; do
+    [[ "$seen_admin_ids" != *",$admin_id,"* ]] || fail ADMIN_TELEGRAM_IDS_DUPLICATE
+    seen_admin_ids+="$admin_id,"
+  done
 
   encoded_password=$POSTGRES_PASSWORD
   cat > "$candidate_env" <<ENV
