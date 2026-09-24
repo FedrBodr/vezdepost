@@ -12,7 +12,7 @@ describe('Telegram HTML caption length', () => {
       normalizeTelegramHtml(
         '<p><strong>bold</strong> <a href="https://example.com">label</a></p>'
       )
-    ).toBe('<b>bold</b> label');
+    ).toBe('<b>bold</b> <a href="https://example.com">label</a>');
   });
 
   it('normalizes multiline headings, links, and paragraphs without losing text', () => {
@@ -20,7 +20,9 @@ describe('Telegram HTML caption length', () => {
       normalizeTelegramHtml(
         '<h2>Title\ncontinued</h2><p>First <a href="https://example.com">label\ncontinued</a></p><p>Last\nline</p>'
       )
-    ).toBe('Title\ncontinued\n\nFirst label\ncontinued\n\nLast\nline');
+    ).toBe(
+      'Title\ncontinued\n\nFirst <a href="https://example.com">label\ncontinued</a>\n\nLast\nline'
+    );
   });
 
   it('preserves a raw trailing newline', () => {
