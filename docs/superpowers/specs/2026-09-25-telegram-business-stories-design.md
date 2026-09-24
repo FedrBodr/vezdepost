@@ -73,6 +73,10 @@ tools with no new tools:
 - `integrationSchedulePostTool` accepts the settings. Because MCP media gets
   generated IDs, per-frame text is addressed by media **position**.
 
+If the user connected the bot before starting the wizard, Telegram sends no new
+`business_connection` event; the wizard tells the user to switch "Manage
+stories" off and on (or re-add the bot), which re-sends the event.
+
 ## Architecture
 
 ### Provider
@@ -133,11 +137,13 @@ other's updates.
 `TelegramStoriesDto`, registered in `allProviders` (used by the editor and MCP):
 
 - `active_period`: one of `21600`, `43200`, `86400`, `172800`; default `86400`.
-- `frames`: optional array aligned with media positions, each item
-  `{ text: 'post' | 'none' | 'custom', caption?: string }`. Missing items
-  default to `post` for the first frame and `none` for the rest.
+- `frames`: optional array, each item
+  `{ mediaId?: string, text: 'post' | 'none' | 'custom', caption?: string }`.
+  A frame is matched to a media file by `mediaId` first; an item without
+  `mediaId` applies to the media at the same position (the MCP form). Missing
+  items default to `post` for the first frame and `none` for the rest.
 
-The editor keeps `frames` aligned when media are reordered.
+The editor writes `mediaId`, so reordering media keeps each text on its file.
 
 ### Media processing
 
