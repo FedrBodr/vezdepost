@@ -37,6 +37,7 @@ describe('Batch 0 platform capability resolution', () => {
     expect(PROFILE_IDENTIFIERS).toEqual([
       'telegram',
       'max',
+      'telegram-stories',
       'linkedin',
       'linkedin-page',
       'tumblr',

@@ -390,6 +390,22 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       }),
     },
   },
+  'telegram-stories': {
+    identifier: 'telegram-stories',
+    displayName: 'Telegram Stories',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'story',
+    variants: {
+      story: simpleVariant('story', 2_048, 'html', telegramCaptionFormatting, {
+        type: 'required',
+        images: { min: 1, max: 10 },
+        videos: { min: 1, max: 10 },
+        mixed: true,
+        maxTotal: 10,
+      }),
+    },
+  },
   linkedin: {
     identifier: 'linkedin',
     displayName: 'LinkedIn',
@@ -1121,6 +1137,7 @@ const deepFreeze = <T>(value: T): T => {
 export const PROFILE_IDENTIFIERS = deepFreeze([
   'telegram',
   'max',
+  'telegram-stories',
   'linkedin',
   'linkedin-page',
   'tumblr',
