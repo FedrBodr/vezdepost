@@ -19,6 +19,8 @@ import {
 } from '@gitroom/helpers/utils/telegram.constraints';
 import { telegramRichMediaEligible } from '@gitroom/helpers/utils/telegram.rich.normalization';
 import { callTelegramApi } from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
+import { TelegramUpdatesHub } from '@gitroom/nestjs-libraries/integrations/social/telegram.updates.hub';
+import { redisKeyValueStore } from '@gitroom/nestjs-libraries/integrations/social/telegram.kv.store';
 
 const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
 // Added to support local storage posting
@@ -54,23 +56,7 @@ export type TelegramConnectionResult = {
   lastChatId?: number;
 };
 
-export const parseTelegramConnectionMessage = (text?: string) => {
-  if (!text) {
-    return null;
-  }
-
-  const match = text.match(
-    /^\/(start|connect)(?:@[A-Za-z0-9_]+)? ([A-Za-z0-9_-]{1,64})$/
-  );
-  if (!match) {
-    return null;
-  }
-
-  return {
-    kind: match[1] as 'start' | 'connect',
-    nonce: match[2],
-  };
-};
+export { parseTelegramConnectionMessage } from '@gitroom/nestjs-libraries/integrations/social/telegram.updates.hub';
 
 export const evaluateTelegramPermissions = (
   chatType: string,
@@ -89,7 +75,13 @@ export const evaluateTelegramPermissions = (
 };
 
 export class TelegramProvider extends SocialAbstract implements SocialProvider {
-  constructor(private readonly botClient: TelegramBotClient = telegramBot) {
+  constructor(
+    private readonly botClient: TelegramBotClient = telegramBot,
+    private readonly updatesHub = new TelegramUpdatesHub(
+      botClient,
+      redisKeyValueStore
+    )
+  ) {
     super();
   }
 
@@ -169,6 +161,7 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
   }
 
   async getBotId(query: {
+    /** Legacy client offset; ignored since updates are read through the hub. */
     id?: number;
     word: string;
     chatId?: number;
@@ -178,27 +171,13 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
         return await this.verifyConnection(query.chatId);
       }
 
-      const res = await this.botClient.getUpdates({
-        ...(query.id !== undefined ? { offset: query.id } : {}),
-        allowed_updates: ['message', 'channel_post'],
-      });
-      const match = res.find((update) => {
-        const message = update.message || update.channel_post;
-        const connection = parseTelegramConnectionMessage(message?.text);
-        return connection?.nonce === query.word && message?.chat?.id;
-      });
-      const chatId = match?.message?.chat?.id || match?.channel_post?.chat?.id;
-
-      if (chatId !== undefined) {
-        return await this.verifyConnection(chatId);
+      await this.updatesHub.poll();
+      const command = await this.updatesHub.findConnectionCommand(query.word);
+      if (command) {
+        return await this.verifyConnection(command.chatId);
       }
 
-      return {
-        status: 'waiting',
-        ...(res.length > 0
-          ? { lastChatId: res[res.length - 1].update_id + 1 }
-          : {}),
-      };
+      return { status: 'waiting' };
     } catch (error) {
       console.error('Failed to verify Telegram connection:', error);
       return { status: 'telegram_error' };

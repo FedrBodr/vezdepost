@@ -43,6 +43,8 @@ import {
   parseTelegramConnectionMessage,
   TelegramProvider,
 } from './telegram.provider';
+import { MemoryKeyValueStore } from './telegram.kv.store';
+import { TelegramUpdatesHub } from './telegram.updates.hub';
 
 const media = [{ id: 'media', path: 'https://cdn.test/photo.jpg' }];
 const albumMedia = [
@@ -494,6 +496,12 @@ describe('TelegramProvider media captions', () => {
 });
 
 describe('Telegram connection discovery', () => {
+  const providerFor = (bot: any) =>
+    new TelegramProvider(
+      bot,
+      new TelegramUpdatesHub(bot, new MemoryKeyValueStore())
+    );
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -568,14 +576,34 @@ describe('Telegram connection discovery', () => {
     sendMessage: vi.fn().mockResolvedValue({ message_id: 2 }),
   });
 
-  it('returns the next update offset while waiting', async () => {
+  it('waits without leaking update offsets to the client', async () => {
     const bot = makeConnectionBot({ updates: [{ update_id: 77 }] });
-    const provider = new TelegramProvider(bot as any);
 
-    await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
-      status: 'waiting',
-      lastChatId: 78,
+    await expect(
+      providerFor(bot).getBotId({ word: 'nonce_123' })
+    ).resolves.toEqual({ status: 'waiting' });
+    expect(bot.getUpdates).toHaveBeenCalledWith({
+      timeout: 0,
+      allowed_updates: ['message', 'channel_post', 'business_connection'],
     });
+  });
+
+  it('ignores a client offset and still finds the command', async () => {
+    const bot = makeConnectionBot({
+      updates: [
+        {
+          update_id: 77,
+          message: {
+            text: '/connect nonce_123',
+            chat: { id: -1001, type: 'supergroup' },
+          },
+        },
+      ],
+    });
+
+    await expect(
+      providerFor(bot).getBotId({ word: 'nonce_123', id: 5000 })
+    ).resolves.toEqual({ status: 'ready', chatId: -1001 });
   });
 
   it('discovers a group from its automatic start payload', async () => {
@@ -586,12 +614,12 @@ describe('Telegram connection discovery', () => {
           message: {
             message_id: 4,
             text: '/start@vezdepost_bot nonce_123',
-            chat: { id: -1001 },
+            chat: { id: -1001, type: 'supergroup' },
           },
         },
       ],
     });
-    const provider = new TelegramProvider(bot as any);
+    const provider = providerFor(bot);
 
     await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
       status: 'ready',
@@ -609,12 +637,12 @@ describe('Telegram connection discovery', () => {
           channel_post: {
             message_id: 4,
             text: '/connect nonce_123',
-            chat: { id: -1001 },
+            chat: { id: -1001, type: 'channel' },
           },
         },
       ],
     });
-    const provider = new TelegramProvider(bot as any);
+    const provider = providerFor(bot);
 
     await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
       status: 'ready',
@@ -629,16 +657,15 @@ describe('Telegram connection discovery', () => {
           update_id: 77,
           message: {
             text: '/connect nonce_1234',
-            chat: { id: -1001 },
+            chat: { id: -1001, type: 'supergroup' },
           },
         },
       ],
     });
-    const provider = new TelegramProvider(bot as any);
+    const provider = providerFor(bot);
 
     await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
       status: 'waiting',
-      lastChatId: 78,
     });
     expect(bot.getChatMember).not.toHaveBeenCalled();
   });
@@ -651,12 +678,12 @@ describe('Telegram connection discovery', () => {
           update_id: 77,
           message: {
             text: '/connect nonce_123',
-            chat: { id: -1001 },
+            chat: { id: -1001, type: 'supergroup' },
           },
         },
       ],
     });
-    const provider = new TelegramProvider(bot as any);
+    const provider = providerFor(bot);
 
     await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
       status: 'bot_not_admin',
@@ -666,7 +693,7 @@ describe('Telegram connection discovery', () => {
 
   it('rechecks a candidate chat without fetching updates again', async () => {
     const bot = makeConnectionBot();
-    const provider = new TelegramProvider(bot as any);
+    const provider = providerFor(bot);
 
     await expect(
       provider.getBotId({ word: 'nonce_123', chatId: -1001 })
@@ -677,7 +704,7 @@ describe('Telegram connection discovery', () => {
   it('returns a recoverable status when Telegram fails', async () => {
     const bot = makeConnectionBot();
     bot.getUpdates.mockRejectedValueOnce(new Error('Telegram unavailable'));
-    const provider = new TelegramProvider(bot as any);
+    const provider = providerFor(bot);
 
     await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
       status: 'telegram_error',
