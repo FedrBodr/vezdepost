@@ -867,5 +867,13 @@
   "telegram_stories_connection_disabled": "The bot is disabled in Telegram Business. Connect it again.",
   "telegram_stories_connection_telegram_error": "Telegram did not respond. Try again.",
   "telegram_stories_connection_timed_out": "We have not received confirmation yet.",
-  "telegram_stories_connection_check_again": "Check again"
+  "telegram_stories_connection_check_again": "Check again",
+  "telegram_stories_lifetime": "Story lifetime",
+  "telegram_stories_hours": "{{hours}} hours",
+  "telegram_stories_frame": "Story {{number}}",
+  "telegram_stories_frame_text": "Text on story {{number}}",
+  "telegram_stories_frame_caption": "Custom text for story {{number}}",
+  "telegram_stories_text_post": "Post text",
+  "telegram_stories_text_none": "No text",
+  "telegram_stories_text_custom": "Custom text"
 }

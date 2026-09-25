@@ -865,5 +865,13 @@
   "telegram_stories_connection_disabled": "Бот отключён в Telegram Business. Подключите его снова.",
   "telegram_stories_connection_telegram_error": "Telegram не ответил. Попробуйте ещё раз.",
   "telegram_stories_connection_timed_out": "Подтверждение пока не пришло.",
-  "telegram_stories_connection_check_again": "Проверить снова"
+  "telegram_stories_connection_check_again": "Проверить снова",
+  "telegram_stories_lifetime": "Срок жизни сторис",
+  "telegram_stories_hours": "{{hours}} ч",
+  "telegram_stories_frame": "Сторис {{number}}",
+  "telegram_stories_frame_text": "Текст на сторис {{number}}",
+  "telegram_stories_frame_caption": "Свой текст для сторис {{number}}",
+  "telegram_stories_text_post": "Текст поста",
+  "telegram_stories_text_none": "Без текста",
+  "telegram_stories_text_custom": "Свой текст"
 }
