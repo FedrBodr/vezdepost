@@ -875,5 +875,6 @@
   "telegram_stories_frame_caption": "Custom text for story {{number}}",
   "telegram_stories_text_post": "Post text",
   "telegram_stories_text_none": "No text",
-  "telegram_stories_text_custom": "Custom text"
+  "telegram_stories_text_custom": "Custom text",
+  "telegram_stories_premium_badge": "Premium"
 }

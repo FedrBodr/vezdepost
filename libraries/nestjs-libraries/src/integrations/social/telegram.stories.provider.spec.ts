@@ -20,7 +20,7 @@ import { TelegramApiError } from './telegram.rich.api';
 
 const connection = (patch: any = {}) => ({
   id: 'bc-1',
-  user: { id: 7, first_name: 'Dmitry', username: 'fedr' },
+  user: { id: 7, first_name: 'Dmitry', username: 'fedr', is_premium: true },
   is_enabled: true,
   rights: { can_manage_stories: true },
   ...patch,
@@ -268,5 +268,41 @@ describe('TelegramStoriesProvider', () => {
     await expect(
       provider.post('7', 'bc-1', post(), {} as any)
     ).rejects.toMatchObject({ name: 'RefreshToken' });
+  });
+
+  it('falls back to a 24-hour lifetime when the owner has no Premium', async () => {
+    const { provider, deps } = make();
+    deps.api.getBusinessConnection.mockResolvedValue(
+      connection({ user: { id: 7, username: 'fedr' } })
+    );
+
+    await provider.post(
+      '7',
+      'bc-1',
+      post({ active_period: '172800' }),
+      {} as any
+    );
+
+    expect(
+      deps.api.postStory.mock.calls.map(([p]: any) => p.activePeriod)
+    ).toEqual([86400, 86400]);
+  });
+
+  it('asks to renew Premium when Telegram refuses a story for it', async () => {
+    const { provider, deps } = make();
+    deps.api.postStory.mockRejectedValue(
+      new TelegramApiError(
+        'Bad Request: PREMIUM_ACCOUNT_REQUIRED',
+        'postStory',
+        400
+      )
+    );
+
+    await expect(
+      provider.post('7', 'bc-1', post(), {} as any)
+    ).rejects.toMatchObject({
+      name: 'RefreshToken',
+      message: expect.stringContaining('Telegram Premium'),
+    });
   });
 });

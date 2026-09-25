@@ -26,6 +26,11 @@ through the Telegram Business Bot API (`postStory`). Design:
   the post error asks the user to check their stories.
 - If the user disables the bot or revokes "Manage stories", the next
   publication marks the channel for reconnection.
+- Premium: the channel card shows a "Premium" badge. Before each publication
+  the connector reads `user.is_premium` from `getBusinessConnection`; without
+  Premium it publishes with a 24-hour lifetime (custom lifetimes are a Premium
+  feature). If Telegram refuses a story with a `PREMIUM` error, the channel is
+  marked for reconnection with "Telegram Premium expired".
 - MCP: `integrationSchema` exposes `active_period` and `frames`
   (`{ text: 'post' | 'none' | 'custom', caption }` by media position).
 
@@ -41,7 +46,9 @@ offset parameter of `/integrations/telegram/updates` is ignored.
 1. Deploy with `TELEGRAM_STORIES_ORG_IDS` empty (connector hidden). Check that
    connecting a Telegram group/channel still works.
 2. If production sets `ENABLED_SOCIAL_INTEGRATIONS`, add `telegram-stories`.
-3. Owner: enable Business Mode for the bot in BotFather.
+3. Owner: in @BotFather → `/mybots` → the Vezdepost bot
+   (`@fedrbodr_postiz_bot`) → Bot Settings → **Secretary Mode** → Turn on
+   (formerly "Business Mode").
 4. Set `TELEGRAM_STORIES_ORG_IDS` to our organization ID and restart.
 5. Owner acceptance (personal account, manual):
    - connect Telegram Stories from "Add channel";

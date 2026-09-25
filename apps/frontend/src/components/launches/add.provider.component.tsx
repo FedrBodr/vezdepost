@@ -17,6 +17,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { web3List } from '@gitroom/frontend/components/launches/web3/web3.list';
 import {
   isStoriesProviderVisible,
+  TELEGRAM_STORIES_PROVIDER,
   useTelegramStoriesAvailability,
 } from '@gitroom/frontend/components/launches/use.telegram.stories.availability';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
@@ -967,6 +968,11 @@ export const AddProviderComponent: FC<{
                 identifier={item.identifier}
                 name={item.name}
                 toolTip={item.toolTip}
+                badge={
+                  item.identifier === TELEGRAM_STORIES_PROVIDER
+                    ? t('telegram_stories_premium_badge', 'Premium')
+                    : undefined
+                }
                 canConnect={item.canConnect}
                 isMobile={!!isMobile}
                 requestLabel={t('request_platform', 'Request')}

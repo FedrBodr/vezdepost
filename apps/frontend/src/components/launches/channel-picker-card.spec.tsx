@@ -184,4 +184,27 @@ describe('ChannelPickerCard', () => {
     ).toBe(true);
     expect(screen.queryByRole('button')).toBeNull();
   });
+
+  it('shows a badge next to the channel name', () => {
+    render(
+      <ChannelPickerCard
+        {...baseProps}
+        identifier="telegram-stories"
+        name="Telegram Stories"
+        badge="Premium"
+        onConnect={vi.fn()}
+        onRequest={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Premium')).not.toBeNull();
+  });
+
+  it('renders no badge by default', () => {
+    render(
+      <ChannelPickerCard {...baseProps} onConnect={vi.fn()} onRequest={vi.fn()} />
+    );
+
+    expect(screen.queryByTestId('channel-card-badge-pinterest')).toBeNull();
+  });
 });

@@ -873,5 +873,6 @@
   "telegram_stories_frame_caption": "Свой текст для сторис {{number}}",
   "telegram_stories_text_post": "Текст поста",
   "telegram_stories_text_none": "Без текста",
-  "telegram_stories_text_custom": "Свой текст"
+  "telegram_stories_text_custom": "Свой текст",
+  "telegram_stories_premium_badge": "Premium"
 }

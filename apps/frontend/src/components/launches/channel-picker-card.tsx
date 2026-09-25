@@ -7,6 +7,8 @@ export type ChannelPickerCardProps = {
   identifier: string;
   name: string;
   toolTip?: string;
+  /** Short label such as a subscription requirement. */
+  badge?: string;
   canConnect?: boolean;
   isMobile: boolean;
   requestLabel: string;
@@ -19,6 +21,7 @@ export const ChannelPickerCard = ({
   identifier,
   name,
   toolTip,
+  badge,
   canConnect,
   isMobile,
   requestLabel,
@@ -87,6 +90,14 @@ export const ChannelPickerCard = ({
         <div className={clsx(isMobile ? '' : 'whitespace-pre-wrap', 'text-center')}>
           {name}
         </div>
+        {badge ? (
+          <span
+            data-testid={`channel-card-badge-${identifier}`}
+            className="rounded-full bg-gradient-to-r from-[#8E5CF7] to-[#D62976] px-[8px] py-[1px] text-[11px] font-[600] leading-[16px] text-white"
+          >
+            {badge}
+          </span>
+        ) : null}
       </div>
 
       {toolTip && !isMobile && !unavailable ? (

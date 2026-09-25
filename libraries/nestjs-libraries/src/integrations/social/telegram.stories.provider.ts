@@ -45,7 +45,10 @@ import {
   probeVideoDuration,
   withTempDir,
 } from '@gitroom/nestjs-libraries/integrations/social/telegram.stories.media';
-import { publishStorySeries } from '@gitroom/nestjs-libraries/integrations/social/telegram.stories.publisher';
+import {
+  publishStorySeries,
+  StorySeriesError,
+} from '@gitroom/nestjs-libraries/integrations/social/telegram.stories.publisher';
 import { TelegramApiError } from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
 
 const CAPTION_LIMIT = {
@@ -215,6 +218,30 @@ export class TelegramStoriesProvider
     return true;
   }
 
+  private async publishSeries<P>(
+    input: Parameters<typeof publishStorySeries<P>>[0]
+  ) {
+    try {
+      return await publishStorySeries(input);
+    } catch (error) {
+      const premiumRefusal =
+        error instanceof StorySeriesError &&
+        error.results.some(
+          (result) =>
+            result.state === 'failed' && /PREMIUM/i.test(result.error || '')
+        );
+      if (premiumRefusal) {
+        throw new RefreshToken(
+          this.identifier,
+          (error as Error).message,
+          '',
+          'Telegram Premium expired. Renew Premium and reconnect the channel.'
+        );
+      }
+      throw error;
+    }
+  }
+
   async post(
     id: string,
     accessToken: string,
@@ -266,11 +293,13 @@ export class TelegramStoriesProvider
         } caption exceeds ${TELEGRAM_STORY_CAPTION_MAX} characters.`
       );
     }
+    // Custom lifetimes are a Premium feature; without Premium try 24 hours.
     const activePeriod = Number(
-      firstPost.settings?.active_period || TELEGRAM_STORY_DEFAULT_ACTIVE_PERIOD
+      (connection.user.is_premium && firstPost.settings?.active_period) ||
+        TELEGRAM_STORY_DEFAULT_ACTIVE_PERIOD
     );
 
-    const { storyIds } = await publishStorySeries({
+    const { storyIds } = await this.publishSeries({
       postId: firstPost.id,
       frames: media.map((item, index) => ({ index, path: item.path })),
       store: this.deps.store,

@@ -10,6 +10,7 @@ export type TelegramBusinessConnection = {
     first_name?: string;
     last_name?: string;
     username?: string;
+    is_premium?: boolean;
   };
   is_enabled: boolean;
   rights?: { can_manage_stories?: boolean };
