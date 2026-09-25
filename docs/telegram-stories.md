@@ -51,8 +51,10 @@ offset parameter of `/integrations/telegram/updates` is ignored.
 3. After the autodeploy of the compose change, run
    `docs/server-scripts/26-configure-telegram-stories.sh` (usage in its
    header). It finds the owner's organizations by email, writes
-   `TELEGRAM_STORIES_ORG_IDS` (and `telegram-stories` into a non-empty
-   `ENABLED_SOCIAL_INTEGRATIONS`), recreates `postiz` and verifies it.
+   `TELEGRAM_STORIES_ORG_IDS`, recreates `postiz` and verifies it.
+   Production's provider allowlist is hard-coded in
+   `docker-compose.override.yaml` (`ENABLED_SOCIAL_INTEGRATIONS`), so
+   `telegram-stories` is listed there.
 4. Owner acceptance (personal account, manual):
    - connect Telegram Stories from "Add channel";
    - publish one photo and one video; check order, lifetime and texts;

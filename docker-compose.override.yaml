@@ -54,7 +54,7 @@ services:
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
       VK_ID: '${VK_ID:?set in .env}'
-      ENABLED_SOCIAL_INTEGRATIONS: 'telegram,max,vk,vk-group,linkedin,tumblr'
+      ENABLED_SOCIAL_INTEGRATIONS: 'telegram,telegram-stories,max,vk,vk-group,linkedin,tumblr'
       GOOGLE_CLIENT_ID: '${GOOGLE_CLIENT_ID:?set in .env}'
       GOOGLE_CLIENT_SECRET: '${GOOGLE_CLIENT_SECRET:?set in .env}'
       LINKEDIN_CLIENT_ID: '${LINKEDIN_CLIENT_ID:?set in .env}'
