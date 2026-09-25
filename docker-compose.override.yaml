@@ -50,6 +50,7 @@ services:
       NODE_EXTRA_CA_CERTS: /certs/max-extra-ca.pem
       TELEGRAM_TOKEN: '${TELEGRAM_TOKEN:?set in .env}'
       TELEGRAM_BOT_NAME: 'fedrbodr_postiz_bot'
+      TELEGRAM_STORIES_ORG_IDS: '${TELEGRAM_STORIES_ORG_IDS:-}'
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
       VK_ID: '${VK_ID:?set in .env}'

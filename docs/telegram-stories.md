@@ -45,12 +45,15 @@ offset parameter of `/integrations/telegram/updates` is ignored.
 
 1. Deploy with `TELEGRAM_STORIES_ORG_IDS` empty (connector hidden). Check that
    connecting a Telegram group/channel still works.
-2. If production sets `ENABLED_SOCIAL_INTEGRATIONS`, add `telegram-stories`.
-3. Owner: in @BotFather → `/mybots` → the Vezdepost bot
+2. Owner: in @BotFather → `/mybots` → the Vezdepost bot
    (`@fedrbodr_postiz_bot`) → Bot Settings → **Secretary Mode** → Turn on
    (formerly "Business Mode").
-4. Set `TELEGRAM_STORIES_ORG_IDS` to our organization ID and restart.
-5. Owner acceptance (personal account, manual):
+3. After the autodeploy of the compose change, run
+   `docs/server-scripts/26-configure-telegram-stories.sh` (usage in its
+   header). It finds the owner's organizations by email, writes
+   `TELEGRAM_STORIES_ORG_IDS` (and `telegram-stories` into a non-empty
+   `ENABLED_SOCIAL_INTEGRATIONS`), recreates `postiz` and verifies it.
+4. Owner acceptance (personal account, manual):
    - connect Telegram Stories from "Add channel";
    - publish one photo and one video; check order, lifetime and texts;
    - set custom text on the second story and "no text" on the first;
