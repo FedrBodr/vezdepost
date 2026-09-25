@@ -239,7 +239,9 @@ export class TelegramStoriesProvider
     );
     if (tooLong !== -1) {
       throw new Error(
-        `Story ${tooLong + 1} caption exceeds ${TELEGRAM_STORY_CAPTION_MAX} characters.`
+        `Story ${
+          tooLong + 1
+        } caption exceeds ${TELEGRAM_STORY_CAPTION_MAX} characters.`
       );
     }
     const activePeriod = Number(

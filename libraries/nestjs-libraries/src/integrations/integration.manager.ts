@@ -224,7 +224,10 @@ export class IntegrationManager {
     }
     return (
       identifier !== TELEGRAM_STORIES_IDENTIFIER ||
-      isTelegramStoriesEnabledForOrg(process.env.TELEGRAM_STORIES_ORG_IDS, orgId)
+      isTelegramStoriesEnabledForOrg(
+        process.env.TELEGRAM_STORIES_ORG_IDS,
+        orgId
+      )
     );
   }
 

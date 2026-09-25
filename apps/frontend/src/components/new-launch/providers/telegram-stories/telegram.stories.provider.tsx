@@ -50,10 +50,8 @@ export const TelegramStoriesSettings: FC = () => {
   const media = (value?.[0]?.image || []) as Array<{ id: string }>;
   const frames: TelegramStoryFrameSetting[] = watch('frames') || [];
 
-  const update = (
-    mediaId: string,
-    patch: Partial<TelegramStoryFrameSetting>
-  ) => setValue('frames', setFrameSetting(frames, media, mediaId, patch));
+  const update = (mediaId: string, patch: Partial<TelegramStoryFrameSetting>) =>
+    setValue('frames', setFrameSetting(frames, media, mediaId, patch));
 
   return (
     <div className="flex flex-col gap-[16px] pt-[20px]">

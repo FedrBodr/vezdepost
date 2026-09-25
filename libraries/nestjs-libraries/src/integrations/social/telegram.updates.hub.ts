@@ -51,13 +51,7 @@ export class TelegramUpdatesHub {
   ) {}
 
   async poll(): Promise<void> {
-    const locked = await this.store.set(
-      LOCK_KEY,
-      '1',
-      'PX',
-      LOCK_TTL_MS,
-      'NX'
-    );
+    const locked = await this.store.set(LOCK_KEY, '1', 'PX', LOCK_TTL_MS, 'NX');
     if (locked !== 'OK') {
       return;
     }

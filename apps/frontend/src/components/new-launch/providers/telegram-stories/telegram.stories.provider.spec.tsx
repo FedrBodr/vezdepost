@@ -9,14 +9,14 @@ import { IntegrationContext } from '@gitroom/frontend/components/launches/helper
 vi.mock('@gitroom/react/translation/get.transation.service.client', () => ({
   useT:
     () =>
-    (_key: string, fallback: string, vars?: Record<string, unknown>) =>
+    (_key: string, fallback: string, vars?: Record<string, unknown>): string =>
       fallback.replace(/{{(\w+)}}/g, (_, name) => String(vars?.[name] ?? '')),
 }));
 vi.mock(
   '@gitroom/frontend/components/new-launch/providers/high.order.provider',
   () => ({
     PostComment: { ALL: 0, POST: 1, COMMENT: 2 },
-    withProvider: () => () => null,
+    withProvider: () => (): null => null,
   })
 );
 

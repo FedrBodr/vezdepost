@@ -22,7 +22,11 @@ const connection = (patch: any = {}) => ({
 describe('resolveStoriesConnection', () => {
   it('waits for /start', async () => {
     await expect(
-      resolveStoriesConnection(hubWith(null, null), new MemoryKeyValueStore(), 'n')
+      resolveStoriesConnection(
+        hubWith(null, null),
+        new MemoryKeyValueStore(),
+        'n'
+      )
     ).resolves.toEqual({ status: 'waiting_start' });
   });
 

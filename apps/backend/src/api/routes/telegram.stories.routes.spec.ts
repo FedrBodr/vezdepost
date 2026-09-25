@@ -100,7 +100,7 @@ describe('Telegram Stories rollout gate', () => {
       'login:state': 'verifier',
       'organization:state': 'org-2',
     };
-    vi.mocked(ioRedis.get).mockImplementation(
+    (ioRedis.get as ReturnType<typeof vi.fn>).mockImplementation(
       async (key: string) => redisState[key] ?? null
     );
     const authenticate = vi.spyOn(

@@ -104,7 +104,9 @@ describe('TelegramStoriesProvider', () => {
 
     await expect(
       provider.authenticate({ code: 'nonce', codeVerifier: '' })
-    ).resolves.toBe('Enable "Manage stories" for the bot in Telegram Business.');
+    ).resolves.toBe(
+      'Enable "Manage stories" for the bot in Telegram Business.'
+    );
   });
 
   it('publishes each media as a story with default captions and lifetime', async () => {
@@ -115,16 +117,14 @@ describe('TelegramStoriesProvider', () => {
     } as any);
 
     const calls = deps.api.postStory.mock.calls.map(([p]: any) => p);
-    expect(calls.map((c: any) => [c.kind, c.activePeriod, c.caption])).toEqual(
+    expect(calls.map((c: any) => [c.kind, c.activePeriod, c.caption])).toEqual([
       [
-        [
-          'photo',
-          86400,
-          '<b>Hello</b> <a href="https://x.test">link</a>\n\n<b>Title</b>',
-        ],
-        ['video', 86400, undefined],
-      ]
-    );
+        'photo',
+        86400,
+        '<b>Hello</b> <a href="https://x.test">link</a>\n\n<b>Title</b>',
+      ],
+      ['video', 86400, undefined],
+    ]);
     expect(calls[1]).toMatchObject({
       durationSeconds: 9,
       businessConnectionId: 'bc-1',
@@ -208,9 +208,7 @@ describe('TelegramStoriesProvider', () => {
 
   it('rejects captions longer than 2048 visible characters', async () => {
     const { provider, deps } = make();
-    const [longPost] = post({}, [
-      { id: 'a', type: 'image', path: 'x.jpg' },
-    ]);
+    const [longPost] = post({}, [{ id: 'a', type: 'image', path: 'x.jpg' }]);
 
     await expect(
       provider.post(

@@ -128,7 +128,10 @@ export const TelegramStoriesProvider: FC<Web3ProviderInterface> = ({
             onClick={() => void verify()}
             className="flex min-h-[44px] items-center justify-center rounded-[6px] bg-[#2AABEE] px-[18px] text-center text-[14px] font-[600] text-white"
           >
-            {t('telegram_stories_connection_open_bot', 'Open the bot in Telegram')}
+            {t(
+              'telegram_stories_connection_open_bot',
+              'Open the bot in Telegram'
+            )}
           </a>
           <span className="mt-[6px] block text-textColor/70">
             {t(
