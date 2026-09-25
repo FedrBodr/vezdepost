@@ -15,6 +15,10 @@ import { useToaster } from '@gitroom/react/toaster/toaster';
 import { object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { web3List } from '@gitroom/frontend/components/launches/web3/web3.list';
+import {
+  isStoriesProviderVisible,
+  useTelegramStoriesAvailability,
+} from '@gitroom/frontend/components/launches/use.telegram.stories.availability';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import clsx from 'clsx';
 import copy from 'copy-to-clipboard';
@@ -597,6 +601,7 @@ export const AddProviderComponent: FC<{
 }> = (props) => {
   const { update, social, article, onboarding, isMobile } = props;
   const { isGeneral, extensionId } = useVariables();
+  const { data: storiesAvailability } = useTelegramStoriesAvailability();
   const toaster = useToaster();
   const router = useRouter();
   const fetch = useFetch();
@@ -948,7 +953,14 @@ export const AddProviderComponent: FC<{
           )}
         >
           {social
-            .filter((item) => isProviderVisibleInPicker(item, props.invite))
+            .filter(
+              (item) =>
+                isProviderVisibleInPicker(item, props.invite) &&
+                isStoriesProviderVisible(
+                  item.identifier,
+                  storiesAvailability?.available
+                )
+            )
             .map((item) => (
               <ChannelPickerCard
                 key={item.identifier}

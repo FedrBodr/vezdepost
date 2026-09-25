@@ -853,5 +853,17 @@
   "request_platform": "Запросить",
   "platform_requested": "Запрошено",
   "request_new_platform_email_subject": "Нужна новая платформа в Вездепосте",
-  "provider_connection_help_email_subject": "Не подключается {{platform}} в Вездепосте"
+  "provider_connection_help_email_subject": "Не подключается {{platform}} в Вездепосте",
+  "telegram_stories_connection_title": "Telegram Stories",
+  "telegram_stories_connection_premium_required": "Нужен Telegram Premium с Telegram Business.",
+  "telegram_stories_connection_open_bot": "Открыть бота в Telegram",
+  "telegram_stories_connection_press_start": "Нажмите «Старт» в чате с ботом.",
+  "telegram_stories_connection_business_steps": "В Telegram откройте Настройки → Telegram Business → Чат-боты, добавьте @{{bot}} и включите «Управление историями».",
+  "telegram_stories_connection_resend_hint": "Если бот уже был добавлен, выключите и снова включите «Управление историями» — Telegram повторно пришлёт подключение.",
+  "telegram_stories_connection_waiting": "Ждём Telegram…",
+  "telegram_stories_connection_missing_right": "Бот подключён, но «Управление историями» выключено. Включите его и нажмите «Проверить снова».",
+  "telegram_stories_connection_disabled": "Бот отключён в Telegram Business. Подключите его снова.",
+  "telegram_stories_connection_telegram_error": "Telegram не ответил. Попробуйте ещё раз.",
+  "telegram_stories_connection_timed_out": "Подтверждение пока не пришло.",
+  "telegram_stories_connection_check_again": "Проверить снова"
 }

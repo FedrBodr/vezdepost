@@ -4,6 +4,7 @@ import { WrapcasterProvider } from '@gitroom/frontend/components/launches/web3/p
 import { TelegramProvider } from '@gitroom/frontend/components/launches/web3/providers/telegram.provider';
 import { MaxProvider } from '@gitroom/frontend/components/launches/web3/providers/max.provider';
 import { MoltbookProvider } from '@gitroom/frontend/components/launches/web3/providers/moltbook.provider';
+import { TelegramStoriesProvider } from '@gitroom/frontend/components/launches/web3/providers/telegram.stories.provider';
 export const web3List: {
   identifier: string;
   component: FC<Web3ProviderInterface>;
@@ -11,6 +12,10 @@ export const web3List: {
   {
     identifier: 'telegram',
     component: TelegramProvider,
+  },
+  {
+    identifier: 'telegram-stories',
+    component: TelegramStoriesProvider,
   },
   {
     identifier: 'max',

@@ -855,5 +855,17 @@
   "request_platform": "Request",
   "platform_requested": "Requested",
   "request_new_platform_email_subject": "Request a new platform in Vezdepost",
-  "provider_connection_help_email_subject": "Can't connect {{platform}} in Vezdepost"
+  "provider_connection_help_email_subject": "Can't connect {{platform}} in Vezdepost",
+  "telegram_stories_connection_title": "Telegram Stories",
+  "telegram_stories_connection_premium_required": "Requires Telegram Premium with Telegram Business.",
+  "telegram_stories_connection_open_bot": "Open the bot in Telegram",
+  "telegram_stories_connection_press_start": "Press Start in the chat with the bot.",
+  "telegram_stories_connection_business_steps": "In Telegram open Settings → Telegram Business → Chatbots, add @{{bot}} and enable \"Manage stories\".",
+  "telegram_stories_connection_resend_hint": "If the bot was already added, switch \"Manage stories\" off and on so Telegram resends the connection.",
+  "telegram_stories_connection_waiting": "Waiting for Telegram…",
+  "telegram_stories_connection_missing_right": "The bot is connected, but \"Manage stories\" is off. Turn it on and check again.",
+  "telegram_stories_connection_disabled": "The bot is disabled in Telegram Business. Connect it again.",
+  "telegram_stories_connection_telegram_error": "Telegram did not respond. Try again.",
+  "telegram_stories_connection_timed_out": "We have not received confirmation yet.",
+  "telegram_stories_connection_check_again": "Check again"
 }
