@@ -29,10 +29,15 @@ export const prepareStoryPhoto = async (input: Buffer): Promise<Buffer> => {
   return output;
 };
 
+// Only local MP4/MOV input: ffmpeg must not follow playlists or other
+// protocols embedded in user-supplied media.
+const SAFE_INPUT = ['-protocol_whitelist', 'file', '-f', 'mov'];
+
 // Telegram story video: 720x1280, H.265 in MPEG-4, a key frame every second,
 // streamable (faststart).
 export const buildStoryVideoArgs = (input: string, output: string) => [
   '-y',
+  ...SAFE_INPUT,
   '-i',
   input,
   '-vf',
@@ -67,6 +72,7 @@ export const buildStoryVideoArgs = (input: string, output: string) => [
 export const buildProbeArgs = (input: string) => [
   '-v',
   'error',
+  ...SAFE_INPUT,
   '-show_entries',
   'format=duration',
   '-of',
@@ -104,6 +110,15 @@ export const runProcess = (
     });
   });
 
+let serialQueue: Promise<unknown> = Promise.resolve();
+
+/** Runs CPU-heavy jobs (video encodes) one at a time per process. */
+export const runSerially = <T>(job: () => Promise<T>): Promise<T> => {
+  const result = serialQueue.then(job, job);
+  serialQueue = result.catch(() => undefined);
+  return result;
+};
+
 export const withTempDir = async <T>(
   fn: (dir: string) => Promise<T>
 ): Promise<T> => {
@@ -133,7 +148,9 @@ export const prepareStoryVideo = (input: Buffer) =>
     if ((await probeVideoDuration(source)) > TELEGRAM_STORY_VIDEO_MAX_SECONDS) {
       throw new Error('Story video must be at most 60 seconds long');
     }
-    await runProcess('ffmpeg', buildStoryVideoArgs(source, output));
+    await runSerially(() =>
+      runProcess('ffmpeg', buildStoryVideoArgs(source, output))
+    );
     const file = await readFile(output);
     if (file.length > VIDEO_MAX_BYTES) {
       throw new Error('Story video exceeds 30 MB after conversion');

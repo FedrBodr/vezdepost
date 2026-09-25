@@ -68,6 +68,17 @@ describe('Telegram Stories rollout gate', () => {
     );
   });
 
+  it('refuses a connection nonce started by another organization', async () => {
+    (ioRedis.get as ReturnType<typeof vi.fn>).mockImplementation(
+      async (key: string) => (key === 'organization:nonce' ? 'org-2' : null)
+    );
+    vi.stubEnv('TELEGRAM_STORIES_ORG_IDS', 'org-1,org-2');
+
+    await expectIntegrationNotAvailable(
+      controller.getTelegramStoriesUpdates('nonce', allowedOrg)
+    );
+  });
+
   it('refuses to start a connection for an organization outside the flag', async () => {
     const generateAuthUrl = vi.spyOn(
       manager.getSocialIntegration('telegram-stories'),

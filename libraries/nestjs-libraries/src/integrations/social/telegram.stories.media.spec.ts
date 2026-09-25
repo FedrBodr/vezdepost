@@ -6,6 +6,7 @@ import {
   buildStoryVideoArgs,
   prepareStoryPhoto,
   prepareStoryVideo,
+  runSerially,
 } from './telegram.stories.media';
 
 const hasFfmpeg = (() => {
@@ -65,16 +66,59 @@ describe('ffmpeg arguments', () => {
     expect(args.at(-1)).toBe('/out.mp4');
   });
 
-  it('probes the container duration', () => {
+  it('probes the container duration of a local MP4/MOV file only', () => {
     expect(buildProbeArgs('/in.mp4')).toEqual([
       '-v',
       'error',
+      '-protocol_whitelist',
+      'file',
+      '-f',
+      'mov',
       '-show_entries',
       'format=duration',
       '-of',
       'default=noprint_wrappers=1:nokey=1',
       '/in.mp4',
     ]);
+  });
+
+  it('restricts transcoder input to local MP4/MOV files', () => {
+    const args = buildStoryVideoArgs('/in.mov', '/out.mp4');
+    const input = args.indexOf('-i');
+
+    expect(args.slice(input - 4, input)).toEqual([
+      '-protocol_whitelist',
+      'file',
+      '-f',
+      'mov',
+    ]);
+  });
+});
+
+describe('runSerially', () => {
+  it('runs heavy jobs one at a time', async () => {
+    let active = 0;
+    let peak = 0;
+    const job = () =>
+      runSerially(async () => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+      });
+
+    await Promise.all([job(), job(), job()]);
+
+    expect(peak).toBe(1);
+  });
+
+  it('keeps running after a failed job', async () => {
+    await expect(
+      runSerially(async () => {
+        throw new Error('boom');
+      })
+    ).rejects.toThrow('boom');
+    await expect(runSerially(async () => 'ok')).resolves.toBe('ok');
   });
 });
 

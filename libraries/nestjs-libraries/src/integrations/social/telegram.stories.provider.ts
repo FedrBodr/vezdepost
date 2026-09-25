@@ -46,6 +46,7 @@ import {
   withTempDir,
 } from '@gitroom/nestjs-libraries/integrations/social/telegram.stories.media';
 import { publishStorySeries } from '@gitroom/nestjs-libraries/integrations/social/telegram.stories.publisher';
+import { TelegramApiError } from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
 
 const CAPTION_LIMIT = {
   max: TELEGRAM_STORY_CAPTION_MAX,
@@ -67,6 +68,10 @@ type TelegramStoriesDeps = {
   ) => Promise<{ file: Buffer; durationSeconds: number }>;
   probeDuration: (input: Buffer) => Promise<number>;
 };
+
+// MCP and public API media carry no type, only a path.
+const isStoryVideo = (item: { type?: string; path: string }) =>
+  item.type === 'video' || /\.(mp4|mov|m4v)(\?|#|$)/i.test(item.path);
 
 // Stored media paths may be relative (e.g. "uploads/x.png").
 const resolveMediaUrl = (path: string) =>
@@ -104,7 +109,6 @@ export class TelegramStoriesProvider
     this.deps = { ...defaultDeps(), ...deps };
   }
 
-  override maxConcurrentJob = 1;
   identifier = TELEGRAM_STORIES_IDENTIFIER;
   name = 'Telegram Stories';
   isBetweenSteps = false;
@@ -134,9 +138,11 @@ export class TelegramStoriesProvider
 
   async generateAuthUrl() {
     const state = makeId(17);
+    // The code verifier is the state itself, so authenticate only accepts the
+    // nonce this organization's login started with.
     return {
       url: state,
-      codeVerifier: makeId(10),
+      codeVerifier: state,
       state,
     };
   }
@@ -150,6 +156,9 @@ export class TelegramStoriesProvider
     codeVerifier: string;
     refresh?: string;
   }) {
+    if (params.code !== params.codeVerifier) {
+      return 'Telegram Stories connection expired. Start again.';
+    }
     const verified = await takeVerifiedStoriesConnection(
       this.deps.store,
       params.code
@@ -193,7 +202,7 @@ export class TelegramStoriesProvider
       return 'Telegram Stories supports at most 10 files per post.';
     }
     for (const item of media) {
-      if (item.type !== 'video') {
+      if (!isStoryVideo(item)) {
         continue;
       }
       const duration = await this.deps.probeDuration(
@@ -213,7 +222,20 @@ export class TelegramStoriesProvider
     integration: Integration
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
-    const connection = await this.deps.api.getBusinessConnection(accessToken);
+    const connection = await this.deps.api
+      .getBusinessConnection(accessToken)
+      .catch((error) => {
+        // Telegram forgets the connection once the bot is removed.
+        if (error instanceof TelegramApiError && error.errorCode === 400) {
+          throw new RefreshToken(
+            this.identifier,
+            error.message,
+            '',
+            'Telegram Stories access was revoked. Reconnect the channel.'
+          );
+        }
+        throw error;
+      });
     if (evaluateBusinessConnection(connection) !== 'ready') {
       throw new RefreshToken(
         this.identifier,
@@ -252,32 +274,30 @@ export class TelegramStoriesProvider
       postId: firstPost.id,
       frames: media.map((item, index) => ({ index, path: item.path })),
       store: this.deps.store,
-      send: async (frame) => {
+      prepare: async (frame) => {
         const item = media[frame.index];
         const source = await this.deps.readMedia(item.path);
-        const common = {
-          businessConnectionId: accessToken,
-          activePeriod,
-          caption: captions[frame.index].normalized || undefined,
-        };
-        if (item.type === 'video') {
-          const { file, durationSeconds } = await this.deps.prepareVideo(
-            source
-          );
-          return (
-            await this.deps.api.postStory({
-              ...common,
-              kind: 'video',
-              file,
-              durationSeconds,
-            })
-          ).id;
+        if (isStoryVideo(item)) {
+          return {
+            kind: 'video' as const,
+            ...(await this.deps.prepareVideo(source)),
+          };
         }
-        const file = await this.deps.preparePhoto(source);
-        return (
-          await this.deps.api.postStory({ ...common, kind: 'photo', file })
-        ).id;
+        return {
+          kind: 'photo' as const,
+          file: await this.deps.preparePhoto(source),
+          durationSeconds: undefined,
+        };
       },
+      send: async (frame, prepared) =>
+        (
+          await this.deps.api.postStory({
+            businessConnectionId: accessToken,
+            activePeriod,
+            caption: captions[frame.index].normalized || undefined,
+            ...prepared,
+          })
+        ).id,
     });
 
     const username = integration?.profile;

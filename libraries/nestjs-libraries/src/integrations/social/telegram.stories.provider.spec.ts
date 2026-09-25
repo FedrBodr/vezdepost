@@ -16,6 +16,7 @@ vi.mock('@gitroom/nestjs-libraries/services/make.is', () => ({
 
 import { TelegramStoriesProvider } from './telegram.stories.provider';
 import { MemoryKeyValueStore } from './telegram.kv.store';
+import { TelegramApiError } from './telegram.rich.api';
 
 const connection = (patch: any = {}) => ({
   id: 'bc-1',
@@ -75,7 +76,7 @@ describe('TelegramStoriesProvider', () => {
     const { provider, store } = make();
 
     await expect(
-      provider.authenticate({ code: 'nonce', codeVerifier: '' })
+      provider.authenticate({ code: 'nonce', codeVerifier: 'nonce' })
     ).resolves.toBe('Telegram Stories connection expired. Start again.');
 
     await store.set(
@@ -83,7 +84,7 @@ describe('TelegramStoriesProvider', () => {
       JSON.stringify({ telegramUserId: 7, businessConnectionId: 'bc-1' })
     );
     await expect(
-      provider.authenticate({ code: 'nonce', codeVerifier: '' })
+      provider.authenticate({ code: 'nonce', codeVerifier: 'nonce' })
     ).resolves.toMatchObject({
       id: '7',
       accessToken: 'bc-1',
@@ -103,7 +104,7 @@ describe('TelegramStoriesProvider', () => {
     );
 
     await expect(
-      provider.authenticate({ code: 'nonce', codeVerifier: '' })
+      provider.authenticate({ code: 'nonce', codeVerifier: 'nonce' })
     ).resolves.toBe(
       'Enable "Manage stories" for the bot in Telegram Business.'
     );
@@ -219,5 +220,53 @@ describe('TelegramStoriesProvider', () => {
       )
     ).rejects.toThrow('2048');
     expect(deps.api.postStory).not.toHaveBeenCalled();
+  });
+
+  it('binds the connection code to the login state of the organization', async () => {
+    const { provider, store, deps } = make();
+    const { state, codeVerifier } = await provider.generateAuthUrl();
+    expect(codeVerifier).toBe(state);
+
+    await store.set(
+      'telegram-stories:verified:foreign',
+      JSON.stringify({ telegramUserId: 7, businessConnectionId: 'bc-1' })
+    );
+    await expect(
+      provider.authenticate({ code: 'foreign', codeVerifier: 'mine' })
+    ).resolves.toBe('Telegram Stories connection expired. Start again.');
+    expect(deps.api.getBusinessConnection).not.toHaveBeenCalled();
+  });
+
+  it('treats extension-less type-less media as video by file name', async () => {
+    const { provider, deps } = make();
+
+    deps.probeDuration.mockResolvedValue(90);
+    await expect(
+      provider.checkValidity([[{ path: 'https://cdn/clip.MP4' } as any]])
+    ).resolves.toBe('Story videos must be at most 60 seconds long.');
+
+    await provider.post(
+      '7',
+      'bc-1',
+      post({}, [{ id: 'v', path: 'https://cdn/clip.mp4' }]),
+      {} as any
+    );
+    expect(deps.prepareVideo).toHaveBeenCalledTimes(1);
+    expect(deps.preparePhoto).not.toHaveBeenCalled();
+  });
+
+  it('asks for reconnection when Telegram no longer knows the connection', async () => {
+    const { provider, deps } = make();
+    deps.api.getBusinessConnection.mockRejectedValue(
+      new TelegramApiError(
+        'Bad Request: business connection not found',
+        'getBusinessConnection',
+        400
+      )
+    );
+
+    await expect(
+      provider.post('7', 'bc-1', post(), {} as any)
+    ).rejects.toMatchObject({ name: 'RefreshToken' });
   });
 });

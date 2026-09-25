@@ -510,6 +510,11 @@ export class IntegrationsController {
     ) {
       throw new ForbiddenException('Integration not available');
     }
+    // The nonce is the login state; only the organization that started the
+    // connection may read its status.
+    if ((await ioRedis.get(`organization:${word}`)) !== org.id) {
+      throw new ForbiddenException('Integration not available');
+    }
     return new TelegramStoriesProvider().getConnectionStatus(word);
   }
 

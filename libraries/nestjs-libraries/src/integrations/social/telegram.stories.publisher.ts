@@ -2,14 +2,18 @@ import { createHash } from 'crypto';
 import type { KeyValueStore } from '@gitroom/nestjs-libraries/integrations/social/telegram.kv.store';
 import { TelegramApiError } from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
 
-const PROGRESS_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
+// Long enough for Temporal retries of one publication run.
+const RUN_PROGRESS_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
+// After a full success progress only has to survive the workflow re-running
+// postSocial (minutes); a repeat post (>= 1 day later) must publish again.
+export const COMPLETED_PROGRESS_TTL_MS = 60 * 60 * 1_000;
 // Transport failures after the upload started: Telegram may have published it.
 const AMBIGUOUS_ERROR = /timed out|ECONNRESET|socket hang up/i;
 
 export type StoryFrame = { index: number; path: string };
 export type FrameResult = {
   index: number;
-  state: 'published' | 'skipped' | 'failed' | 'unknown';
+  state: 'published' | 'skipped' | 'failed' | 'unknown' | 'pending';
   storyId?: number;
   error?: string;
 };
@@ -29,9 +33,12 @@ export const formatStorySeriesError = (results: FrameResult[]) => {
           }: result unknown, check your Telegram stories before retrying`
         : `Story ${r.index + 1}: ${r.error}`
     );
-  return [`Published ${done.length}/${results.length} stories.`, ...lines].join(
-    '\n'
-  );
+  const pending = results.filter((r) => r.state === 'pending').length;
+  return [
+    `Published ${done.length}/${results.length} stories.`,
+    ...lines,
+    ...(pending ? [`${pending} stories were not attempted.`] : []),
+  ].join('\n');
 };
 
 export class StorySeriesError extends Error {
@@ -41,11 +48,23 @@ export class StorySeriesError extends Error {
   }
 }
 
-// The media path hash keeps progress from a replaced file from counting.
-const progressKey = (postId: string, frame: StoryFrame) =>
-  `telegram-stories:progress:${postId}:${frame.index}:${createHash('sha1')
-    .update(frame.path)
-    .digest('hex')}`;
+/**
+ * Progress is keyed by file (plus its occurrence), not by position, so
+ * reordering media never re-sends a published story and a replaced file
+ * never counts as published.
+ */
+const progressKeys = (postId: string, frames: StoryFrame[]) => {
+  const seen = new Map<string, number>();
+  return frames.map((frame) => {
+    const hash = createHash('sha1').update(frame.path).digest('hex');
+    const occurrence = seen.get(hash) ?? 0;
+    seen.set(hash, occurrence + 1);
+    return `telegram-stories:progress:${postId}:${hash}:${occurrence}`;
+  });
+};
+
+const errorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error);
 
 const isAmbiguous = (error: unknown) =>
   !(error instanceof TelegramApiError) &&
@@ -53,23 +72,34 @@ const isAmbiguous = (error: unknown) =>
   AMBIGUOUS_ERROR.test(error.message);
 
 /**
- * Sends frames sequentially, remembering each one so a retry publishes only
- * what did not go out. A frame whose outcome is unknown is never re-sent.
+ * Publishes frames in media order. Each frame is prepared before it is
+ * claimed, so download or transcoding failures stay retryable. The series
+ * stops at the first frame that did not go out to keep story order; a frame
+ * whose upload outcome is unknown is never re-sent.
  */
-export const publishStorySeries = async ({
+export const publishStorySeries = async <P>({
   postId,
   frames,
   store,
+  prepare,
   send,
 }: {
   postId: string;
   frames: StoryFrame[];
   store: KeyValueStore;
-  send: (frame: StoryFrame) => Promise<number>;
+  prepare: (frame: StoryFrame) => Promise<P>;
+  send: (frame: StoryFrame, prepared: P) => Promise<number>;
 }) => {
+  const keys = progressKeys(postId, frames);
   const results: FrameResult[] = [];
-  for (const frame of frames) {
-    const key = progressKey(postId, frame);
+  let stopped = false;
+
+  for (const [position, frame] of frames.entries()) {
+    if (stopped) {
+      results.push({ index: frame.index, state: 'pending' });
+      continue;
+    }
+    const key = keys[position];
     const raw = await store.get(key);
     const progress: Progress | null = raw ? JSON.parse(raw) : null;
     if (progress?.state === 'done') {
@@ -82,25 +112,48 @@ export const publishStorySeries = async ({
     }
     if (progress?.state === 'in_flight') {
       results.push({ index: frame.index, state: 'unknown' });
+      stopped = true;
       continue;
     }
 
-    await store.set(
+    let prepared: P;
+    try {
+      prepared = await prepare(frame);
+    } catch (error) {
+      results.push({
+        index: frame.index,
+        state: 'failed',
+        error: errorMessage(error),
+      });
+      stopped = true;
+      continue;
+    }
+
+    const claimed = await store.set(
       key,
       JSON.stringify({ state: 'in_flight' }),
       'PX',
-      PROGRESS_TTL_MS
+      RUN_PROGRESS_TTL_MS,
+      'NX'
     );
+    if (claimed !== 'OK') {
+      // A concurrent attempt is sending this frame.
+      results.push({ index: frame.index, state: 'unknown' });
+      stopped = true;
+      continue;
+    }
+
     try {
-      const storyId = await send(frame);
+      const storyId = await send(frame, prepared);
       await store.set(
         key,
         JSON.stringify({ state: 'done', storyId }),
         'PX',
-        PROGRESS_TTL_MS
+        RUN_PROGRESS_TTL_MS
       );
       results.push({ index: frame.index, state: 'published', storyId });
     } catch (error) {
+      stopped = true;
       if (isAmbiguous(error)) {
         results.push({ index: frame.index, state: 'unknown' });
         continue;
@@ -109,13 +162,22 @@ export const publishStorySeries = async ({
       results.push({
         index: frame.index,
         state: 'failed',
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
 
-  if (results.some((r) => r.state === 'failed' || r.state === 'unknown')) {
+  if (stopped) {
     throw new StorySeriesError(results);
+  }
+
+  for (const [position, result] of results.entries()) {
+    await store.set(
+      keys[position],
+      JSON.stringify({ state: 'done', storyId: result.storyId }),
+      'PX',
+      COMPLETED_PROGRESS_TTL_MS
+    );
   }
   return { storyIds: results.map((r) => r.storyId as number), results };
 };
