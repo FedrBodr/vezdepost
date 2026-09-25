@@ -28,6 +28,7 @@ const REGISTERED_IDENTIFIERS = [
   'lemmy',
   'wrapcast',
   'telegram',
+  'telegram-stories',
   'max',
   'nostr',
   'vk',
@@ -45,13 +46,13 @@ const REGISTERED_IDENTIFIERS = [
 ] as const;
 
 describe('registered platform capability matrix', () => {
-  it('resolves the exact 36-destination inventory through V2', async () => {
+  it('resolves the exact 37-destination inventory through V2', async () => {
     const identifiers = socialIntegrationList.map(
       (integration) => integration.identifier
     );
 
     expect(identifiers).toEqual(REGISTERED_IDENTIFIERS);
-    expect(new Set(identifiers).size).toBe(36);
+    expect(new Set(identifiers).size).toBe(37);
 
     const manager = new IntegrationManager();
     const resolved = await Promise.all(
@@ -68,8 +69,8 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(32);
-    expect(profiled.size).toBe(32);
+    expect(PROFILE_IDENTIFIERS.length).toBe(33);
+    expect(profiled.size).toBe(33);
     expect(bridged.map(({ identifier }) => identifier)).toEqual([
       'moltbook',
       'whop',
