@@ -72,6 +72,15 @@ export class NoAuthIntegrationsController {
       throw new Error('Organization not found');
     }
 
+    if (
+      !this._integrationManager.isSocialIntegrationAllowedForOrg(
+        integration,
+        organization
+      )
+    ) {
+      throw new ForbiddenException('Integration not available');
+    }
+
     const org = await this._organizationService.getOrgById(organization);
 
     if (!integrationProvider.customFields) {

@@ -27,6 +27,8 @@ import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abst
 import { timer } from '@gitroom/helpers/utils/timer';
 import { TelegramProvider } from '@gitroom/nestjs-libraries/integrations/social/telegram.provider';
 import { MaxProvider } from '@gitroom/nestjs-libraries/integrations/social/max.provider';
+import { TelegramStoriesProvider } from '@gitroom/nestjs-libraries/integrations/social/telegram.stories.provider';
+import { TELEGRAM_STORIES_IDENTIFIER } from '@gitroom/helpers/utils/telegram.stories.constants';
 import { MoltbookProvider } from '@gitroom/nestjs-libraries/integrations/social/moltbook.provider';
 import {
   AuthorizationActions,
@@ -222,9 +224,10 @@ export class IntegrationsController {
     @GetOrgFromRequest() org: Organization
   ) {
     if (
-      !this._integrationManager
-        .getAllowedSocialsIntegrations()
-        .includes(integration)
+      !this._integrationManager.isSocialIntegrationAllowedForOrg(
+        integration,
+        org.id
+      )
     ) {
       throw new ForbiddenException('Integration not available');
     }
@@ -482,6 +485,32 @@ export class IntegrationsController {
         ? { chatId: Number(query.chatId) }
         : {}),
     });
+  }
+
+  @Get('/telegram-stories/availability')
+  getTelegramStoriesAvailability(@GetOrgFromRequest() org: Organization) {
+    return {
+      available: this._integrationManager.isSocialIntegrationAllowedForOrg(
+        TELEGRAM_STORIES_IDENTIFIER,
+        org.id
+      ),
+    };
+  }
+
+  @Get('/telegram-stories/updates')
+  async getTelegramStoriesUpdates(
+    @Query('word') word: string,
+    @GetOrgFromRequest() org: Organization
+  ) {
+    if (
+      !this._integrationManager.isSocialIntegrationAllowedForOrg(
+        TELEGRAM_STORIES_IDENTIFIER,
+        org.id
+      )
+    ) {
+      throw new ForbiddenException('Integration not available');
+    }
+    return new TelegramStoriesProvider().getConnectionStatus(word);
   }
 
   @Get('/max/updates')

@@ -25,6 +25,10 @@ import { InstagramStandaloneProvider } from '@gitroom/nestjs-libraries/integrati
 import { FarcasterProvider } from '@gitroom/nestjs-libraries/integrations/social/farcaster.provider';
 import { TelegramProvider } from '@gitroom/nestjs-libraries/integrations/social/telegram.provider';
 import { TelegramStoriesProvider } from '@gitroom/nestjs-libraries/integrations/social/telegram.stories.provider';
+import {
+  isTelegramStoriesEnabledForOrg,
+  TELEGRAM_STORIES_IDENTIFIER,
+} from '@gitroom/helpers/utils/telegram.stories.constants';
 import { MaxProvider } from '@gitroom/nestjs-libraries/integrations/social/max.provider';
 import { NostrProvider } from '@gitroom/nestjs-libraries/integrations/social/nostr.provider';
 import { VkProvider } from '@gitroom/nestjs-libraries/integrations/social/vk.provider';
@@ -211,6 +215,17 @@ export class IntegrationManager {
 
   isSocialIntegrationAllowed(identifier: string) {
     return this.socialIntegrationAllowlist.allowed.includes(identifier);
+  }
+
+  /** Global allowlist plus per-organization rollout flags for new connections. */
+  isSocialIntegrationAllowedForOrg(identifier: string, orgId: string) {
+    if (!this.isSocialIntegrationAllowed(identifier)) {
+      return false;
+    }
+    return (
+      identifier !== TELEGRAM_STORIES_IDENTIFIER ||
+      isTelegramStoriesEnabledForOrg(process.env.TELEGRAM_STORIES_ORG_IDS, orgId)
+    );
   }
 
   async resolveCapabilitiesV2({

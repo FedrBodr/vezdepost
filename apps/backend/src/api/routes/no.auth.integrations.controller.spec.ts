@@ -33,6 +33,7 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
     getAllowedSocialsIntegrations: ReturnType<typeof vi.fn>;
     getSocialIntegration: ReturnType<typeof vi.fn>;
     isSocialIntegrationAllowed: ReturnType<typeof vi.fn>;
+    isSocialIntegrationAllowedForOrg: ReturnType<typeof vi.fn>;
   };
   let refreshIntegrationService: {
     startRefreshWorkflow: ReturnType<typeof vi.fn>;
@@ -88,6 +89,7 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
       getAllowedSocialsIntegrations: vi.fn().mockReturnValue(['vk-group']),
       getSocialIntegration: vi.fn().mockReturnValue(provider),
       isSocialIntegrationAllowed: vi.fn().mockReturnValue(true),
+      isSocialIntegrationAllowedForOrg: vi.fn().mockReturnValue(true),
     };
     const organizationService = {
       getOrgById: vi.fn().mockResolvedValue({
