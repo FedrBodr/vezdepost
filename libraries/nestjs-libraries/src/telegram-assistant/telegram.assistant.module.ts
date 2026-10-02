@@ -62,8 +62,8 @@ export class TelegramAssistantWorker
     console.log('[telegram-assistant] polling started');
   }
 
-  onModuleDestroy() {
-    this.poller?.stop();
+  async onModuleDestroy() {
+    await this.poller?.stop();
   }
 }
 

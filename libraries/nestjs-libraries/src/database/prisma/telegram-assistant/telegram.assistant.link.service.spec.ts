@@ -20,6 +20,10 @@ const makeRepository = () => {
     findByTelegramUserId: vi.fn(
       async (telegramUserId: string) => links.get(telegramUserId) ?? null
     ),
+    isActiveMember: vi.fn(async () => true),
+    deleteByTelegramUserId: vi.fn(async (telegramUserId: string) => {
+      links.delete(telegramUserId);
+    }),
   };
 };
 
@@ -77,5 +81,18 @@ describe('TelegramAssistantLinkService', () => {
       organizationId: 'org-1',
     });
     await expect(service.findLink(999)).resolves.toBeNull();
+  });
+
+  it('drops the link once the user left the organization', async () => {
+    const { service, repository } = make();
+    const code = new URL(
+      await service.createLinkUrl('user-1', 'org-1')
+    ).searchParams.get('start')!;
+    await service.consumeLinkCode(code, 777);
+    repository.isActiveMember.mockResolvedValue(false);
+
+    await expect(service.findLink(777)).resolves.toBeNull();
+    expect(repository.isActiveMember).toHaveBeenCalledWith('user-1', 'org-1');
+    expect(repository.deleteByTelegramUserId).toHaveBeenCalledWith('777');
   });
 });

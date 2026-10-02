@@ -110,4 +110,14 @@ describe('TelegramAssistantApi', () => {
     );
     await expect(api.deleteMessage(7, 42)).resolves.toBeUndefined();
   });
+
+  it('never throws when a button press is too old to answer', async () => {
+    callMock.mockRejectedValueOnce(
+      new Error('Bad Request: query is too old and response timeout expired')
+    );
+
+    await expect(
+      new TelegramAssistantApi('T').answerCallback('cb', 'x')
+    ).resolves.toBeUndefined();
+  });
 });

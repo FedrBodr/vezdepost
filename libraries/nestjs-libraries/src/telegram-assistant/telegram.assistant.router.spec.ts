@@ -54,8 +54,14 @@ const make = (linked = true) => {
     publisher: publisher as any,
     drafts,
     appUrl: 'https://app.vezdepost.ru',
+    panelDelayMs: 0,
   });
-  return { router, api, linkService, publisher, drafts };
+  // Waits for the debounced panel and background publishes too.
+  const handle = async (update: any) => {
+    await router.handle(update);
+    await router.idle();
+  };
+  return { router, handle, api, linkService, publisher, drafts };
 };
 
 const lastText = (api: { sendMessage: any }) =>
@@ -65,46 +71,44 @@ describe('TelegramAssistantRouter', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('links the account from the start payload', async () => {
-    const { router, api, linkService } = make(false);
+    const { handle, api, linkService } = make(false);
 
-    await router.handle(message({ text: '/start good' }));
+    await handle(message({ text: '/start good' }));
 
     expect(linkService.consumeLinkCode).toHaveBeenCalledWith('good', USER);
     expect(lastText(api)).toContain('привязан');
   });
 
   it('explains how to link with an expired code', async () => {
-    const { router, api } = make(false);
+    const { handle, api } = make(false);
 
-    await router.handle(message({ text: '/start expired' }));
+    await handle(message({ text: '/start expired' }));
 
     expect(lastText(api)).toContain('устарела');
   });
 
   it('asks unlinked users to link from the app', async () => {
-    const { router, api, publisher } = make(false);
+    const { handle, api, publisher } = make(false);
 
-    await router.handle(message({ text: 'Hello' }));
+    await handle(message({ text: 'Hello' }));
 
     expect(lastText(api)).toContain('https://app.vezdepost.ru');
     expect(publisher.listChannels).not.toHaveBeenCalled();
   });
 
   it('ignores group chats', async () => {
-    const { router, api } = make();
+    const { handle, api } = make();
 
-    await router.handle(
-      message({ text: 'Hi', chat: { id: -5, type: 'supergroup' } })
-    );
+    await handle(message({ text: 'Hi', chat: { id: -5, type: 'supergroup' } }));
 
     expect(api.sendMessage).not.toHaveBeenCalled();
   });
 
   it('adds messages to the draft and keeps one panel at the bottom', async () => {
-    const { router, api, drafts } = make();
+    const { handle, api, drafts } = make();
 
-    await router.handle(message({ text: 'Hello' }));
-    await router.handle(message({ photo: [{ file_id: 'p1' }] }));
+    await handle(message({ text: 'Hello' }));
+    await handle(message({ photo: [{ file_id: 'p1' }] }));
 
     const draft = await drafts.get(USER);
     expect(draft.text).toBe('Hello');
@@ -116,10 +120,39 @@ describe('TelegramAssistantRouter', () => {
     expect(keyboard.inline_keyboard[0][0].callback_data).toBe('t:vk-1');
   });
 
-  it('tells the user why a file was refused', async () => {
-    const { router, api } = make();
+  it('renders one panel for an album sent in a burst', async () => {
+    const { router, api, drafts } = make();
 
     await router.handle(
+      message({ photo: [{ file_id: 'a' }], media_group_id: 'g' })
+    );
+    await router.handle(
+      message({ photo: [{ file_id: 'b' }], media_group_id: 'g' })
+    );
+    await router.handle(
+      message({ photo: [{ file_id: 'c' }], media_group_id: 'g' })
+    );
+    await router.idle();
+
+    expect(api.sendMessage).toHaveBeenCalledTimes(1);
+    expect((await drafts.get(USER)).files).toHaveLength(3);
+  });
+
+  it('keeps added files when the panel cannot be sent', async () => {
+    const { handle, api, drafts } = make();
+    api.sendMessage.mockRejectedValueOnce(
+      new Error('Too Many Requests: retry after 3')
+    );
+
+    await handle(message({ photo: [{ file_id: 'a' }] }));
+
+    expect((await drafts.get(USER)).files).toHaveLength(1);
+  });
+
+  it('tells the user why a file was refused', async () => {
+    const { handle, api } = make();
+
+    await handle(
       message({ video: { file_id: 'big', file_size: 30 * 1024 * 1024 } })
     );
 
@@ -127,10 +160,10 @@ describe('TelegramAssistantRouter', () => {
   });
 
   it('toggles a channel from the panel', async () => {
-    const { router, api, drafts } = make();
-    await router.handle(message({ text: 'Hello' }));
+    const { handle, api, drafts } = make();
+    await handle(message({ text: 'Hello' }));
 
-    await router.handle(press('t:vk-1'));
+    await handle(press('t:vk-1'));
 
     expect((await drafts.get(USER)).selected).toEqual(['vk-1']);
     expect(
@@ -140,11 +173,11 @@ describe('TelegramAssistantRouter', () => {
   });
 
   it('publishes the draft and reports each channel', async () => {
-    const { router, api, publisher, drafts } = make();
-    await router.handle(message({ text: 'Hello' }));
-    await router.handle(press('t:vk-1'));
+    const { handle, api, publisher, drafts } = make();
+    await handle(message({ text: 'Hello' }));
+    await handle(press('t:vk-1'));
 
-    await router.handle(press('p'));
+    await handle(press('p'));
 
     expect(api.answerCallback).toHaveBeenCalledWith('cb-1', '⏳ Публикую…');
     expect(api.answerCallback.mock.invocationCallOrder.at(-1)).toBeLessThan(
@@ -160,24 +193,45 @@ describe('TelegramAssistantRouter', () => {
   });
 
   it('keeps the draft and explains a fixable problem', async () => {
-    const { router, api, publisher, drafts } = make();
+    const { handle, api, publisher, drafts } = make();
     publisher.publish.mockRejectedValueOnce(
       new PublishError('Выберите хотя бы один канал')
     );
-    await router.handle(message({ text: 'Hello' }));
+    await handle(message({ text: 'Hello' }));
 
-    await router.handle(press('p'));
+    await handle(press('p'));
 
     expect(lastText(api)).toContain('Выберите хотя бы один канал');
     expect((await drafts.get(USER)).text).toBe('Hello');
   });
 
   it('resets the draft', async () => {
-    const { router, drafts } = make();
-    await router.handle(message({ text: 'Hello' }));
+    const { handle, drafts } = make();
+    await handle(message({ text: 'Hello' }));
 
-    await router.handle(press('r'));
+    await handle(press('r'));
 
     expect((await drafts.get(USER)).text).toBe('');
+  });
+
+  it('publishes in the background so other users are not blocked', async () => {
+    const { router, api, publisher } = make();
+    let finish!: (value: any) => void;
+    publisher.publish.mockReturnValueOnce(
+      new Promise((resolve) => (finish = resolve)) as any
+    );
+    await router.handle(message({ text: 'Hello' }));
+    await router.idle();
+
+    await router.handle(press('p'));
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+
+    await router.handle(press('p'));
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    expect(lastText(api)).toContain('Уже публикую');
+
+    finish({ published: ['My VK'], failed: [] });
+    await router.idle();
+    expect(lastText(api)).toContain('✅ Отправлено в публикацию: My VK');
   });
 });

@@ -27,6 +27,8 @@ export type TelegramAssistantRouterDeps = {
   publisher: Pick<TelegramAssistantPublisher, 'listChannels' | 'publish'>;
   drafts: DraftStore;
   appUrl: string;
+  /** Quiet period before the panel is re-rendered (albums arrive in bursts). */
+  panelDelayMs?: number;
 };
 
 type Message = NonNullable<TelegramAssistantUpdate['message']>;
@@ -51,7 +53,67 @@ const summary = ({ published, failed }: PublishResult) =>
 
 /** Handles one Telegram update for @vezde_post_bot. */
 export class TelegramAssistantRouter {
+  private readonly panelTimers = new Map<
+    number,
+    ReturnType<typeof setTimeout>
+  >();
+  private readonly publishing = new Set<number>();
+  private readonly pending = new Set<Promise<void>>();
+
   constructor(private readonly deps: TelegramAssistantRouterDeps) {}
+
+  /** Resolves when scheduled panels and background publishes are done. */
+  async idle() {
+    while (this.panelTimers.size || this.pending.size) {
+      await Promise.all([...this.pending]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  private track(work: Promise<void>) {
+    const tracked = work
+      .catch((error) => console.error('[telegram-assistant]', error))
+      .finally(() => this.pending.delete(tracked));
+    this.pending.add(tracked);
+  }
+
+  private schedulePanel(
+    userId: number,
+    chatId: number,
+    organizationId: string
+  ) {
+    clearTimeout(this.panelTimers.get(userId));
+    this.panelTimers.set(
+      userId,
+      setTimeout(() => {
+        this.panelTimers.delete(userId);
+        this.track(this.refreshPanel(userId, chatId, organizationId));
+      }, this.deps.panelDelayMs ?? 1_500)
+    );
+  }
+
+  /** Keeps a single panel below the latest message. */
+  private async refreshPanel(
+    userId: number,
+    chatId: number,
+    organizationId: string
+  ) {
+    const draft = await this.deps.drafts.get(userId);
+    if (draft.panelMessageId) {
+      await this.deps.api.deleteMessage(chatId, draft.panelMessageId);
+    }
+    const panel = renderPanel(
+      draft,
+      await this.deps.publisher.listChannels(organizationId)
+    );
+    const panelMessageId = await this.deps.api.sendMessage(
+      chatId,
+      panel.text,
+      panel.keyboard
+    );
+    const latest = await this.deps.drafts.get(userId);
+    await this.deps.drafts.save(userId, { ...latest, panelMessageId });
+  }
 
   private get help() {
     return [
@@ -123,24 +185,11 @@ export class TelegramAssistantRouter {
 
     const current = await this.deps.drafts.get(userId);
     const { draft, error } = addMessageToDraft(current, message);
+    await this.deps.drafts.save(userId, draft);
     if (error) {
       await this.deps.api.sendMessage(chatId, DRAFT_ERRORS[error]);
     }
-
-    // Keep a single panel below the latest message.
-    if (draft.panelMessageId) {
-      await this.deps.api.deleteMessage(chatId, draft.panelMessageId);
-    }
-    const panel = renderPanel(
-      draft,
-      await this.deps.publisher.listChannels(link.organizationId)
-    );
-    const panelMessageId = await this.deps.api.sendMessage(
-      chatId,
-      panel.text,
-      panel.keyboard
-    );
-    await this.deps.drafts.save(userId, { ...draft, panelMessageId });
+    this.schedulePanel(userId, chatId, link.organizationId);
   }
 
   private async handleCallback(query: CallbackQuery) {
@@ -181,36 +230,56 @@ export class TelegramAssistantRouter {
     }
 
     if (data === 'p') {
-      // Telegram expires a button press within seconds; downloading files
-      // takes longer, so answer first and report by message.
+      // Telegram expires a button press within seconds and downloads take
+      // longer: answer now, publish in the background, report by message.
       await this.deps.api.answerCallback(query.id, '⏳ Публикую…');
-      try {
-        const result = await this.deps.publisher.publish(
-          link.organizationId,
-          draft
-        );
-        await this.deps.drafts.clear(userId);
-        await this.deps.api.editMessage(
-          chatId,
-          messageId,
-          '📤 Черновик отправлен.'
-        );
-        await this.deps.api.sendMessage(chatId, summary(result));
-      } catch (error) {
-        if (error instanceof PublishError) {
-          await this.deps.api.sendMessage(chatId, `⚠️ ${error.message}`);
-          return;
-        }
+      if (this.publishing.has(userId)) {
         await this.deps.api.sendMessage(
           chatId,
-          `Не удалось опубликовать: ${
-            (error as Error).message
-          }. Черновик сохранён — попробуйте ещё раз.`
+          '⏳ Уже публикую предыдущий пост…'
         );
+        return;
       }
+      this.publishing.add(userId);
+      this.track(
+        this.publishDraft(
+          userId,
+          chatId,
+          messageId,
+          link.organizationId
+        ).finally(() => this.publishing.delete(userId))
+      );
       return;
     }
 
     await this.deps.api.answerCallback(query.id, undefined);
+  }
+
+  private async publishDraft(
+    userId: number,
+    chatId: number,
+    messageId: number,
+    organizationId: string
+  ) {
+    const draft = await this.deps.drafts.get(userId);
+    try {
+      const result = await this.deps.publisher.publish(organizationId, draft);
+      await this.deps.drafts.clear(userId);
+      await this.deps.api.editMessage(
+        chatId,
+        messageId,
+        '📤 Черновик отправлен.'
+      );
+      await this.deps.api.sendMessage(chatId, summary(result));
+    } catch (error) {
+      await this.deps.api.sendMessage(
+        chatId,
+        error instanceof PublishError
+          ? `⚠️ ${error.message}`
+          : `Не удалось опубликовать: ${
+              (error as Error).message
+            }. Черновик сохранён — попробуйте ещё раз.`
+      );
+    }
   }
 }

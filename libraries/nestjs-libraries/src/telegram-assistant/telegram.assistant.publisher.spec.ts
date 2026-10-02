@@ -166,6 +166,25 @@ describe('TelegramAssistantPublisher', () => {
     });
   });
 
+  it('shows the details of a Nest validation error', async () => {
+    const { publisher, deps } = make();
+    deps.postsService.mapTypeToPost.mockRejectedValueOnce(
+      Object.assign(new Error('Bad Request Exception'), {
+        getResponse: () => ({ message: ['date must be a valid date'] }),
+      })
+    );
+
+    const result = await publisher.publish('org-1', {
+      text: 'Hi',
+      files: [],
+      selected: ['vk-1'],
+    });
+
+    expect(result.failed).toEqual([
+      { name: 'My VK', error: 'date must be a valid date' },
+    ]);
+  });
+
   it.each([
     [{ text: 'Hi', files: [], selected: [] }, 'Выберите хотя бы один канал'],
     [{ text: '  ', files: [], selected: ['vk-1'] }, 'Пустой пост'],

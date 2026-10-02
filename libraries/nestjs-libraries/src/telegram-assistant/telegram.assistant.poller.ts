@@ -5,7 +5,7 @@ import type { TelegramAssistantRouter } from '@gitroom/nestjs-libraries/telegram
 const LOCK_KEY = 'tg-assistant:poller';
 const LOCK_TTL_MS = 60_000;
 const LONG_POLL_SECONDS = 25;
-const IDLE_MS = 30_000;
+const IDLE_MS = 5_000;
 const ERROR_BACKOFF_MS = 5_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -75,7 +75,11 @@ export class TelegramAssistantPoller {
     }
   }
 
-  stop() {
+  /** Stops polling and frees the lock for the next process (e.g. a deploy). */
+  async stop() {
     this.running = false;
+    if ((await this.store.get(LOCK_KEY)) === this.instanceId) {
+      await this.store.del(LOCK_KEY);
+    }
   }
 }

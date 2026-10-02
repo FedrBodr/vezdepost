@@ -133,11 +133,16 @@ export class TelegramAssistantApi {
     }
   }
 
+  /** Best effort: Telegram expires button presses within seconds. */
   async answerCallback(callbackId: string, text?: string) {
-    await callTelegramApi(this.token, 'answerCallbackQuery', {
-      callback_query_id: callbackId,
-      ...(text ? { text } : {}),
-    });
+    try {
+      await callTelegramApi(this.token, 'answerCallbackQuery', {
+        callback_query_id: callbackId,
+        ...(text ? { text } : {}),
+      });
+    } catch {
+      // The press is still handled; only the toast is lost.
+    }
   }
 
   async downloadFile(fileId: string) {

@@ -50,4 +50,22 @@ describe('TelegramAssistantPoller', () => {
     await expect(poller.runOnce()).resolves.toBe(true);
     expect(getUpdates).toHaveBeenCalledTimes(2);
   });
+
+  it('releases its lock on stop so the next deploy takes over at once', async () => {
+    const { poller, store } = make([]);
+    await poller.runOnce();
+
+    await poller.stop();
+
+    await expect(store.get('tg-assistant:poller')).resolves.toBeNull();
+  });
+
+  it('does not release a lock it does not own', async () => {
+    const { poller, store } = make([]);
+    await store.set('tg-assistant:poller', 'instance-b');
+
+    await poller.stop();
+
+    await expect(store.get('tg-assistant:poller')).resolves.toBe('instance-b');
+  });
 });

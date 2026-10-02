@@ -6,6 +6,15 @@ import {
 } from '@gitroom/nestjs-libraries/telegram-assistant/telegram.assistant.api';
 
 const DRAFT_TTL_MS = 60 * 60 * 1_000;
+
+/** Formats the dashboard pipeline accepts (also enforced when storing). */
+export const PUBLISHABLE_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'video/mp4',
+]);
 const MAX_FILES = 10;
 
 export type DraftFile = { fileId: string; kind: 'image' | 'video' };
@@ -35,6 +44,12 @@ const fileOf = (
     };
   }
   if (message.video) {
+    if (
+      message.video.mime_type &&
+      !PUBLISHABLE_MIME.has(message.video.mime_type)
+    ) {
+      return { unsupported: true };
+    }
     return {
       file: { fileId: message.video.file_id, kind: 'video' },
       size: message.video.file_size,
@@ -42,11 +57,11 @@ const fileOf = (
   }
   if (message.document) {
     const mime = message.document.mime_type || '';
-    const kind = mime.startsWith('image/')
+    const kind = !PUBLISHABLE_MIME.has(mime)
+      ? undefined
+      : mime.startsWith('image/')
       ? 'image'
-      : mime.startsWith('video/')
-      ? 'video'
-      : undefined;
+      : 'video';
     return kind
       ? {
           file: { fileId: message.document.file_id, kind },

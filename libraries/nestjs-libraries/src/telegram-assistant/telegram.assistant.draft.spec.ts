@@ -82,6 +82,23 @@ describe('addMessageToDraft', () => {
   });
 });
 
+describe('publishable formats', () => {
+  it.each([
+    [{ document: { file_id: 'heic', mime_type: 'image/heic' } }],
+    [{ document: { file_id: 'mov', mime_type: 'video/quicktime' } }],
+    [{ video: { file_id: 'mov', mime_type: 'video/quicktime' } }],
+  ])('refuses %j at draft time', (patch) => {
+    const result = addMessageToDraft(emptyDraft(), {
+      message_id: 1,
+      chat: { id: 1, type: 'private' },
+      ...(patch as any),
+    });
+
+    expect(result.error).toBe('unsupported');
+    expect(result.draft.files).toEqual([]);
+  });
+});
+
 describe('renderPanel', () => {
   it('shows a toggle per channel and the actions', () => {
     const draft = toggleChannel(

@@ -1,17 +1,9 @@
 import { Readable } from 'stream';
 import { randomBytes } from 'crypto';
+import { PUBLISHABLE_MIME } from '@gitroom/nestjs-libraries/telegram-assistant/telegram.assistant.draft';
 import type { IUploadProvider } from '@gitroom/nestjs-libraries/upload/upload.interface';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fromBuffer } = require('file-type');
-
-// Same media types the public API accepts from URLs.
-const ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'video/mp4',
-]);
 
 /** Detects the real type of a Telegram file and stores it like an upload. */
 export const storeTelegramFile = async (
@@ -19,7 +11,7 @@ export const storeTelegramFile = async (
   storage: Pick<IUploadProvider, 'uploadFile'>
 ) => {
   const detected = await fromBuffer(buffer);
-  if (!detected || !ALLOWED_MIME.has(detected.mime)) {
+  if (!detected || !PUBLISHABLE_MIME.has(detected.mime)) {
     throw new Error(
       'Неподдерживаемый формат файла — отправьте JPG, PNG, GIF, WEBP или MP4'
     );

@@ -28,6 +28,7 @@ describe('TelegramAssistantButton', () => {
     const tab = { location: { href: '' }, close: vi.fn() };
     const open = vi.spyOn(window, 'open').mockReturnValue(tab as any);
     mocks.fetcher.mockResolvedValue({
+      ok: true,
       json: async () => ({ url: 'https://t.me/vezde_post_bot?start=code' }),
     });
 
@@ -56,5 +57,22 @@ describe('TelegramAssistantButton', () => {
     );
 
     await waitFor(() => expect(tab.close).toHaveBeenCalled());
+  });
+
+  it('closes the blank tab on an error response', async () => {
+    const tab = { location: { href: '' }, close: vi.fn() };
+    vi.spyOn(window, 'open').mockReturnValue(tab as any);
+    mocks.fetcher.mockResolvedValue({
+      ok: false,
+      json: async () => ({ message: 'Forbidden' }),
+    });
+
+    render(<TelegramAssistantButton />);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Постить из Telegram/ })
+    );
+
+    await waitFor(() => expect(tab.close).toHaveBeenCalled());
+    expect(tab.location.href).toBe('');
   });
 });

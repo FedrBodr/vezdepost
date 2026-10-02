@@ -61,6 +61,19 @@ const validationMessage = (item: ValidationItem) => {
   }
 };
 
+// Nest HTTP exceptions keep the useful text in their response body.
+const errorText = (error: unknown) => {
+  const response = (error as { getResponse?: () => unknown }).getResponse?.();
+  const message = (response as { message?: unknown } | undefined)?.message;
+  if (Array.isArray(message)) {
+    return message.join('; ');
+  }
+  if (typeof message === 'string') {
+    return message;
+  }
+  return (error as Error)?.message || 'ошибка публикации';
+};
+
 /** Turns a Telegram draft into dashboard posts, one per selected channel. */
 export class TelegramAssistantPublisher {
   constructor(private readonly deps: TelegramAssistantPublisherDeps) {}
@@ -156,7 +169,7 @@ export class TelegramAssistantPublisher {
       } catch (error) {
         result.failed.push({
           name: integration.name,
-          error: (error as Error).message || 'ошибка публикации',
+          error: errorText(error),
         });
       }
     }

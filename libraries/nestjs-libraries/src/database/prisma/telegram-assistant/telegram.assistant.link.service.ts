@@ -70,7 +70,20 @@ export class TelegramAssistantLinkService {
     };
   }
 
-  findLink(telegramUserId: number | string) {
-    return this._repository.findByTelegramUserId(String(telegramUserId));
+  /** The link, if its user still belongs to the organization. */
+  async findLink(telegramUserId: number | string) {
+    const link = await this._repository.findByTelegramUserId(
+      String(telegramUserId)
+    );
+    if (!link) {
+      return null;
+    }
+    if (
+      !(await this._repository.isActiveMember(link.userId, link.organizationId))
+    ) {
+      await this._repository.deleteByTelegramUserId(link.telegramUserId);
+      return null;
+    }
+    return link;
   }
 }

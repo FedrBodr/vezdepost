@@ -15,9 +15,14 @@ export const TelegramAssistantButton = () => {
     const tab = window.open('', '_blank');
     setLoading(true);
     try {
-      const { url } = await (
-        await fetch('/telegram-assistant/link', { method: 'POST' })
-      ).json();
+      const response = await fetch('/telegram-assistant/link', {
+        method: 'POST',
+      });
+      const { url } = response.ok ? await response.json() : { url: undefined };
+      if (!url) {
+        tab?.close();
+        return;
+      }
       if (tab) {
         tab.location.href = url;
       } else {
