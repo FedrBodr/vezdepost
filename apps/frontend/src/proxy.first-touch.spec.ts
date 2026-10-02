@@ -28,6 +28,7 @@ describe('proxy first touch', () => {
     expect(response.status).toBe(307);
     expect(header).toContain('Domain=.vezdepost.ru');
     expect(header).toContain('Max-Age=15552000');
+    expect(header.toLowerCase()).toContain('secure');
     expect(
       parseFirstTouch(response.cookies.get('vp_first_touch')?.value)
     ).toMatchObject({

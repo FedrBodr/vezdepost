@@ -59,7 +59,8 @@ export const rememberFirstTouch = (
     domain: getCookieUrlFromDomain(process.env.FRONTEND_URL),
     maxAge: FIRST_TOUCH_MAX_AGE_SECONDS,
     sameSite: 'lax',
-    secure: request.nextUrl.protocol === 'https:',
+    // behind Caddy the proxy sees plain http; the public scheme is in FRONTEND_URL
+    secure: process.env.FRONTEND_URL.startsWith('https:'),
     httpOnly: false,
   });
   return response;
