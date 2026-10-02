@@ -116,6 +116,17 @@ export class TelegramAssistantApi {
     }
   }
 
+  async deleteMessage(chatId: number, messageId: number) {
+    try {
+      await callTelegramApi(this.token, 'deleteMessage', {
+        chat_id: chatId,
+        message_id: messageId,
+      });
+    } catch {
+      // Already deleted or too old to delete: nothing to clean up.
+    }
+  }
+
   async answerCallback(callbackId: string, text?: string) {
     await callTelegramApi(this.token, 'answerCallbackQuery', {
       callback_query_id: callbackId,

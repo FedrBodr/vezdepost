@@ -92,4 +92,20 @@ describe('TelegramAssistantApi', () => {
       TELEGRAM_DOWNLOAD_MAX_BYTES
     );
   });
+
+  it('deletes a message and ignores one that is already gone', async () => {
+    callMock.mockResolvedValueOnce(true);
+    const api = new TelegramAssistantApi('T');
+
+    await api.deleteMessage(7, 42);
+    expect(callMock).toHaveBeenCalledWith('T', 'deleteMessage', {
+      chat_id: 7,
+      message_id: 42,
+    });
+
+    callMock.mockRejectedValueOnce(
+      new Error("Bad Request: message to delete not found")
+    );
+    await expect(api.deleteMessage(7, 42)).resolves.toBeUndefined();
+  });
 });
