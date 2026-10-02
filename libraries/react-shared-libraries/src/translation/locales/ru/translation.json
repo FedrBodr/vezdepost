@@ -874,5 +874,6 @@
   "telegram_stories_text_post": "Текст поста",
   "telegram_stories_text_none": "Без текста",
   "telegram_stories_text_custom": "Свой текст",
-  "telegram_stories_premium_badge": "Premium"
+  "telegram_stories_premium_badge": "Premium",
+  "telegram_assistant_button": "Постить из Telegram"
 }
