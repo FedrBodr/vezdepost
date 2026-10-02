@@ -100,6 +100,10 @@ HTTP 200 от `/launches` подтверждает только frontend: backen
   редактируются): `/data/access-logs/access.log` в контейнере `caddy`
   (volume `caddy-data`), ротация 50 MiB × 20, хранение 30 дней. Поиск:
   `ssh vezdepost "docker exec caddy sh -c 'grep -h <IP> /data/access-logs/*'"`.
+- **Изменения `deploy/Caddyfile` автодеплой не применяет**: файл смонтирован
+  одиночным bind mount, после `git reset` контейнер видит старый inode
+  (`--watch` не помогает). После деплоя такого коммита:
+  `ssh vezdepost 'bash -s' < docs/server-scripts/29-apply-caddyfile.sh`.
 - **Поисковые запросы** — только в Search Console (сервисный аккаунт из
   `~/.config/fedrbodr/gsc-sa.json` должен иметь доступ к ресурсу vezdepost.ru)
   и Яндекс Вебмастере (`~/.config/fedrbodr/yandex-webmaster.token`).
