@@ -82,6 +82,42 @@ HTTP 200 от `/launches` подтверждает только frontend: backen
   `tg_footer_click` (t.me/FedrBodr вне #services, т.е. футер).
   Новая конверсия = новая ветка в этом слушателе + цель в интерфейсе Метрики.
 
+### Атрибуция пользователей (WOK-523)
+
+Метрика и PostHog не видят посетителей с блокировщиками, а поисковые фразы в
+Метрике скрыты. Поэтому источник регистрации хранится у нас:
+
+- **First-touch cookie** `vp_first_touch` на `.vezdepost.ru`, 180 дней,
+  пишется один раз: на лендинге — inline-скрипт в `deploy/landing/index.html`,
+  в приложении — серверно в Next proxy (`apps/frontend/src/proxy.ts`, по HTTP
+  Referer, блокировщики не мешают). Формат и парсер —
+  `libraries/helpers/src/utils/first.touch.ts`.
+- При регистрации (email и OAuth: Google, VK и т.д.) бэкенд копирует cookie в
+  `User.signupSource` (JSON: `src`, `ref`, `path`, `utm`, `at`). У
+  пользователей, зарегистрированных до 2026-10-02, поле пустое.
+- Отчёт: `ssh vezdepost 'bash -s' < docs/server-scripts/28-signup-sources.sh`.
+- **Access-лог Caddy** (JSON, с Referer и User-Agent, Cookie/Authorization
+  редактируются): `/data/access-logs/access.log` в контейнере `caddy`
+  (volume `caddy-data`), ротация 50 MiB × 20, хранение 30 дней. Поиск:
+  `ssh vezdepost "docker exec caddy sh -c 'grep -h <IP> /data/access-logs/*'"`.
+- **Поисковые запросы** — только в Search Console (сервисный аккаунт из
+  `~/.config/fedrbodr/gsc-sa.json` должен иметь доступ к ресурсу vezdepost.ru)
+  и Яндекс Вебмастере (`~/.config/fedrbodr/yandex-webmaster.token`).
+
+**UTM для собственных ссылок** (без них переход считается «прямым»):
+
+| Где ссылка | URL |
+|---|---|
+| LinkedIn, профиль | `https://vezdepost.ru/?utm_source=linkedin&utm_medium=social&utm_campaign=profile` |
+| LinkedIn, посты | `https://vezdepost.ru/?utm_source=linkedin&utm_medium=social&utm_campaign=post` |
+| VK | `https://vezdepost.ru/?utm_source=vk&utm_medium=social&utm_campaign=profile` |
+| spros.work | `https://vezdepost.ru/?utm_source=spros&utm_medium=referral&utm_campaign=profile` |
+| Telegram (канал/профиль) | `https://vezdepost.ru/?utm_source=telegram&utm_medium=social&utm_campaign=profile` |
+| fedrbodr.com | `https://vezdepost.ru/?utm_source=fedrbodr&utm_medium=referral&utm_campaign=site` |
+| GitHub README | `https://vezdepost.ru/?utm_source=github&utm_medium=referral&utm_campaign=readme` |
+
+Для разовой публикации меняй `utm_campaign` (например `post-2026-10-belovo`).
+
 ### Тон и принятые копирайт-решения (не откатывать молча)
 
 - **Слово «зарплата» на лендинге не используем** — жена мейнтейнера отметила,

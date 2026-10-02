@@ -11,6 +11,7 @@ import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/n
 import { ForgotReturnPasswordDto } from '@gitroom/nestjs-libraries/dtos/auth/forgot-return.password.dto';
 import { EmailService } from '@gitroom/nestjs-libraries/services/email.service';
 import { NewsletterService } from '@gitroom/nestjs-libraries/newsletter/newsletter.service';
+import { FirstTouch } from '@gitroom/helpers/utils/first.touch';
 
 @Injectable()
 export class AuthService {
@@ -37,7 +38,8 @@ export class AuthService {
     body: CreateOrgUserDto | LoginUserDto,
     ip: string,
     userAgent: string,
-    addToOrg?: boolean | { orgId: string; role: 'USER' | 'ADMIN'; id: string }
+    addToOrg?: boolean | { orgId: string; role: 'USER' | 'ADMIN'; id: string },
+    signupSource?: FirstTouch
   ) {
     if (provider === Provider.LOCAL) {
       if (process.env.DISALLOW_PLUS && body.email.includes('+')) {
@@ -59,7 +61,8 @@ export class AuthService {
         const create = await this._organizationService.createOrgAndUser(
           body,
           ip,
-          userAgent
+          userAgent,
+          signupSource
         );
 
         const addedOrg =
@@ -97,7 +100,8 @@ export class AuthService {
       provider,
       body as CreateOrgUserDto,
       ip,
-      userAgent
+      userAgent,
+      signupSource
     );
 
     const addedOrg =
@@ -138,7 +142,8 @@ export class AuthService {
     provider: Provider,
     body: CreateOrgUserDto,
     ip: string,
-    userAgent: string
+    userAgent: string,
+    signupSource?: FirstTouch
   ) {
     const providerInstance = this._providerManager.getProvider(provider);
     const providerUser = await providerInstance.getUser(body.providerToken);
@@ -169,7 +174,8 @@ export class AuthService {
         datafast_visitor_id: body.datafast_visitor_id,
       },
       ip,
-      userAgent
+      userAgent,
+      signupSource
     );
 
     this._track('register', providerUser.email, body.datafast_visitor_id).catch(

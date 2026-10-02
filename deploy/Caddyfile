@@ -2,13 +2,29 @@
 	email fedrbodr@gmail.com
 }
 
+# Access log with Referer/User-Agent for user attribution and incident
+# forensics. Caddy redacts Cookie/Authorization headers by default.
+# Kept 30 days in the caddy-data volume: /data/access-logs/ in the container.
+(access_log) {
+	log {
+		output file /data/access-logs/access.log {
+			roll_size 50MiB
+			roll_keep 20
+			roll_keep_for 720h
+		}
+		format json
+	}
+}
+
 vezdepost.ru, www.vezdepost.ru {
+	import access_log
 	root * /srv/landing
 	file_server
 	encode gzip
 }
 
 app.vezdepost.ru {
+	import access_log
 	reverse_proxy postiz:5000
 	encode gzip
 }

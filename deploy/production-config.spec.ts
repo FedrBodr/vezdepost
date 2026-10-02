@@ -122,4 +122,18 @@ describe('production configuration', () => {
     expect(caddyfile).toContain('import /etc/caddy/sites/*.caddy');
     expect(caddyfile).not.toContain('ksy-deals.fedrbodr.com');
   });
+
+  it('keeps a 30-day access log with referrers for both Vezdepost sites', () => {
+    const caddyfile = readRootFile('deploy/Caddyfile');
+    const override = readRootFile('docker-compose.override.yaml');
+
+    expect(caddyfile).toMatch(
+      /\(access_log\) \{[\s\S]*output file \/data\/access-logs\/access\.log[\s\S]*roll_keep_for 720h[\s\S]*format json/
+    );
+    expect(caddyfile).toMatch(
+      /vezdepost\.ru, www\.vezdepost\.ru \{\s*import access_log/
+    );
+    expect(caddyfile).toMatch(/app\.vezdepost\.ru \{\s*import access_log/);
+    expect(override).toContain('caddy-data:/data');
+  });
 });

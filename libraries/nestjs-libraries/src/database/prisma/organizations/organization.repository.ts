@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { CreateOrgUserDto } from '@gitroom/nestjs-libraries/dtos/auth/create.org.user.dto';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { FirstTouch } from '@gitroom/helpers/utils/first.touch';
 
 @Injectable()
 export class OrganizationRepository {
@@ -261,7 +262,8 @@ export class OrganizationRepository {
     body: Omit<CreateOrgUserDto, 'providerToken'> & { providerId?: string },
     hasEmail: boolean,
     ip: string,
-    userAgent: string
+    userAgent: string,
+    signupSource?: FirstTouch
   ) {
     return this._organization.model.organization.create({
       data: {
@@ -284,6 +286,7 @@ export class OrganizationRepository {
                 timezone: 0,
                 ip,
                 agent: userAgent,
+                ...(signupSource ? { signupSource: { ...signupSource } } : {}),
               },
             },
           },
