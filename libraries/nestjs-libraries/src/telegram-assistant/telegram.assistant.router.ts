@@ -20,7 +20,10 @@ export type TelegramAssistantRouterDeps = {
     TelegramAssistantApi,
     'sendMessage' | 'editMessage' | 'deleteMessage' | 'answerCallback'
   >;
-  linkService: Pick<TelegramAssistantLinkService, 'consumeLinkCode' | 'findLink'>;
+  linkService: Pick<
+    TelegramAssistantLinkService,
+    'consumeLinkCode' | 'findLink'
+  >;
   publisher: Pick<TelegramAssistantPublisher, 'listChannels' | 'publish'>;
   drafts: DraftStore;
   appUrl: string;
@@ -31,13 +34,16 @@ type CallbackQuery = NonNullable<TelegramAssistantUpdate['callback_query']>;
 
 const DRAFT_ERRORS = {
   unsupported: 'Этот тип файла не поддерживается — отправьте фото или видео.',
-  too_large: 'Файл больше 20 МБ — Telegram не даёт боту скачать такой. Сожмите видео или опубликуйте через сайт.',
+  too_large:
+    'Файл больше 20 МБ — Telegram не даёт боту скачать такой. Сожмите видео или опубликуйте через сайт.',
   too_many: 'В одном посте до 10 файлов.',
 };
 
 const summary = ({ published, failed }: PublishResult) =>
   [
-    published.length ? `✅ Отправлено в публикацию: ${published.join(', ')}` : '',
+    published.length
+      ? `✅ Отправлено в публикацию: ${published.join(', ')}`
+      : '',
     ...failed.map(({ name, error }) => `⚠️ ${name}: ${error}`),
   ]
     .filter(Boolean)
@@ -86,10 +92,16 @@ export class TelegramAssistantRouter {
     if (start) {
       if (!start[1]) {
         const link = await this.deps.linkService.findLink(userId);
-        await this.deps.api.sendMessage(chatId, link ? this.help : this.linkInstructions);
+        await this.deps.api.sendMessage(
+          chatId,
+          link ? this.help : this.linkInstructions
+        );
         return;
       }
-      const link = await this.deps.linkService.consumeLinkCode(start[1], userId);
+      const link = await this.deps.linkService.consumeLinkCode(
+        start[1],
+        userId
+      );
       await this.deps.api.sendMessage(
         chatId,
         link
@@ -151,7 +163,12 @@ export class TelegramAssistantRouter {
         next,
         await this.deps.publisher.listChannels(link.organizationId)
       );
-      await this.deps.api.editMessage(chatId, messageId, panel.text, panel.keyboard);
+      await this.deps.api.editMessage(
+        chatId,
+        messageId,
+        panel.text,
+        panel.keyboard
+      );
       await this.deps.api.answerCallback(query.id, undefined);
       return;
     }
@@ -168,9 +185,16 @@ export class TelegramAssistantRouter {
       // takes longer, so answer first and report by message.
       await this.deps.api.answerCallback(query.id, '⏳ Публикую…');
       try {
-        const result = await this.deps.publisher.publish(link.organizationId, draft);
+        const result = await this.deps.publisher.publish(
+          link.organizationId,
+          draft
+        );
         await this.deps.drafts.clear(userId);
-        await this.deps.api.editMessage(chatId, messageId, '📤 Черновик отправлен.');
+        await this.deps.api.editMessage(
+          chatId,
+          messageId,
+          '📤 Черновик отправлен.'
+        );
         await this.deps.api.sendMessage(chatId, summary(result));
       } catch (error) {
         if (error instanceof PublishError) {
@@ -179,7 +203,9 @@ export class TelegramAssistantRouter {
         }
         await this.deps.api.sendMessage(
           chatId,
-          `Не удалось опубликовать: ${(error as Error).message}. Черновик сохранён — попробуйте ещё раз.`
+          `Не удалось опубликовать: ${
+            (error as Error).message
+          }. Черновик сохранён — попробуйте ещё раз.`
         );
       }
       return;

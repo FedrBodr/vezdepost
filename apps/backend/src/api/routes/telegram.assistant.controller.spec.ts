@@ -4,7 +4,9 @@ import { TelegramAssistantController } from './telegram.assistant.controller';
 describe('TelegramAssistantController', () => {
   it('returns a deep link bound to the current user and organization', async () => {
     const linkService = {
-      createLinkUrl: vi.fn(async () => 'https://t.me/vezde_post_bot?start=code'),
+      createLinkUrl: vi.fn(
+        async () => 'https://t.me/vezde_post_bot?start=code'
+      ),
     };
     const controller = new TelegramAssistantController(linkService as any);
 

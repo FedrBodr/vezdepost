@@ -29,7 +29,10 @@ const fileOf = (
 ): { file?: DraftFile; size?: number; unsupported?: boolean } => {
   if (message.photo?.length) {
     const largest = message.photo[message.photo.length - 1];
-    return { file: { fileId: largest.file_id, kind: 'image' }, size: largest.file_size };
+    return {
+      file: { fileId: largest.file_id, kind: 'image' },
+      size: largest.file_size,
+    };
   }
   if (message.video) {
     return {
@@ -129,7 +132,8 @@ export const plainTextToHtml = (text: string) =>
     .map((line) => `<p>${escapeHtml(line)}</p>`)
     .join('');
 
-const draftKey = (telegramUserId: number) => `tg-assistant:draft:${telegramUserId}`;
+const draftKey = (telegramUserId: number) =>
+  `tg-assistant:draft:${telegramUserId}`;
 
 export class DraftStore {
   constructor(private readonly store: KeyValueStore) {}

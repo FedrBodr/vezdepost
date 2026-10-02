@@ -15,7 +15,11 @@ const channels = [
 describe('addMessageToDraft', () => {
   it('collects text, the largest photo and a video', () => {
     let draft = emptyDraft();
-    draft = addMessageToDraft(draft, { message_id: 1, chat: { id: 1, type: 'private' }, text: 'Hello' }).draft;
+    draft = addMessageToDraft(draft, {
+      message_id: 1,
+      chat: { id: 1, type: 'private' },
+      text: 'Hello',
+    }).draft;
     draft = addMessageToDraft(draft, {
       message_id: 2,
       chat: { id: 1, type: 'private' },
@@ -81,7 +85,11 @@ describe('addMessageToDraft', () => {
 describe('renderPanel', () => {
   it('shows a toggle per channel and the actions', () => {
     const draft = toggleChannel(
-      { ...emptyDraft(), text: 'Hello', files: [{ fileId: 'a', kind: 'image' }] },
+      {
+        ...emptyDraft(),
+        text: 'Hello',
+        files: [{ fileId: 'a', kind: 'image' }],
+      },
       'vk-1'
     );
 

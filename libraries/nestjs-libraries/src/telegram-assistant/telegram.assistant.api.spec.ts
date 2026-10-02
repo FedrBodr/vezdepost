@@ -86,7 +86,9 @@ describe('TelegramAssistantApi', () => {
     );
 
     expect(file.toString()).toBe('jpeg');
-    expect(callMock).toHaveBeenCalledWith('T', 'getFile', { file_id: 'file-1' });
+    expect(callMock).toHaveBeenCalledWith('T', 'getFile', {
+      file_id: 'file-1',
+    });
     expect(download).toHaveBeenCalledWith(
       'https://api.telegram.org/file/botT/photos/a.jpg',
       TELEGRAM_DOWNLOAD_MAX_BYTES
@@ -104,7 +106,7 @@ describe('TelegramAssistantApi', () => {
     });
 
     callMock.mockRejectedValueOnce(
-      new Error("Bad Request: message to delete not found")
+      new Error('Bad Request: message to delete not found')
     );
     await expect(api.deleteMessage(7, 42)).resolves.toBeUndefined();
   });

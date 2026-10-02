@@ -133,7 +133,9 @@ describe('TelegramAssistantRouter', () => {
     await router.handle(press('t:vk-1'));
 
     expect((await drafts.get(USER)).selected).toEqual(['vk-1']);
-    expect(api.editMessage.mock.calls.at(-1)[3].inline_keyboard[0][0].text).toContain('✅');
+    expect(
+      api.editMessage.mock.calls.at(-1)[3].inline_keyboard[0][0].text
+    ).toContain('✅');
     expect(api.answerCallback).toHaveBeenCalledWith('cb-1', undefined);
   });
 

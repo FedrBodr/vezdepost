@@ -43,7 +43,9 @@ const downloadOverHttps: Downloader = (url, maxBytes) =>
     const request = httpsGet(url, { timeout: 120_000 }, (response) => {
       if (response.statusCode !== 200) {
         response.resume();
-        reject(new Error(`Telegram file download failed (${response.statusCode})`));
+        reject(
+          new Error(`Telegram file download failed (${response.statusCode})`)
+        );
         return;
       }
       const chunks: Buffer[] = [];
@@ -74,11 +76,15 @@ export class TelegramAssistantApi {
   ) {}
 
   getUpdates(offset: number | undefined, timeout: number) {
-    return callTelegramApi<TelegramAssistantUpdate[]>(this.token, 'getUpdates', {
-      offset,
-      timeout,
-      allowed_updates: ['message', 'callback_query'],
-    });
+    return callTelegramApi<TelegramAssistantUpdate[]>(
+      this.token,
+      'getUpdates',
+      {
+        offset,
+        timeout,
+        allowed_updates: ['message', 'callback_query'],
+      }
+    );
   }
 
   async sendMessage(chatId: number, text: string, keyboard?: InlineKeyboard) {
@@ -135,11 +141,10 @@ export class TelegramAssistantApi {
   }
 
   async downloadFile(fileId: string) {
-    const file = await callTelegramApi<{ file_path?: string; file_size?: number }>(
-      this.token,
-      'getFile',
-      { file_id: fileId }
-    );
+    const file = await callTelegramApi<{
+      file_path?: string;
+      file_size?: number;
+    }>(this.token, 'getFile', { file_id: fileId });
     if (
       !file.file_path ||
       (file.file_size ?? 0) > TELEGRAM_DOWNLOAD_MAX_BYTES

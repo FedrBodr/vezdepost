@@ -7,7 +7,11 @@ const makeRepository = () => {
   return {
     links,
     upsertLink: vi.fn(
-      async (telegramUserId: string, userId: string, organizationId: string) => {
+      async (
+        telegramUserId: string,
+        userId: string,
+        organizationId: string
+      ) => {
         const link = { telegramUserId, userId, organizationId };
         links.set(telegramUserId, link);
         return link;
@@ -43,8 +47,9 @@ describe('TelegramAssistantLinkService', () => {
 
   it('links the Telegram user once per code', async () => {
     const { service, repository } = make();
-    const code = new URL(await service.createLinkUrl('user-1', 'org-1'))
-      .searchParams.get('start')!;
+    const code = new URL(
+      await service.createLinkUrl('user-1', 'org-1')
+    ).searchParams.get('start')!;
 
     await expect(service.consumeLinkCode(code, 777)).resolves.toEqual({
       telegramUserId: '777',
@@ -63,8 +68,9 @@ describe('TelegramAssistantLinkService', () => {
 
   it('finds an existing link', async () => {
     const { service } = make();
-    const code = new URL(await service.createLinkUrl('user-1', 'org-1'))
-      .searchParams.get('start')!;
+    const code = new URL(
+      await service.createLinkUrl('user-1', 'org-1')
+    ).searchParams.get('start')!;
     await service.consumeLinkCode(code, 777);
 
     await expect(service.findLink(777)).resolves.toMatchObject({

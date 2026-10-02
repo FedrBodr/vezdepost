@@ -95,7 +95,9 @@ export class TelegramAssistantPublisher {
       (integration) => draft.selected.includes(integration.id)
     );
     if (!integrations.length) {
-      throw new PublishError('Выбранные каналы недоступны — подключите их заново');
+      throw new PublishError(
+        'Выбранные каналы недоступны — подключите их заново'
+      );
     }
 
     const image = [];
@@ -119,7 +121,13 @@ export class TelegramAssistantPublisher {
       try {
         const [validation] = await this.deps.postsService.validatePosts(
           organizationId,
-          [{ integration: { id: integration.id }, settings, value: [{ content, image }] }]
+          [
+            {
+              integration: { id: integration.id },
+              settings,
+              value: [{ content, image }],
+            },
+          ]
         );
         const problem = validationMessage(validation);
         if (problem) {

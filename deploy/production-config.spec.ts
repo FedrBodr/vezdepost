@@ -34,7 +34,7 @@ describe('production configuration', () => {
     const example = readRootFile('.env.example');
     const readme = readRootFile('deploy/README.md');
     const productionAllowlist =
-      "ENABLED_SOCIAL_INTEGRATIONS: 'telegram,max,vk,vk-group,linkedin,tumblr'";
+      "ENABLED_SOCIAL_INTEGRATIONS: 'telegram,telegram-stories,max,vk,vk-group,linkedin,tumblr'";
 
     expect(base).toContain(
       "ENABLED_SOCIAL_INTEGRATIONS: '${ENABLED_SOCIAL_INTEGRATIONS:-}'"
@@ -44,14 +44,14 @@ describe('production configuration', () => {
     )?.[1];
 
     expect(override).toContain(productionAllowlist);
-    expect(configuredValue).toBe('telegram,max,vk,vk-group,linkedin,tumblr');
+    expect(configuredValue).toBe('telegram,telegram-stories,max,vk,vk-group,linkedin,tumblr');
     expect(configuredValue?.split(',')).not.toContain('x');
     expect(configuredValue?.split(',')).not.toContain('pinterest');
     expect(example).toContain('ENABLED_SOCIAL_INTEGRATIONS=""');
     expect(example).toContain(
       'Blank or unset keeps every registered provider connectable.'
     );
-    expect(readme).toContain('telegram,max,vk,vk-group,linkedin,tumblr');
+    expect(readme).toContain('telegram,telegram-stories,max,vk,vk-group,linkedin,tumblr');
     expect(readme).toMatch(/X remains\s+request-only/);
     expect(readme).toContain('Pinterest remains request-only');
     expect(readme).toContain('rtk docker compose config --quiet');

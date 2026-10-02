@@ -5,16 +5,56 @@ import {
 } from './telegram.assistant.publisher';
 
 const integrations = [
-  { id: 'vk-1', name: 'My VK', providerIdentifier: 'vk', disabled: false, refreshNeeded: false, inBetweenSteps: false },
-  { id: 'tg-1', name: 'Channel', providerIdentifier: 'telegram', disabled: false, refreshNeeded: false, inBetweenSteps: false },
-  { id: 'pin-1', name: 'Boards', providerIdentifier: 'pinterest', disabled: false, refreshNeeded: false, inBetweenSteps: false },
-  { id: 'off-1', name: 'Off', providerIdentifier: 'x', disabled: true, refreshNeeded: false, inBetweenSteps: false },
-  { id: 'old-1', name: 'Expired', providerIdentifier: 'x', disabled: false, refreshNeeded: true, inBetweenSteps: false },
+  {
+    id: 'vk-1',
+    name: 'My VK',
+    providerIdentifier: 'vk',
+    disabled: false,
+    refreshNeeded: false,
+    inBetweenSteps: false,
+  },
+  {
+    id: 'tg-1',
+    name: 'Channel',
+    providerIdentifier: 'telegram',
+    disabled: false,
+    refreshNeeded: false,
+    inBetweenSteps: false,
+  },
+  {
+    id: 'pin-1',
+    name: 'Boards',
+    providerIdentifier: 'pinterest',
+    disabled: false,
+    refreshNeeded: false,
+    inBetweenSteps: false,
+  },
+  {
+    id: 'off-1',
+    name: 'Off',
+    providerIdentifier: 'x',
+    disabled: true,
+    refreshNeeded: false,
+    inBetweenSteps: false,
+  },
+  {
+    id: 'old-1',
+    name: 'Expired',
+    providerIdentifier: 'x',
+    disabled: false,
+    refreshNeeded: true,
+    inBetweenSteps: false,
+  },
 ];
 
 const validResult = (name: string) => ({
-  identifier: 'x', name, emptyContent: false, valid: true, errors: true as const,
-  tooLong: false, maximumCharacters: 1000,
+  identifier: 'x',
+  name,
+  emptyContent: false,
+  valid: true,
+  errors: true as const,
+  tooLong: false,
+  maximumCharacters: 1000,
 });
 
 const make = () => {
@@ -27,15 +67,23 @@ const make = () => {
     })),
     mediaService: {
       saveFile: vi.fn(async (_org: string, name: string, path: string) => ({
-        id: `media-${++mediaNumber}`, name, path,
+        id: `media-${++mediaNumber}`,
+        name,
+        path,
       })),
     },
-    integrationService: { getIntegrationsList: vi.fn(async () => integrations) },
+    integrationService: {
+      getIntegrationsList: vi.fn(async () => integrations),
+    },
     postsService: {
       validatePosts: vi.fn(async (_org: string, posts: any[]) =>
         posts.map((post) =>
           post.integration.id === 'pin-1'
-            ? { ...validResult('Boards'), valid: false, settingsError: 'Board is required' }
+            ? {
+                ...validResult('Boards'),
+                valid: false,
+                settingsError: 'Board is required',
+              }
             : validResult(post.integration.id)
         )
       ),
@@ -62,7 +110,10 @@ describe('TelegramAssistantPublisher', () => {
 
     const result = await publisher.publish('org-1', {
       text: 'Hello\nworld',
-      files: [{ fileId: 'a', kind: 'image' }, { fileId: 'b', kind: 'video' }],
+      files: [
+        { fileId: 'a', kind: 'image' },
+        { fileId: 'b', kind: 'video' },
+      ],
       selected: ['vk-1', 'tg-1', 'pin-1'],
     });
 
@@ -90,7 +141,9 @@ describe('TelegramAssistantPublisher', () => {
     const { publisher, deps } = make();
 
     const result = await publisher.publish('org-1', {
-      text: 'Hi', files: [], selected: ['off-1', 'vk-1'],
+      text: 'Hi',
+      files: [],
+      selected: ['off-1', 'vk-1'],
     });
 
     expect(result.published).toEqual(['My VK']);
@@ -102,7 +155,9 @@ describe('TelegramAssistantPublisher', () => {
     deps.postsService.createPost.mockRejectedValueOnce(new Error('Boom'));
 
     const result = await publisher.publish('org-1', {
-      text: 'Hi', files: [], selected: ['vk-1', 'tg-1'],
+      text: 'Hi',
+      files: [],
+      selected: ['vk-1', 'tg-1'],
     });
 
     expect(result).toEqual({

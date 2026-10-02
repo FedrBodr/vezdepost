@@ -20,9 +20,13 @@ export const storeTelegramFile = async (
 ) => {
   const detected = await fromBuffer(buffer);
   if (!detected || !ALLOWED_MIME.has(detected.mime)) {
-    throw new Error('Неподдерживаемый формат файла — отправьте JPG, PNG, GIF, WEBP или MP4');
+    throw new Error(
+      'Неподдерживаемый формат файла — отправьте JPG, PNG, GIF, WEBP или MP4'
+    );
   }
-  const originalname = `telegram-${randomBytes(6).toString('hex')}.${detected.ext}`;
+  const originalname = `telegram-${randomBytes(6).toString('hex')}.${
+    detected.ext
+  }`;
   const uploaded = await storage.uploadFile({
     buffer,
     mimetype: detected.mime,
@@ -35,5 +39,8 @@ export const storeTelegramFile = async (
     originalname,
     encoding: '',
   } as Express.Multer.File);
-  return { path: uploaded.path as string, name: uploaded.originalname as string };
+  return {
+    path: uploaded.path as string,
+    name: uploaded.originalname as string,
+  };
 };

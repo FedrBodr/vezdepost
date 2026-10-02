@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TelegramAssistantButton } from './telegram.assistant.button';
 
@@ -26,7 +32,9 @@ describe('TelegramAssistantButton', () => {
     });
 
     render(<TelegramAssistantButton />);
-    fireEvent.click(screen.getByRole('button', { name: /Постить из Telegram/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Постить из Telegram/ })
+    );
 
     expect(open).toHaveBeenCalledWith('', '_blank');
     await waitFor(() =>
@@ -43,7 +51,9 @@ describe('TelegramAssistantButton', () => {
     mocks.fetcher.mockRejectedValue(new Error('offline'));
 
     render(<TelegramAssistantButton />);
-    fireEvent.click(screen.getByRole('button', { name: /Постить из Telegram/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Постить из Telegram/ })
+    );
 
     await waitFor(() => expect(tab.close).toHaveBeenCalled());
   });
