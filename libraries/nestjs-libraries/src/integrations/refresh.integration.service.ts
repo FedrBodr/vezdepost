@@ -18,7 +18,8 @@ export class RefreshIntegrationService {
   ) {}
   async refresh(
     integration: Integration,
-    cause = ''
+    cause = '',
+    options: { scheduled?: boolean } = {}
   ): Promise<false | AuthTokenDetails> {
     const socialProvider = this._integrationManager.getSocialIntegration(
       integration.providerIdentifier
@@ -27,7 +28,8 @@ export class RefreshIntegrationService {
     const refresh = await this.refreshProcess(
       integration,
       socialProvider,
-      cause
+      cause,
+      options
     );
 
     if (!refresh) {
@@ -85,13 +87,31 @@ export class RefreshIntegrationService {
   private async refreshProcess(
     integration: Integration,
     socialProvider: SocialProvider,
-    cause = ''
+    cause = '',
+    options: { scheduled?: boolean } = {}
   ): Promise<AuthTokenDetails | false> {
+    let refreshError: unknown;
     const refresh: false | AuthTokenDetails = await socialProvider
       .refreshToken(integration.refreshToken)
-      .catch((err) => false);
+      .catch((err) => {
+        refreshError = err;
+        return false as const;
+      });
 
     if (!refresh || !refresh.accessToken) {
+      console.error(
+        `Refresh failed for ${integration.providerIdentifier} (${
+          integration.id
+        }): ${describeRefreshError(refreshError)}`
+      );
+
+      // The scheduled refresh runs before anything rejected the token, so a
+      // provider-reported transient failure is rethrown for the activity
+      // retry instead of disconnecting a channel whose token may still work.
+      if (options.scheduled && isTransientRefreshError(refreshError)) {
+        throw refreshError;
+      }
+
       await this._integrationService.refreshNeeded(
         integration.organizationId,
         integration.id
@@ -130,3 +150,26 @@ export class RefreshIntegrationService {
     };
   }
 }
+
+const isTransientRefreshError = (error: unknown) =>
+  !!error &&
+  typeof error === 'object' &&
+  (error as { transient?: unknown }).transient === true;
+
+// Only the message and the provider's response body: the error details can
+// also carry the token request body with the refresh token.
+const describeRefreshError = (error: unknown) => {
+  if (!error) {
+    return 'no access token returned';
+  }
+  if (!(error instanceof Error)) {
+    return 'unknown error';
+  }
+  const json = (error as { details?: Array<{ json?: unknown }> }).details?.[0]
+    ?.json;
+  return `${error.name}: ${error.message}${
+    typeof json === 'string' && json !== '{}'
+      ? ` response=${json.slice(0, 300)}`
+      : ''
+  }`;
+};

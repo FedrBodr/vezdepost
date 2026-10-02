@@ -441,7 +441,7 @@ describe('VkProvider OAuth response validation', () => {
     ).resolves.toMatchInlineSnapshot(`
       {
         "accessToken": "new-access-secret",
-        "expiresIn": 3600,
+        "expiresIn": 3000,
         "id": "123",
         "name": "Ada Lovelace",
         "picture": "https://cdn.example.test/avatar.png",

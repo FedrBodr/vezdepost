@@ -192,7 +192,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
       name: 'Ada Admin',
       accessToken: token,
       refreshToken: 'refresh-secret&&&&device-42',
-      expiresIn: 3600,
+      expiresIn: 3000,
       picture: 'https://vk.test/admin.jpg',
       username: 'ada',
     });
@@ -232,7 +232,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
       name: 'Ada Admin',
       accessToken: 'rotated-token',
       refreshToken: 'rotated-refresh&&&&device-42',
-      expiresIn: 7200,
+      expiresIn: 6600,
       picture: '',
       username: 'ada',
     });
