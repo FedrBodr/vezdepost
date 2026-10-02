@@ -972,3 +972,15 @@ model Announcement {
   color       AnnouncementColor @default(INFO)
   createdAt   DateTime          @default(now())
 }
+
+// Telegram user linked to a Vezdepost user/organization for @vezde_post_bot.
+model TelegramAssistantLink {
+  id             String   @id @default(uuid())
+  telegramUserId String   @unique
+  userId         String
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+}

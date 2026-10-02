@@ -50,6 +50,8 @@ import { AdminStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/
 import { AdminStatsService } from '@gitroom/nestjs-libraries/database/prisma/admin-stats/admin-stats.service';
 import { StreakRepository } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.repository';
 import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.service';
+import { TelegramAssistantLinkRepository } from '@gitroom/nestjs-libraries/database/prisma/telegram-assistant/telegram.assistant.link.repository';
+import { TelegramAssistantLinkService } from '@gitroom/nestjs-libraries/database/prisma/telegram-assistant/telegram.assistant.link.service';
 
 @Global()
 @Module({
@@ -105,6 +107,8 @@ import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/
     AdminStatsService,
     StreakRepository,
     StreakService,
+    TelegramAssistantLinkRepository,
+    TelegramAssistantLinkService,
   ],
   get exports() {
     return this.providers;
