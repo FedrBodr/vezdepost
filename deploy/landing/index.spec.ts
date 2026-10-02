@@ -61,7 +61,7 @@ const createLanding = (options: LandingOptions = {}) => {
 const createPrivacy = (options: LandingOptions = {}) => {
   const dom = new JSDOM(privacyHtml, {
     runScripts: 'outside-only',
-    url: 'https://vezdepost.ru/privacy',
+    url: 'https://vezdepost.ru/privacy/',
   });
   const { window } = dom;
 
@@ -539,7 +539,7 @@ describe('privacy policy', () => {
 
     expect(
       document.querySelector('link[rel="canonical"]')?.getAttribute('href')
-    ).toBe('https://vezdepost.ru/privacy');
+    ).toBe('https://vezdepost.ru/privacy/');
     window.__privacyI18n.applyLanguage('ru');
     const operator = document.querySelector('[data-i18n-html="intro.operator"]');
     expect(operator?.textContent).toContain(
@@ -578,3 +578,55 @@ declare global {
     ym?: (...args: unknown[]) => void;
   }
 }
+
+describe('landing first-touch cookie', () => {
+  const run = (cookie: string, url: string, referrer: string) => {
+    const dom = new JSDOM(landingHtml, {
+      runScripts: 'outside-only',
+      url,
+      referrer,
+    });
+    const { window } = dom;
+    if (cookie) {
+      window.document.cookie = cookie;
+    }
+    const script = [...window.document.querySelectorAll('script')].find((s) =>
+      s.textContent?.includes('vp_first_touch')
+    );
+    window.eval(script!.textContent!);
+    const raw = window.document.cookie
+      .split('; ')
+      .find((c) => c.startsWith('vp_first_touch='))!;
+    return JSON.parse(decodeURIComponent(raw.split('=').slice(1).join('=')));
+  };
+
+  it('stores the referrer and utm tags of the first visit', async () => {
+    const { parseFirstTouch } = await import(
+      '../../libraries/helpers/src/utils/first.touch'
+    );
+    const touch = run(
+      '',
+      'https://vezdepost.ru/?utm_source=vk&utm_campaign=belovo&x=1',
+      'https://www.google.com/'
+    );
+
+    expect(touch).toMatchObject({
+      src: 'landing',
+      ref: 'https://www.google.com/',
+      path: '/?utm_source=vk&utm_campaign=belovo&x=1',
+      utm: { utm_source: 'vk', utm_campaign: 'belovo' },
+    });
+    expect(parseFirstTouch(JSON.stringify(touch))).toEqual(touch);
+  });
+
+  it('keeps an existing first touch', () => {
+    const existing = encodeURIComponent(JSON.stringify({ src: 'app', ref: 'first' }));
+    const touch = run(
+      `vp_first_touch=${existing}`,
+      'https://vezdepost.ru/?utm_source=later',
+      'https://later.example/'
+    );
+
+    expect(touch).toEqual({ src: 'app', ref: 'first' });
+  });
+});

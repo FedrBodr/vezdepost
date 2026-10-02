@@ -10,6 +10,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- End Google Tag Manager -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="yandex-verification" content="d52236b56c480f80">
 <title data-i18n="meta.title">Vezdepost — планировщик постов для соцсетей и мессенджеров</title>
 <meta name="description" data-i18n-content="meta.description" content="Vezdepost — open-source планировщик публикаций: Telegram, MAX, X, VK и 30+ платформ. AI-developed форк Postiz с поддержкой российских мессенджеров.">
 <link rel="canonical" href="https://vezdepost.ru/">
@@ -765,6 +766,34 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   } catch (error) {
     applyLanguage('en', false);
   }
+})();
+</script>
+
+<script>
+// first-touch: откуда пришёл посетитель в первый раз. Cookie общая с
+// app.vezdepost.ru, бэкенд пишет её в User.signupSource при регистрации.
+// Формат — libraries/helpers/src/utils/first.touch.ts.
+(function () {
+  try {
+    if (/(?:^|;\s*)vp_first_touch=/.test(document.cookie)) return;
+    var params = new URLSearchParams(location.search);
+    var utm = {};
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'].forEach(function (k) {
+      var v = params.get(k);
+      if (v) utm[k] = v.slice(0, 200);
+    });
+    var touch = {
+      src: 'landing',
+      ref: (document.referrer || '').slice(0, 500),
+      path: (location.pathname + location.search).slice(0, 500),
+      utm: utm,
+      at: new Date().toISOString()
+    };
+    var domain = /(^|\.)vezdepost\.ru$/.test(location.hostname) ? '; domain=.vezdepost.ru' : '';
+    document.cookie = 'vp_first_touch=' + encodeURIComponent(JSON.stringify(touch)) +
+      '; path=/; max-age=15552000; samesite=lax' + domain +
+      (location.protocol === 'https:' ? '; secure' : '');
+  } catch (e) {}
 })();
 </script>
 

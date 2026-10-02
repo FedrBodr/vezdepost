@@ -100,6 +100,7 @@ model User {
   lastOnline            DateTime             @default(now())
   ip                    String?
   agent                 String?
+  signupSource          Json?
   comments              Comments[]
   items                 ItemUser[]
   groupBuyer            MessagesGroup[]      @relation("groupBuyer")

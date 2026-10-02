@@ -18,6 +18,10 @@ import { ForgotPasswordDto } from '@gitroom/nestjs-libraries/dtos/auth/forgot.pa
 import { ResendActivationDto } from '@gitroom/nestjs-libraries/dtos/auth/resend-activation.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { getCookieUrlFromDomain } from '@gitroom/helpers/subdomain/subdomain.management';
+import {
+  FIRST_TOUCH_COOKIE,
+  parseFirstTouch,
+} from '@gitroom/helpers/utils/first.touch';
 import { EmailService } from '@gitroom/nestjs-libraries/services/email.service';
 import { RealIP } from 'nestjs-real-ip';
 import { UserAgent } from '@gitroom/nestjs-libraries/user/user.agent';
@@ -57,7 +61,8 @@ export class AuthController {
         body,
         ip,
         userAgent,
-        getOrgFromCookie
+        getOrgFromCookie,
+        parseFirstTouch(req?.cookies?.[FIRST_TOUCH_COOKIE])
       );
 
       const activationRequired =
@@ -131,7 +136,8 @@ export class AuthController {
         body,
         ip,
         userAgent,
-        getOrgFromCookie
+        getOrgFromCookie,
+        parseFirstTouch(req?.cookies?.[FIRST_TOUCH_COOKIE])
       );
 
       response.cookie('auth', jwt, {

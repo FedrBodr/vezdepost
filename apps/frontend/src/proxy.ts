@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getCookieUrlFromDomain } from '@gitroom/helpers/subdomain/subdomain.management';
 import { internalFetch } from '@gitroom/helpers/utils/internal.fetch';
+import {
+  buildFirstTouch,
+  FIRST_TOUCH_COOKIE,
+  FIRST_TOUCH_MAX_AGE_SECONDS,
+  serializeFirstTouch,
+} from '@gitroom/helpers/utils/first.touch';
 import acceptLanguage from 'accept-language';
 import {
   cookieName,
@@ -24,8 +30,47 @@ export const resolveProxyLanguage = (
   return acceptLanguage.get(acceptLanguageHeader || '') || fallbackLng;
 };
 
-// This function can be marked `async` if using `await` inside
+// Remember where an anonymous visitor came from on their first request; the
+// backend copies it onto the user at registration. Server-side, so content
+// blockers that hide the visit from Metrika/PostHog do not affect it.
+export const rememberFirstTouch = (
+  request: NextRequest,
+  response: NextResponse
+) => {
+  if (
+    request.cookies.has(FIRST_TOUCH_COOKIE) ||
+    request.cookies.has('auth') ||
+    !process.env.FRONTEND_URL
+  ) {
+    return response;
+  }
+
+  response.cookies.set({
+    name: FIRST_TOUCH_COOKIE,
+    value: serializeFirstTouch(
+      buildFirstTouch(
+        'app',
+        request.nextUrl,
+        request.headers.get('referer'),
+        new Date()
+      )
+    ),
+    path: '/',
+    domain: getCookieUrlFromDomain(process.env.FRONTEND_URL),
+    maxAge: FIRST_TOUCH_MAX_AGE_SECONDS,
+    sameSite: 'lax',
+    // behind Caddy the proxy sees plain http; the public scheme is in FRONTEND_URL
+    secure: process.env.FRONTEND_URL.startsWith('https:'),
+    httpOnly: false,
+  });
+  return response;
+};
+
 export async function proxy(request: NextRequest) {
+  return rememberFirstTouch(request, await routeRequest(request));
+}
+
+async function routeRequest(request: NextRequest) {
   const nextUrl = request.nextUrl;
   const authCookie =
     request.cookies.get('auth') ||

@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { Organization, ShortLinkPreference } from '@prisma/client';
 import { AutopostService } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.service';
+import { FirstTouch } from '@gitroom/helpers/utils/first.touch';
 
 @Injectable()
 export class OrganizationService {
@@ -18,13 +19,15 @@ export class OrganizationService {
   async createOrgAndUser(
     body: Omit<CreateOrgUserDto, 'providerToken'> & { providerId?: string },
     ip: string,
-    userAgent: string
+    userAgent: string,
+    signupSource?: FirstTouch
   ) {
     return this._organizationRepository.createOrgAndUser(
       body,
       this._notificationsService.hasEmailProvider(),
       ip,
-      userAgent
+      userAgent,
+      signupSource
     );
   }
 
