@@ -61,7 +61,7 @@ const createLanding = (options: LandingOptions = {}) => {
 const createPrivacy = (options: LandingOptions = {}) => {
   const dom = new JSDOM(privacyHtml, {
     runScripts: 'outside-only',
-    url: 'https://vezdepost.ru/privacy',
+    url: 'https://vezdepost.ru/privacy/',
   });
   const { window } = dom;
 
@@ -539,7 +539,7 @@ describe('privacy policy', () => {
 
     expect(
       document.querySelector('link[rel="canonical"]')?.getAttribute('href')
-    ).toBe('https://vezdepost.ru/privacy');
+    ).toBe('https://vezdepost.ru/privacy/');
     window.__privacyI18n.applyLanguage('ru');
     const operator = document.querySelector('[data-i18n-html="intro.operator"]');
     expect(operator?.textContent).toContain(
