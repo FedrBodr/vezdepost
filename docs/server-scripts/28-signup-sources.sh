@@ -11,7 +11,9 @@ select u."createdAt"::date as registered,
        left(u.email, 2) || '***@' || split_part(u.email, '@', 2) as email,
        u."providerName" as login,
        u."signupSource"->>'src' as first_seen_on,
-       coalesce(nullif(u."signupSource"->>'ref', ''), '(direct)') as referrer,
+       case when u."signupSource" is null then '(нет данных)'
+            else coalesce(nullif(u."signupSource"->>'ref', ''), '(direct)')
+       end as referrer,
        u."signupSource"->'utm'->>'utm_source' as utm_source,
        u."signupSource"->'utm'->>'utm_campaign' as utm_campaign,
        u."signupSource"->>'path' as entry_path,
