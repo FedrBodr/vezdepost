@@ -346,12 +346,30 @@ describe('landing brand integration', () => {
     ).toBe('https://vezdepost.ru/');
     expect(
       document.querySelector('link[rel="icon"]')?.getAttribute('href')
-    ).toBe('/assets/vezdepost-logo.png');
+    ).toBe('/favicon.ico');
+    expect(
+      document
+        .querySelector('link[rel="icon"][sizes="192x192"]')
+        ?.getAttribute('href')
+    ).toBe('/assets/favicon-192.png');
+    expect(
+      document
+        .querySelector('link[rel="icon"][sizes="120x120"]')
+        ?.getAttribute('href')
+    ).toBe('/assets/favicon-120.png');
     expect(
       document
         .querySelector('link[rel="apple-touch-icon"]')
         ?.getAttribute('href')
-    ).toBe('/assets/vezdepost-logo.png');
+    ).toBe('/assets/apple-touch-icon.png');
+    for (const icon of [
+      'deploy/landing/favicon.ico',
+      'deploy/landing/assets/favicon-192.png',
+      'deploy/landing/assets/favicon-120.png',
+      'deploy/landing/assets/apple-touch-icon.png',
+    ]) {
+      expect(existsSync(join(process.cwd(), icon))).toBe(true);
+    }
     expect(
       document
         .querySelector('meta[property="og:image"]')

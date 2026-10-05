@@ -21,6 +21,16 @@ describe('Vezdepost branding', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('does not send users to Postiz docs, CLI or n8n packages', () => {
+    const offenders = sourceFiles(join(root, 'apps/frontend/src')).filter(
+      (file) =>
+        /docs\.postiz\.com|npm install -g postiz|postiz-agent|n8n-nodes-postiz/.test(
+          readFileSync(file, 'utf8')
+        )
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it('keeps the Postiz brand name out of translations except fork attribution', () => {
     const locales = join(
       root,
