@@ -44,7 +44,7 @@ export default async function AuthLayout({
               whoUse: t('billing_who_use', 'who use'),
               postizGrowSocial: t(
                 'billing_postiz_grow_social',
-                'Postiz To Grow Their Social Presence'
+                'Vezdepost To Grow Their Social Presence'
               ),
             }}
           />

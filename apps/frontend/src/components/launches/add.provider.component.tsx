@@ -460,7 +460,7 @@ const ExtensionNotFound: FC = () => {
       <p className="text-[14px] text-textColor/80">
         {t(
           'extension_not_available',
-          'The Postiz browser extension is not installed. You need to install it before connecting this channel.'
+          'The browser extension is not installed. You need to install it before connecting this channel.'
         )}
       </p>
       <div className="flex gap-[10px]">
@@ -526,7 +526,7 @@ const ChromeExtensionWarning: FC<{
           We will store your cookies securely to facilitate the connection.
         </li>
         <li>
-          Postiz does not take responsibility for any issues arising or account
+          Vezdepost does not take responsibility for any issues arising or account
           termination due to the use of this method.
         </li>
       </ul>
@@ -798,7 +798,7 @@ export const AddProviderComponent: FC<{
           ) {
             const safeMessage = t(
               'extension_not_available',
-              'The Postiz browser extension is not installed. You need to install it before connecting this channel.'
+              'The browser extension is not installed. You need to install it before connecting this channel.'
             );
             runAnalyticsSafely(() =>
               analytics.failed(identifier, 'start', safeMessage)
@@ -827,7 +827,7 @@ export const AddProviderComponent: FC<{
           } catch {
             const safeMessage = t(
               'extension_not_installed',
-              'Postiz browser extension is not installed or not reachable.'
+              'The browser extension is not installed or not reachable.'
             );
             runAnalyticsSafely(() =>
               analytics.failed(identifier, 'start', safeMessage)

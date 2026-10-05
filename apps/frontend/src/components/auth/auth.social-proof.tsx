@@ -53,7 +53,7 @@ export const AuthSocialProof = ({
         ? initialTranslations.postizGrowSocial
         : t(
             'billing_postiz_grow_social',
-            'Postiz To Grow Their Social Presence'
+            'Vezdepost To Grow Their Social Presence'
           )}
     </div>
   );

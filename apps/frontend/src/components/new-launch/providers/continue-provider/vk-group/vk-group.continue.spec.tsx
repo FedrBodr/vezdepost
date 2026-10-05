@@ -201,7 +201,7 @@ describe('VkGroupContinue', () => {
       'en',
       [
         'How VK Group authorization works',
-        'Authorize with VK. Postiz requests basic account information plus only the communities, wall, and photos permissions needed for this integration.',
+        'Authorize with VK. Vezdepost requests basic account information plus only the communities, wall, and photos permissions needed for this integration.',
         'Choose one community where this VK account is an administrator.',
         'Posts are published on behalf of the selected community.',
         'VK Group supports up to 10 photographs per post.',
@@ -212,7 +212,7 @@ describe('VkGroupContinue', () => {
       'ru',
       [
         'Как работает авторизация VK Group',
-        'Авторизуйтесь через VK. Postiz запросит основные данные аккаунта и только права на сообщества, стену и фотографии, необходимые для этой интеграции.',
+        'Авторизуйтесь через VK. Vezdepost запросит основные данные аккаунта и только права на сообщества, стену и фотографии, необходимые для этой интеграции.',
         'Выберите одно сообщество, в котором этот аккаунт VK является администратором.',
         'Публикации размещаются от имени выбранного сообщества.',
         'VK Group поддерживает не более 10 фотографий в одной публикации.',

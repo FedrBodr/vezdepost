@@ -69,7 +69,7 @@ export const VkGroupOAuthGuide: FC = () => {
         <li>
           {t(
             'vk_group_oauth_minimal_permissions',
-            'Authorize with VK. Postiz requests basic account information plus only the communities, wall, and photos permissions needed for this integration.'
+            'Authorize with VK. Vezdepost requests basic account information plus only the communities, wall, and photos permissions needed for this integration.'
           )}
         </li>
         <li>

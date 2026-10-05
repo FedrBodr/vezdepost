@@ -9,7 +9,7 @@ const russianTranslations = {
   joinOver: 'Присоединяйтесь к',
   entrepreneursCount: '20 000+ предпринимателей',
   whoUse: 'которые используют',
-  postizGrowSocial: 'Postiz для роста своей социальной активности',
+  postizGrowSocial: 'Vezdepost для роста своей социальной активности',
 };
 
 const normalizedText = (element: Element) =>
@@ -60,7 +60,7 @@ describe('AuthSocialProof request locale hydration', () => {
     document.body.appendChild(container);
 
     expect(normalizedText(container)).toBe(
-      'Присоединяйтесь к 20 000+ предпринимателей которые используют Postiz для роста своей социальной активности'
+      'Присоединяйтесь к 20 000+ предпринимателей которые используют Vezdepost для роста своей социальной активности'
     );
 
     const consoleError = vi
@@ -71,7 +71,7 @@ describe('AuthSocialProof request locale hydration', () => {
     });
 
     expect(normalizedText(container)).toBe(
-      'Присоединяйтесь к 20 000+ предпринимателей которые используют Postiz для роста своей социальной активности'
+      'Присоединяйтесь к 20 000+ предпринимателей которые используют Vezdepost для роста своей социальной активности'
     );
     expect(
       consoleError.mock.calls.some(([message]) =>

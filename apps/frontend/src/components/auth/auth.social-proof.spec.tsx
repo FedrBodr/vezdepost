@@ -20,7 +20,7 @@ describe('AuthSocialProof', () => {
         .textContent?.replace(/\s+/g, ' ')
         .trim()
     ).toBe(
-      'Join Over 20,000+ Entrepreneurs who use Postiz To Grow Their Social Presence'
+      'Join Over 20,000+ Entrepreneurs who use Vezdepost To Grow Their Social Presence'
     );
 
     await act(async () => {
@@ -32,7 +32,7 @@ describe('AuthSocialProof', () => {
         .textContent?.replace(/\s+/g, ' ')
         .trim()
     ).toBe(
-      'Присоединяйтесь к 20 000+ предпринимателей которые используют Postiz для роста своей социальной активности'
+      'Присоединяйтесь к 20 000+ предпринимателей которые используют Vezdepost для роста своей социальной активности'
     );
   });
 });
