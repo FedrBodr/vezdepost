@@ -29,6 +29,10 @@ DEPLOYED=$(cat "$STATE" 2>/dev/null || echo none)
   # server files (.env, max-extra-ca.pem) are not touched
   git reset --hard "$REMOTE"
   docker compose up -d --build
+  # re-read deploy/links (short links) without restarting caddy; a broken
+  # links file keeps the previous config and must not block the app deploy
+  docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile ||
+    echo "$(date -Is) WARN caddy reload failed, short links not applied"
   "$READINESS_SCRIPT"
   echo "$REMOTE" > "$STATE"
   echo "$(date -Is) deploy finished"

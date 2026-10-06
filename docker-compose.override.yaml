@@ -116,6 +116,9 @@ services:
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/landing:/srv/landing:ro
+      # short links: a directory mount, so git reset is visible (single-file
+      # mounts keep the old inode); autodeploy runs `caddy reload` to apply
+      - ./deploy/links:/etc/caddy/links:ro
       - /etc/caddy/sites:/etc/caddy/sites:ro
       - caddy-data:/data
       - caddy-config:/config

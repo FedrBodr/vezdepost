@@ -1,0 +1,17 @@
+# Короткие ссылки vezdepost.ru/go/<код> → полный адрес с UTM-метками.
+# Правила разметки: fedrbodr-publicity/docs/utm-links.md.
+#
+# Одна строка — одна ссылка:
+#   redir /go/<код> <полный адрес с utm_source, utm_medium, utm_campaign> 302
+# Код: строчная латиница, цифры и дефис; один код на пост и площадку (launch-vk, launch-tg).
+# 302: браузер не запоминает редирект, ссылку можно перенаправить после публикации.
+# Папка смонтирована в caddy каталогом, autodeploy делает `caddy reload` —
+# новая ссылка работает через ~3 минуты после пуша в prod.
+
+redir /go/utm-check https://vezdepost.ru/?utm_source=test&utm_medium=test&utm_campaign=short-links-check 302
+
+# vezdepost-narod-1021: пост о расширении каналов
+redir /go/narod-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=social&utm_campaign=vezdepost-narod-1021 302
+redir /go/narod-max https://vezdepost.ru/?utm_source=max&utm_medium=social&utm_campaign=vezdepost-narod-1021 302
+redir /go/narod-vk https://vezdepost.ru/?utm_source=vk&utm_medium=social&utm_campaign=vezdepost-narod-1021 302
+redir /go/narod-li https://vezdepost.ru/?utm_source=linkedin&utm_medium=social&utm_campaign=vezdepost-narod-1021 302

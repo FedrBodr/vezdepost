@@ -155,4 +155,34 @@ describe('production configuration', () => {
     expect(override).toContain("GOOGLE_ANALYTICS_ID: 'G-NG6Q7F0Z9N'");
     expect(landing).toContain('gtag/js?id=G-NG6Q7F0Z9N');
   });
+
+  it('serves UTM-tagged short links on vezdepost.ru from a reloadable directory', () => {
+    const caddyfile = readRootFile('deploy/Caddyfile');
+    const override = readRootFile('docker-compose.override.yaml');
+    const autodeploy = readRootFile('deploy/autodeploy.sh');
+    const rules = readRootFile('deploy/links/vezdepost.caddy')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+
+    expect(caddyfile).toMatch(
+      /vezdepost\.ru, www\.vezdepost\.ru \{[^}]*import \/etc\/caddy\/links\/\*\.caddy/
+    );
+    expect(override).toContain('./deploy/links:/etc/caddy/links:ro');
+    expect(autodeploy).toContain('docker exec caddy caddy reload');
+
+    expect(rules.length).toBeGreaterThan(0);
+    const codes = rules.map((rule) => rule.split(' ')[1]);
+    expect(new Set(codes).size).toBe(codes.length);
+    for (const rule of rules) {
+      expect(rule).toMatch(
+        /^redir \/go\/[a-z0-9]+(-[a-z0-9]+)* https:\/\/\S+ 302$/
+      );
+      const url = new URL(rule.split(' ')[2]);
+      if (!/(^|\.)(vezdepost\.ru|fedrbodr\.com)$/.test(url.hostname)) continue;
+      for (const key of ['utm_source', 'utm_medium', 'utm_campaign']) {
+        expect(url.searchParams.get(key) ?? '').toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+      }
+    }
+  });
 });

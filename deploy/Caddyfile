@@ -18,6 +18,8 @@
 
 vezdepost.ru, www.vezdepost.ru {
 	import access_log
+	# short links /go/<code> (deploy/links, mounted as a directory)
+	import /etc/caddy/links/*.caddy
 	root * /srv/landing
 	file_server
 	encode gzip

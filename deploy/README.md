@@ -200,6 +200,18 @@ The script backs up the production `.env`, checkout, and application image,
 holds the autodeploy lock, validates Compose, and recreates only `postiz`. It
 rolls all changed state back if verification fails and never publishes a Pin.
 
+## Short links
+
+`vezdepost.ru/go/<code>` redirects (302) to a full UTM-tagged address. One
+line per link in `deploy/links/vezdepost.caddy`:
+
+`redir /go/<code> https://vezdepost.ru/?utm_source=vk&utm_medium=social&utm_campaign=<post> 302`
+
+The folder is bind-mounted into caddy as a directory, so a `git reset` is
+visible inside the container; `autodeploy.sh` then runs `caddy reload`. A new
+link works about 3 minutes after the push to `prod`, without restarting caddy.
+Tagging rules live in `fedrbodr-publicity/docs/utm-links.md`.
+
 ## Gated shared Caddy sites
 
 Caddy remains the only public listener. It keeps the Vezdepost routes on
