@@ -1,7 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { ReactNode } from 'react';
 import loadDynamic from 'next/dynamic';
-import { TestimonialComponent } from '@gitroom/frontend/components/auth/testimonial.component';
 import { LogoTextComponent } from '@gitroom/frontend/components/ui/logo-text.component';
 import { LanguageComponent } from '@gitroom/frontend/components/layout/language.component';
 import { MantineWrapper } from '@gitroom/react/helpers/mantine.wrapper';
@@ -36,19 +35,25 @@ export default async function AuthLayout({
           <AuthSocialProof
             initialLanguage={language}
             initialTranslations={{
-              joinOver: t('billing_join_over', 'Join Over'),
+              joinOver: t('billing_join_over', 'One post on'),
               entrepreneursCount: t(
                 'billing_entrepreneurs_count',
-                '20,000+ Entrepreneurs'
+                '30+ platforms'
               ),
-              whoUse: t('billing_who_use', 'who use'),
+              whoUse: t('billing_who_use', 'with'),
               postizGrowSocial: t(
                 'billing_postiz_grow_social',
-                'Vezdepost To Grow Their Social Presence'
+                'Vezdepost, an open-source post scheduler'
               ),
             }}
           />
-          <TestimonialComponent />
+          <img
+            src="/vezdepost-icon.png"
+            width={220}
+            height={220}
+            alt=""
+            className="mt-[80px] w-[220px] h-[220px]"
+          />
         </div>
       </div>
     </MantineWrapper>

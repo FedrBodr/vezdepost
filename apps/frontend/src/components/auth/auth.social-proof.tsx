@@ -39,21 +39,21 @@ export const AuthSocialProof = ({
     <div data-testid="auth-social-proof" className="text-center">
       {useInitialTranslations
         ? initialTranslations.joinOver
-        : t('billing_join_over', 'Join Over')}{' '}
+        : t('billing_join_over', 'One post on')}{' '}
       <span className="text-[42px] text-[#FC69FF]">
         {useInitialTranslations
           ? initialTranslations.entrepreneursCount
-          : t('billing_entrepreneurs_count', '20,000+ Entrepreneurs')}
+          : t('billing_entrepreneurs_count', '30+ platforms')}
       </span>{' '}
       {useInitialTranslations
         ? initialTranslations.whoUse
-        : t('billing_who_use', 'who use')}{' '}
+        : t('billing_who_use', 'with')}{' '}
       <br />
       {useInitialTranslations
         ? initialTranslations.postizGrowSocial
         : t(
             'billing_postiz_grow_social',
-            'Vezdepost To Grow Their Social Presence'
+            'Vezdepost, an open-source post scheduler'
           )}
     </div>
   );

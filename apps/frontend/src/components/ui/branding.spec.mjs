@@ -65,6 +65,18 @@ describe('Vezdepost branding', () => {
     }
   });
 
+  it('does not show Postiz testimonials or Postiz audience numbers', () => {
+    const authLayout = readFileSync(
+      join(root, 'apps/frontend/src/app/(app)/auth/layout.tsx'),
+      'utf8'
+    );
+    expect(authLayout).not.toContain('TestimonialComponent');
+    const offenders = sourceFiles(join(root, 'apps/frontend/src')).filter(
+      (file) => /\d+,000\+ Entrepreneurs/.test(readFileSync(file, 'utf8'))
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it('serves the Vezdepost favicon from every root layout', () => {
     for (const group of ['(app)', '(provider)', '(extension)']) {
       const layout = readFileSync(

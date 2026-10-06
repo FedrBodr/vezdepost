@@ -6,10 +6,10 @@ import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const russianTranslations = {
-  joinOver: 'Присоединяйтесь к',
-  entrepreneursCount: '20 000+ предпринимателей',
-  whoUse: 'которые используют',
-  postizGrowSocial: 'Vezdepost для роста своей социальной активности',
+  joinOver: 'Один пост на',
+  entrepreneursCount: '30+ платформ',
+  whoUse: 'с помощью',
+  postizGrowSocial: 'Vezdepost — open-source планировщика публикаций',
 };
 
 const normalizedText = (element: Element) =>
@@ -60,7 +60,7 @@ describe('AuthSocialProof request locale hydration', () => {
     document.body.appendChild(container);
 
     expect(normalizedText(container)).toBe(
-      'Присоединяйтесь к 20 000+ предпринимателей которые используют Vezdepost для роста своей социальной активности'
+      'Один пост на 30+ платформ с помощью Vezdepost — open-source планировщика публикаций'
     );
 
     const consoleError = vi
@@ -71,7 +71,7 @@ describe('AuthSocialProof request locale hydration', () => {
     });
 
     expect(normalizedText(container)).toBe(
-      'Присоединяйтесь к 20 000+ предпринимателей которые используют Vezdepost для роста своей социальной активности'
+      'Один пост на 30+ платформ с помощью Vezdepost — open-source планировщика публикаций'
     );
     expect(
       consoleError.mock.calls.some(([message]) =>
