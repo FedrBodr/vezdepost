@@ -21,10 +21,10 @@ describe('Vezdepost branding', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('does not send users to Postiz docs, CLI or n8n packages', () => {
+  it('does not send users to the Postiz CLI or n8n packages', () => {
     const offenders = sourceFiles(join(root, 'apps/frontend/src')).filter(
       (file) =>
-        /docs\.postiz\.com|npm install -g postiz|postiz-agent|n8n-nodes-postiz/.test(
+        /npm install -g postiz|postiz-agent|n8n-nodes-postiz/.test(
           readFileSync(file, 'utf8')
         )
     );
@@ -46,6 +46,21 @@ describe('Vezdepost branding', () => {
       expect({ lang, hasPostiz: /Postiz/.test(stripped) }).toEqual({
         lang,
         hasPostiz: false,
+      });
+    }
+  });
+
+  it('replaces the legacy Postiz logo files with the Vezdepost mark', () => {
+    for (const name of [
+      'postiz.svg',
+      'postiz-text.svg',
+      'logo.svg',
+      'logo-text.svg',
+    ]) {
+      const svg = readFileSync(join(root, 'apps/frontend/public', name), 'utf8');
+      expect({ name, mark: svg.includes('data:image/png;base64,') }).toEqual({
+        name,
+        mark: true,
       });
     }
   });
