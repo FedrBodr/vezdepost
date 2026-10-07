@@ -142,6 +142,27 @@ HTTP 200 от `/launches` подтверждает только frontend: backen
 пользователей, а не на демо. CTA → https://t.me/FedrBodr (цель
 `services_click`).
 
+## Блог vezdepost.ru/blog/
+
+SEO-гайды под реальные запросы (исследование и частотности Wordstat —
+[content/blog-keyword-research.md](content/blog-keyword-research.md)).
+
+- Исходники статей: `deploy/blog/articles/<slug>.html` — JSON-метаданные в
+  первом комментарии (`title`, `h1`, `description`, `published`, `updated`,
+  `lead`, `card`, необязательные `order`, `related`) + тело статьи. У каждого
+  `<h2>` обязателен `id` — из них собирается оглавление.
+- Сборка: `node deploy/blog/build.mjs` пишет `deploy/landing/blog/**/index.html`,
+  индекс блога и **обновляет `deploy/landing/sitemap.xml`**. Результат
+  коммитится; `deploy/blog/build.spec.ts` падает, если сборка устарела, sitemap
+  неполный или есть битые внутренние ссылки.
+- Исходники лежат вне `deploy/landing`, поэтому Caddy их не раздаёт.
+- Общие `deploy/landing/blog/blog.css` / `blog.js` (first-touch cookie с
+  `path=/blog/...` и те же цели Метрики, что на лендинге; GTM — инлайн в head).
+- Правило контента: только проверяемые факты о продукте (нет ОК/Дзена, нет
+  импорта истории TG→MAX, нет «зеркала»); цены конкурентов не публикуем без
+  проверки. Даты `updated` обновлять при правке фактов — правила MAX меняются.
+- После деплоя: переобход новых URL в Яндекс Вебмастере и Search Console.
+
 ## Текущие хвосты (на 2026-07-11)
 
 - Бэкапы Postgres на сервере ещё не настроены.
