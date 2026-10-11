@@ -98,6 +98,15 @@ describe('blog build', () => {
   });
 });
 
+describe('IndexNow', () => {
+  it('serves the key file that indexnow.mjs announces', () => {
+    const script = readFileSync(join(process.cwd(), 'deploy/blog/indexnow.mjs'), 'utf8');
+    const key = script.match(/const KEY = '([0-9a-f]{32})'/)?.[1];
+    expect(key).toBeDefined();
+    expect(readFileSync(join(landingDir, `${key}.txt`), 'utf8')).toBe(key);
+  });
+});
+
 describe('landing links to the blog', () => {
   const landing = readFileSync(join(landingDir, 'index.html'), 'utf8');
 
