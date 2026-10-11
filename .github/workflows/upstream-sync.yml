@@ -73,8 +73,12 @@ jobs:
           echo "pr=$pr" >> "$GITHUB_OUTPUT"
 
           if [ -n "$pr" ] && git fetch origin "$SYNC_BRANCH" 2>/dev/null; then
-            tip_email=$(git log -1 --format='%ce' FETCH_HEAD)
-            if [ "$tip_email" != "$BOT_EMAIL" ]; then
+            # Manual = commits on the sync branch that are neither upstream's
+            # nor main's and not made by this bot. Checking only the tip is
+            # wrong: after a conflict the branch is plain upstream/main, so
+            # its tip is an upstream maintainer's commit.
+            manual=$(git log --format='%ce' FETCH_HEAD ^upstream/main ^HEAD | grep -vxF "$BOT_EMAIL" | head -1 || true)
+            if [ -n "$manual" ]; then
               echo "action=comment" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -88,6 +92,7 @@ jobs:
           gh pr comment "${{ steps.state.outputs.pr }}" --body \
             "Upstream has new commits, but this branch contains manual commits, so the sync workflow did not overwrite it. Merge or close this PR and re-run the workflow to pick them up."
           echo "Open PR #${{ steps.state.outputs.pr }} has manual commits; left a comment instead of force-pushing." >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::Upstream sync is stalled: PR #${{ steps.state.outputs.pr }} has manual commits and blocks new upstream changes."
 
       - name: Merge upstream/main
         if: steps.state.outputs.action == 'sync'
