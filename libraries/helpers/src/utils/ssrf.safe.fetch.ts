@@ -146,33 +146,46 @@ export function isBlockedIp(ip: string): boolean {
   return true;
 }
 
+// Pins DNS resolution: every resolved IP is checked with `isBlockedIp` and the
+// caller connects to that same set. Shared by the undici dispatcher and the
+// http(s) agents behind the SSRF-safe axios client.
+export function ssrfSafeLookup(
+  hostname: string,
+  options: any,
+  callback: (
+    error: NodeJS.ErrnoException | null,
+    address: any,
+    family?: number
+  ) => void
+) {
+  if (net.isIP(hostname)) {
+    const family = net.isIP(hostname);
+    if (isBlockedIp(hostname)) {
+      return callback(new Error('Blocked IP'), '', 0);
+    }
+    return options && (options as any).all
+      ? callback(null, [{ address: hostname, family }] as any, family)
+      : callback(null, hostname, family);
+  }
+
+  dns.lookup(hostname, options, (error, address: any, family: any) => {
+    if (error) return callback(error, '', 0);
+    if (Array.isArray(address)) {
+      if (address.some((entry) => isBlockedIp(entry.address))) {
+        return callback(new Error('Blocked IP'), '', 0);
+      }
+      return callback(null, address as any, 0);
+    }
+    if (isBlockedIp(address)) {
+      return callback(new Error('Blocked IP'), '', 0);
+    }
+    callback(null, address, family);
+  });
+}
+
 export const ssrfSafeDispatcher = new Agent({
   connect: {
-    lookup(hostname, options, callback) {
-      if (net.isIP(hostname)) {
-        const family = net.isIP(hostname);
-        if (isBlockedIp(hostname)) {
-          return callback(new Error('Blocked IP'), '', 0);
-        }
-        return options && (options as any).all
-          ? callback(null, [{ address: hostname, family }] as any, family)
-          : callback(null, hostname, family);
-      }
-
-      dns.lookup(hostname, options, (error, address: any, family: any) => {
-        if (error) return callback(error, '', 0);
-        if (Array.isArray(address)) {
-          if (address.some((entry) => isBlockedIp(entry.address))) {
-            return callback(new Error('Blocked IP'), '', 0);
-          }
-          return callback(null, address as any, 0);
-        }
-        if (isBlockedIp(address)) {
-          return callback(new Error('Blocked IP'), '', 0);
-        }
-        callback(null, address, family);
-      });
-    },
+    lookup: ssrfSafeLookup,
   },
 });
 

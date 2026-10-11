@@ -1,5 +1,5 @@
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
-import { SocialAbstract } from '../social.abstract';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
+import { BadBody, SocialAbstract } from '../social.abstract';
 import {
   AuthTokenDetails,
   MediaContent,
@@ -12,7 +12,6 @@ import { Integration } from '@prisma/client';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { SkoolDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/skool.dto';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
-import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 import { lookup } from 'mime-types';
 
 export class SkoolProvider extends SocialAbstract implements SocialProvider {
@@ -82,10 +81,10 @@ export class SkoolProvider extends SocialAbstract implements SocialProvider {
   }
 
   async generateAuthUrl() {
-    const state = makeId(6);
+    const state = makeSecureId(6);
     return {
       url: state,
-      codeVerifier: makeId(10),
+      codeVerifier: makeSecureId(10),
       state,
     };
   }
@@ -218,7 +217,10 @@ export class SkoolProvider extends SocialAbstract implements SocialProvider {
     const fileIds: string[] = [];
 
     for (const item of media) {
-      const fileBuffer = await readMediaSourceBuffer(item.path);
+      // The size comes from a HEAD request; the PUT below streams the bytes so
+      // the file is never buffered in memory. Both reads go through
+      // media.source (SSRF-safe, confined to uploads, bounded).
+      const contentLength = await this.mediaSize(item.path, this.identifier);
       const fileName = item.path.split('/').pop() || 'file';
       const contentType =
         lookup(fileName.split(/[?#]/, 1)[0]) || 'application/octet-stream';
@@ -235,7 +237,7 @@ export class SkoolProvider extends SocialAbstract implements SocialProvider {
             body: JSON.stringify({
               file_name: fileName,
               content_type: contentType,
-              content_length: fileBuffer.byteLength,
+              content_length: contentLength,
               content_disposition: '',
               ref: '',
               owner_id: userId,
@@ -246,14 +248,28 @@ export class SkoolProvider extends SocialAbstract implements SocialProvider {
         )
       ).json();
 
-      await fetch(createFileResponse.write_url, {
+      const fileStream = await this.mediaStream(item.path, this.identifier);
+      const uploadResponse = await fetch(createFileResponse.write_url, {
         method: 'PUT',
         headers: {
           'Content-Type': createFileResponse.content_type,
+          'Content-Length': String(contentLength),
           'x-amz-acl': createFileResponse.acl,
         },
-        body: fileBuffer,
-      });
+        body: fileStream as any,
+        // Required by undici when streaming a request body.
+        duplex: 'half',
+      } as any);
+      // A rejected PUT would otherwise publish the post with an empty
+      // attachment - the file id exists but no bytes were stored.
+      if (!uploadResponse.ok) {
+        throw new BadBody(
+          this.identifier,
+          await uploadResponse.text().catch(() => '{}'),
+          '{}',
+          'Failed to upload the media file'
+        );
+      }
 
       fileIds.push(createFileResponse.file.id);
     }

@@ -86,7 +86,13 @@ describe('IntegrationSchedulePostTool validation', () => {
     await expect(
       execute(tool, { ...socialPost, type: 'draft' })
     ).resolves.toEqual({
-      output: [{ postId: 'post-1', integration: 'integration-1' }],
+      output: [
+        {
+          postId: 'post-1',
+          integration: 'integration-1',
+          previewUrl: `${process.env.FRONTEND_URL}/p/post-1?share=true`,
+        },
+      ],
     });
     expect(postsService.createPost).toHaveBeenCalledOnce();
   });

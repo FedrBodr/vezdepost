@@ -140,4 +140,9 @@ export class EmailActivity {
       `Failed to ${operation} for streak reminder organizationId=${organizationId} userId=${userId}`
     );
   }
+
+  @ActivityMethod()
+  async getLastPublishDate(organizationId: string) {
+    return this._organizationService.getLastPublishDate(organizationId);
+  }
 }

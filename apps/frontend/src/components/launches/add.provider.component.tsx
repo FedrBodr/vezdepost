@@ -108,6 +108,10 @@ export const submitCustomFieldConnection = async ({
         onboarding ? '?onboarding=true' : ''
       }`
     );
+    // a plan limit (402) is already surfaced by the fetch layer
+    if (startResponse.status === 402) {
+      return;
+    }
     const startResult = await startResponse.json().catch(() => ({}));
     if (
       !startResponse.ok ||
@@ -670,6 +674,10 @@ export const AddProviderComponent: FC<{
           );
           try {
             const response = await fetch(path);
+            // a plan limit (402) is already surfaced by the fetch layer
+            if (response.status === 402) {
+              return;
+            }
             const result = await response.json().catch(() => ({}));
             if (!response.ok || result.err || !isUsableStartUrl(result.url)) {
               showStartFailure(safeMessage);
@@ -703,7 +711,7 @@ export const AddProviderComponent: FC<{
               >
                 <Web3Providers
                   onComplete={(code, newState) => {
-                    window.location.href = `/integrations/social/${identifier}?code=${code}&state=${newState}${
+                    window.location.href = `/integrations/social/${identifier}?code=${encodeURIComponent(code)}&state=${newState}${
                       onboarding ? '&onboarding=true' : ''
                     }`;
                   }}
@@ -949,7 +957,7 @@ export const AddProviderComponent: FC<{
           className={clsx(
             isMobile && 'gap-[20px] flex flex-col',
             !isMobile &&
-              'grid grid-cols-5 gap-[10px] justify-items-center justify-center',
+              'grid grid-cols-5 gap-[10px] justify-items-center justify-center mobile:!grid-cols-3',
             isMobile ? {} : onboarding ? 'grid-cols-9' : 'grid-cols-5'
           )}
         >

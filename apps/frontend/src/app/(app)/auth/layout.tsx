@@ -4,10 +4,10 @@ import loadDynamic from 'next/dynamic';
 import { LogoTextComponent } from '@gitroom/frontend/components/ui/logo-text.component';
 import { LanguageComponent } from '@gitroom/frontend/components/layout/language.component';
 import { MantineWrapper } from '@gitroom/react/helpers/mantine.wrapper';
+import { Toaster } from '@gitroom/react/toaster/toaster';
 import { AuthSocialProof } from '@gitroom/frontend/components/auth/auth.social-proof';
 import { getRequestLanguage } from '@gitroom/react/translation/get.request.language';
 import { getT } from '@gitroom/react/translation/get.translation.service.backend';
-
 const ReturnUrlComponent = loadDynamic(() => import('./return.url.component'));
 
 export default async function AuthLayout({
@@ -20,6 +20,7 @@ export default async function AuthLayout({
 
   return (
     <MantineWrapper>
+      <Toaster />
       <div className="bg-[#0E0E0E] flex flex-1 p-[12px] gap-[12px] min-h-screen w-screen text-white">
         <ReturnUrlComponent />
         <div className="flex flex-col py-[40px] px-[20px] flex-1 lg:w-[600px] lg:flex-none rounded-[12px] text-white p-[12px] bg-[#1A1919]">

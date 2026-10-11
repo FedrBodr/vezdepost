@@ -6,15 +6,18 @@ import {
   PostResponse,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { timer } from '@gitroom/helpers/utils/timer';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { WhopDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/whop.dto';
 import { Integration } from '@prisma/client';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
-import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 
 export class WhopProvider extends SocialAbstract implements SocialProvider {
+  override maxConcurrentJob = 3; // Whop limits are per token
   identifier = 'whop';
   name = 'Whop';
   isBetweenSteps = false;
@@ -105,10 +108,10 @@ export class WhopProvider extends SocialAbstract implements SocialProvider {
   }
 
   async generateAuthUrl() {
-    const state = makeId(6);
+    const state = makeSecureId(6);
     const codeVerifier = randomBytes(32).toString('base64url');
     const codeChallenge = this.generateCodeChallenge(codeVerifier);
-    const nonce = makeId(16);
+    const nonce = makeSecureId(16);
 
     return {
       url:
@@ -231,7 +234,11 @@ export class WhopProvider extends SocialAbstract implements SocialProvider {
     const attachments: { id: string }[] = [];
 
     for (const item of media) {
-      const fileBuffer = await readMediaSourceBuffer(item.path);
+      // The size comes from a HEAD request; the PUT below streams the bytes
+      // so the file is never buffered in memory (it used to stay resident
+      // through the whole ~9 minute status poll). Both reads go through
+      // media.source (SSRF-safe, confined to uploads, bounded).
+      const contentLength = await this.mediaSize(item.path, this.identifier);
       const fileName = item.path.split('/').pop() || 'file';
 
       const createFileResponse = await (
@@ -252,11 +259,28 @@ export class WhopProvider extends SocialAbstract implements SocialProvider {
       ).json();
 
       if (createFileResponse.upload_url) {
-        await fetch(createFileResponse.upload_url, {
+        const fileStream = await this.mediaStream(item.path, this.identifier);
+        const uploadResponse = await fetch(createFileResponse.upload_url, {
           method: 'PUT',
-          headers: createFileResponse.upload_headers || {},
-          body: fileBuffer,
-        });
+          headers: {
+            // Whop's own upload_headers win if they ever include a length.
+            'Content-Length': String(contentLength),
+            ...(createFileResponse.upload_headers || {}),
+          },
+          body: fileStream,
+          // Required by undici when streaming a request body.
+          duplex: 'half',
+        } as any);
+        // A rejected PUT leaves the file pending forever - fail fast instead
+        // of burning the ~9 minute status poll below.
+        if (!uploadResponse.ok) {
+          throw new BadBody(
+            this.identifier,
+            await uploadResponse.text().catch(() => '{}'),
+            '{}',
+            'Failed to upload the media file'
+          );
+        }
 
         let uploadStatus = 'pending';
         let attempts = 0;

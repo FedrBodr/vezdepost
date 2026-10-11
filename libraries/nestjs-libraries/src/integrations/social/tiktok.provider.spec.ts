@@ -56,15 +56,6 @@ describe('TiktokProvider safe ranged video upload', () => {
         return jsonResponse({
           data: { publish_id: 'publish-1', upload_url: providerUploadUrl },
         });
-      })
-      .mockImplementationOnce(async () => {
-        mediaMocks.events.push('status');
-        return jsonResponse({
-          data: {
-            status: 'PUBLISH_COMPLETE',
-            publicaly_available_post_id: ['video-1'],
-          },
-        });
       });
     const uploadFetch = vi.fn(async (url: string) => {
       mediaMocks.events.push('upload');
@@ -74,7 +65,7 @@ describe('TiktokProvider safe ranged video upload', () => {
     vi.stubGlobal('fetch', uploadFetch);
 
     await expect(
-      provider.post(
+      provider.postPending(
         'profile',
         'access-token',
         [
@@ -95,8 +86,7 @@ describe('TiktokProvider safe ranged video upload', () => {
     ).resolves.toEqual([
       expect.objectContaining({
         id: 'post-1',
-        postId: 'video-1',
-        status: 'success',
+        status: 'pending',
       }),
     ]);
 
@@ -105,7 +95,6 @@ describe('TiktokProvider safe ranged video upload', () => {
       'init',
       'range',
       'upload',
-      'status',
     ]);
     expect(mediaMocks.withRange).toHaveBeenCalledWith(
       'https://cdn.example.test/CLIP.MP4?download=1',

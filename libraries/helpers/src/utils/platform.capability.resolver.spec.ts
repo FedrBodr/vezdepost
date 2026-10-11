@@ -46,6 +46,7 @@ describe('Batch 0 platform capability resolution', () => {
       'vk-group',
       'slack',
       'tiktok',
+      'tiktok-business',
       'mastodon',
       'bluesky',
       'threads',

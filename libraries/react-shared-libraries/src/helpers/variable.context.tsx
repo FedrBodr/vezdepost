@@ -23,16 +23,19 @@ interface VariableContextInterface {
   telegramBotName: string;
   maxBotName: string;
   neynarClientId: string;
+  appleClientId: string;
   isSecured: boolean;
   disableImageCompression: boolean;
   disableXAnalytics: boolean;
   language: string;
   dub: boolean;
   transloadit: string[];
+  mediaProcessing: boolean;
   sentryDsn: string;
   extensionId: string;
   googleAdsId?: string;
   googleAdsTrialTracking?: string;
+  recaptchaSiteKey?: string;
 }
 const VariableContext = createContext({
   stripeClient: '',
@@ -58,13 +61,16 @@ const VariableContext = createContext({
   maxBotName: '',
   facebookPixel: '',
   neynarClientId: '',
+  appleClientId: '',
   disableImageCompression: false,
   disableXAnalytics: false,
   language: '',
   dub: false,
   transloadit: [],
+  mediaProcessing: false,
   sentryDsn: '',
   extensionId: '',
+  recaptchaSiteKey: '',
 } as VariableContextInterface);
 export const VariableContextComponent: FC<
   VariableContextInterface & {

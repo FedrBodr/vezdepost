@@ -423,6 +423,16 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       }),
     },
   },
+  'tiktok-business': {
+    identifier: 'tiktok-business',
+    displayName: 'TikTok Business',
+    verification: 'verified',
+    evidenceDate,
+    defaultVariant: 'video',
+    variants: {},
+    // the Business API publishes the same TikTok content
+    aliasOf: 'tiktok',
+  },
   'linkedin-page': {
     identifier: 'linkedin-page',
     displayName: 'LinkedIn Page',
@@ -1146,6 +1156,7 @@ export const PROFILE_IDENTIFIERS = deepFreeze([
   'vk-group',
   'slack',
   'tiktok',
+  'tiktok-business',
   'mastodon',
   'bluesky',
   'threads',

@@ -18,6 +18,11 @@ export function unwrapVkResponse<T>(payload: unknown, method: string): T {
         message
       );
     }
+    // rate limits (too many requests, flood control, method limit): nothing
+    // was created, so a plain error lets the activity retry later
+    if ([6, 9, 29].includes(code)) {
+      throw new Error(message);
+    }
     throw new BadBody('vk', JSON.stringify({ code }), {} as BodyInit, message);
   }
   if (envelope.response === undefined || envelope.response === null) {

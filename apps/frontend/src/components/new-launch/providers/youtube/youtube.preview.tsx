@@ -142,6 +142,7 @@ export const YoutubePreview: FC<{
         </div>
       </div>
       <SanitizedPostContent
+        dir="auto"
         className="bg-youtubeBgAction rounded-[12px] p-[12px] text-[12px] font-[400] whitespace-pre-line"
         content={renderContent?.[0]?.text}
       />

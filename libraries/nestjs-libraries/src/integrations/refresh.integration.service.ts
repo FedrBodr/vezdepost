@@ -90,7 +90,7 @@ export class RefreshIntegrationService {
     cause = '',
     options: { scheduled?: boolean } = {}
   ): Promise<AuthTokenDetails | false> {
-    let refreshError: unknown;
+    let refreshError: any = undefined;
     const refresh: false | AuthTokenDetails = await socialProvider
       .refreshToken(integration.refreshToken)
       .catch((err) => {
@@ -112,6 +112,10 @@ export class RefreshIntegrationService {
         throw refreshError;
       }
 
+      // informAboutRefreshError (with the failure cause) already notifies
+      // the user, and refreshNeeded sets the same flag disconnectChannel
+      // would — calling disconnectChannel here sent a second, cause-less
+      // copy of the same email for every failed refresh.
       await this._integrationService.refreshNeeded(
         integration.organizationId,
         integration.id
@@ -120,12 +124,7 @@ export class RefreshIntegrationService {
       await this._integrationService.informAboutRefreshError(
         integration.organizationId,
         integration,
-        cause
-      );
-
-      await this._integrationService.disconnectChannel(
-        integration.organizationId,
-        integration
+        socialProvider.refreshErrorMessage?.(refreshError) || cause
       );
 
       return false;
@@ -138,11 +137,20 @@ export class RefreshIntegrationService {
       return refresh;
     }
 
-    const reConnect = await socialProvider.reConnect(
-      integration.rootInternalId,
-      integration.internalId,
-      refresh.accessToken
-    );
+    let reConnect;
+    try {
+      reConnect = await socialProvider.reConnect(
+        integration.rootInternalId,
+        integration.internalId,
+        refresh.accessToken
+      );
+    } catch (err: any) {
+      console.error(
+        `Could not reconnect ${integration.providerIdentifier} integration ${integration.id} after a successful token refresh`,
+        err?.response?.data || err?.message || err
+      );
+      throw err;
+    }
 
     return {
       ...refresh,

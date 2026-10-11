@@ -816,6 +816,8 @@ describe('PostsService.createPost authored persistence', () => {
       createOrUpdatePost: vi.fn().mockResolvedValue({
         posts: [{ id: 'post-1', state: 'QUEUE' }],
       }),
+      getPostById: vi.fn().mockResolvedValue(null),
+      getAnchoredCommentsForPost: vi.fn().mockResolvedValue([]),
     },
   }: {
     transformedContent: string;
@@ -930,6 +932,8 @@ describe('PostsService.createPost authored persistence', () => {
         createOrUpdatePost: vi.fn().mockResolvedValue({
           posts: [{ id: 'post-1', state: 'DRAFT' }],
         }),
+        getPostById: vi.fn().mockResolvedValue(null),
+        getAnchoredCommentsForPost: vi.fn().mockResolvedValue([]),
       };
       const shortLinkService = { convertTextToShortLinks: vi.fn() };
       const integrationManager = new IntegrationManager();

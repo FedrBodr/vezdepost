@@ -1,27 +1,28 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// The real PostgresStore pins a pool connection before initializing, so the
+// base class is replaced by one that caches its init promise the way
+// MastraCompositeStore does; the test covers only our retry override.
+vi.mock('@mastra/pg', () => ({
+  PostgresStore: class {
+    hasInitialized: Promise<void> | null = null;
+    stores: Record<string, { init: () => Promise<void> }> = {};
+    constructor(_config: unknown) {}
+    async init() {
+      this.hasInitialized ??= Promise.all(
+        Object.values(this.stores).map((store) => store.init())
+      ).then(() => undefined);
+      await this.hasInitialized;
+    }
+  },
+}));
 
 describe('RetryablePostgresStore', () => {
-  const originalDatabaseUrl = process.env.DATABASE_URL;
-
-  beforeEach(() => {
-    process.env.DATABASE_URL =
-      'postgresql://postiz:postiz@127.0.0.1:5432/postiz-test';
-  });
-
-  afterEach(() => {
-    if (originalDatabaseUrl === undefined) {
-      delete process.env.DATABASE_URL;
-    } else {
-      process.env.DATABASE_URL = originalDatabaseUrl;
-    }
-    vi.resetModules();
-  });
-
   it('clears Mastra composite initialization state after a failed attempt', async () => {
     const { RetryablePostgresStore } = await import('./mastra.store');
     const store = new RetryablePostgresStore({
       id: 'retry-test',
-      connectionString: process.env.DATABASE_URL!,
+      connectionString: 'postgresql://postiz:postiz@127.0.0.1:5432/postiz-test',
     });
     const initDomain = vi
       .fn()
@@ -34,6 +35,5 @@ describe('RetryablePostgresStore', () => {
     await expect(store.init()).resolves.toBeUndefined();
 
     expect(initDomain).toHaveBeenCalledTimes(2);
-    await store.close();
   });
 });

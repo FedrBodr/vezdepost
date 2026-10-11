@@ -114,6 +114,11 @@ describe('publication media source collector', () => {
         container: 'media',
         field: 'thumbnail',
       },
+      {
+        providerIdentifier: 'x',
+        container: 'settings',
+        field: 'article_cover',
+      },
     ]);
   });
 });

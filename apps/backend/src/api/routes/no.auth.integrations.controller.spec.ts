@@ -25,6 +25,8 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
   };
   let integrationService: {
     checkPreviousConnections: ReturnType<typeof vi.fn>;
+    migrateIntegration: ReturnType<typeof vi.fn>;
+    migrateIntegrationOnConnect: ReturnType<typeof vi.fn>;
     createOrUpdateIntegration: ReturnType<typeof vi.fn>;
     getIntegrationById: ReturnType<typeof vi.fn>;
     saveProviderPage: ReturnType<typeof vi.fn>;
@@ -69,6 +71,8 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
     };
     integrationService = {
       checkPreviousConnections: vi.fn().mockResolvedValue(false),
+      migrateIntegration: vi.fn(),
+      migrateIntegrationOnConnect: vi.fn(),
       createOrUpdateIntegration: vi.fn().mockResolvedValue({
         id: integrationId,
         inBetweenSteps: true,
