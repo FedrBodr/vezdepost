@@ -12,8 +12,11 @@
 # photo + text transport.
 #
 # Connections whose first packet arrives on the uplink get a connmark; their
-# packets (host replies and Docker-forwarded replies alike) are routed by a
-# table that only holds the uplink default route. Outbound connections, the
+# reply-direction packets (host replies and Docker-forwarded replies alike)
+# are routed by a table that only holds the uplink default route. Only the
+# reply direction is marked: marking the inbound SYN as well routed it by
+# that table too, so after Docker's DNAT the packet for Caddy (172.20.0.2)
+# left through the uplink instead of the bridge and the site went dark. Outbound connections, the
 # Telegram Bot API included, keep using the tunnel. rp_filter is not changed:
 # the host already runs it in loose mode (2), which accepts the inbound SYN.
 #
@@ -64,7 +67,7 @@ up() {
   ip -4 rule add fwmark "$MARK/$MARK" lookup "$TABLE" pref "$PREF"
   iptables -t mangle -N "$CHAIN"
   iptables -t mangle -A "$CHAIN" -i "$UPLINK" -m conntrack --ctstate NEW -j CONNMARK --set-xmark "$MARK/$MARK"
-  iptables -t mangle -A "$CHAIN" -m connmark --mark "$MARK/$MARK" -j MARK --set-xmark "$MARK/$MARK"
+  iptables -t mangle -A "$CHAIN" -m connmark --mark "$MARK/$MARK" -m conntrack --ctdir REPLY -j MARK --set-xmark "$MARK/$MARK"
   iptables -t mangle -I PREROUTING 1 -j "$CHAIN"
   # OUTPUT has no input interface, so only the restore rule matches there.
   iptables -t mangle -I OUTPUT 1 -j "$CHAIN"
