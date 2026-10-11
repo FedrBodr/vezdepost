@@ -66,6 +66,19 @@ HTTP 200 от `/launches` подтверждает только frontend: backen
 логи полный `Cookie`, `Authorization`, `auth`, JWT, OAuth/session token или
 секрет; заменяй значение на `<redacted>`.
 
+### Ops-алерты владельцу в Telegram
+
+Cron раз в 5 минут запускает `docs/server-scripts/ops-alerts.sh` из
+задеплоенного checkout. Скрипт пишет через бота ассистента
+(`TELEGRAM_ASSISTANT_TOKEN`) в Telegram, привязанный к суперадмину в
+ассистенте, или в `OPS_ALERT_CHAT_ID` из `.env`. В сообщении: отвалившиеся
+каналы (`refreshNeeded`), ошибки публикации, посты, зависшие в `QUEUE` дольше
+15 минут, `Refresh failed for` из логов, рестарты от watchdog, падение
+контейнера вне деплоя, новые регистрации. Если событий нет, скрипт молчит.
+Установка: `ssh vezdepost 'bash /root/postiz-app/docs/server-scripts/33-install-ops-alerts.sh'`,
+лог: `/var/log/vezdepost-ops-alerts.log`, состояние:
+`/var/lib/vezdepost-ops-alerts/`. Тест: `bash docs/server-scripts/ops-alerts.spec.sh`.
+
 ## Лендинг vezdepost.ru
 
 Один файл `deploy/landing/index.html`. Тёмная тема, CSS-переменные в `:root`
