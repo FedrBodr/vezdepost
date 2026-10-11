@@ -15,9 +15,8 @@ import {
   AnyMcpClient,
   CopyButton,
   getMcpConfig,
-  isChatOnlyMcpClient,
   isSelfHosted,
-  localCliSteps,
+  officialConnectorsAvailable,
   McpAuth,
   McpClient,
   mcpClients,
@@ -260,7 +259,6 @@ const onboardingAgents = [
   'Claude Code',
   'Cursor',
   'Codex',
-  'Grok Bot',
 ] as const;
 
 type OnboardingAgent = (typeof onboardingAgents)[number];
@@ -275,7 +273,6 @@ const otherAgents = mcpClients.filter(
 const apiTab = 'API' as const;
 type OnboardingTab = OnboardingAgent | typeof otherTab | typeof apiTab;
 
-const cliCommands = localCliSteps.map((step) => step.code);
 
 const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
   onBack,
@@ -283,19 +280,19 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
 }) => {
   const t = useT();
   const user = useUser();
-  const { backendUrl, mcpUrl, billingEnabled } = useVariables();
+  const { backendUrl, mcpUrl } = useVariables();
   const [tab, setTab] = useState<OnboardingTab>('Claude');
   const [otherAgent, setOtherAgent] = useState<McpClient>(otherAgents[0]);
   // The client the cards describe: the tab itself, or the pick inside "Other agents"
   const agent: AnyMcpClient | typeof apiTab =
     tab === otherTab ? otherAgent : tab;
-  const [auth, setAuth] = useState<McpAuth>('oauth');
+  const [auth, setAuth] = useState<McpAuth>('apikey');
   const [revealed, setRevealed] = useState(false);
   const mcpBase = mcpUrl || backendUrl;
   const apiKey = user?.publicApi || '';
   const available = !!apiKey && !!user?.tier?.public_api;
-  // the official connectors work for self-hosted installs too
-  const officialConnectors = billingEnabled || isSelfHosted;
+  // the directory connectors install upstream's cloud, never this instance
+  const officialConnectors = officialConnectorsAvailable;
 
   const { config, hint } =
     agent === apiTab
@@ -326,56 +323,9 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
           href: mcpConnectorUrls.Cursor,
           label: t('add_to_cursor', 'Add to Cursor'),
         }
-      : agent === 'Grok Bot' && officialConnectors
-      ? {
-          href: mcpConnectorUrls['Grok Bot'],
-          label: t('add_to_grok_bot', 'Add to Grok Bot'),
-        }
       : null;
 
   const maskedApiKey = revealed ? apiKey : '*'.repeat(apiKey.length);
-
-  const chatSection = (
-    <div className="bg-newBgColorInnerInner rounded-[12px] border border-newBorder overflow-hidden">
-      <div className="bg-newBgColorInner px-[20px] py-[14px] border-b border-newBorder">
-        <div className="text-[15px] font-[600]">{t('chat', 'Chat')}</div>
-        <div className="text-[13px] text-customColor18 mt-[2px]">
-          {t(
-            'chat_onboarding_description',
-            'No MCP or CLI settings needed. Paste this into the chat, the agent installs the Postiz CLI and asks you for your API key.'
-          )}
-        </div>
-      </div>
-      <div className="p-[20px] flex flex-col gap-[16px]">
-        <div className="flex flex-col gap-[8px]">
-          <pre className="bg-newBgColorInner border border-newBorder rounded-[8px] p-[12px] text-[12px] whitespace-pre-wrap break-all overflow-x-auto leading-[1.5]">
-            {config}
-          </pre>
-          <div className="flex gap-[8px]">
-            <CopyButton text={config} label={t('copy', 'Copy')} />
-          </div>
-        </div>
-        <div className="flex flex-col gap-[8px]">
-          <div className="text-[13px] font-[600] text-customColor18">
-            {t('api_key', 'API Key')}
-          </div>
-          <pre className="bg-newBgColorInner border border-newBorder rounded-[8px] p-[12px] text-[12px] whitespace-pre-wrap break-all overflow-x-auto leading-[1.5]">
-            {maskedApiKey}
-          </pre>
-          <div className="flex gap-[8px]">
-            <button
-              type="button"
-              onClick={() => setRevealed(!revealed)}
-              className="cursor-pointer px-[16px] h-[36px] bg-btnSimple hover:bg-boxHover transition-colors rounded-[8px] text-[13px] font-[600] flex items-center gap-[6px]"
-            >
-              {revealed ? t('hide', 'Hide') : t('reveal', 'Reveal')}
-            </button>
-            <CopyButton text={apiKey} label={t('copy', 'Copy')} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   const apiSection = (
     <>
@@ -387,7 +337,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
           <div className="text-[13px] text-customColor18 mt-[2px]">
             {t(
               'api_onboarding_description',
-              'Use the Postiz API from your own code, n8n or any other automation'
+              'Use the Vezdepost API from your own code, n8n or any other automation'
             )}
           </div>
         </div>
@@ -441,12 +391,12 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
           {isSelfHosted
             ? t(
                 'connector_self_hosted_description',
-                'The official connector works with self-hosted Postiz too. When asked to sign in, choose "Use self-hosted" and enter {{url}} with your API key.',
+                'The official connector works with self-hosted Vezdepost too. When asked to sign in, choose "Use self-hosted" and enter {{url}} with your API key.',
                 { url: mcpBase, interpolation: { escapeValue: false } }
               )
             : t(
                 'connector_onboarding_description',
-                'The fastest way: add Postiz with one click, you will be asked to sign in'
+                'The fastest way: add Vezdepost with one click, you will be asked to sign in'
               )}
         </div>
       </div>
@@ -468,7 +418,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
         <div className="text-[13px] text-customColor18 mt-[2px]">
           {t(
             'mcp_onboarding_description',
-            'Give your agent Postiz tools to create, schedule and manage posts'
+            'Give your agent Vezdepost tools to create, schedule and manage posts'
           )}
         </div>
       </div>
@@ -491,7 +441,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
                 onClick={() => setAuth(m)}
               >
                 {m === 'oauth'
-                  ? t('sign_in_no_api_key', 'Sign in with Postiz (no API key)')
+                  ? t('sign_in_no_api_key', 'Sign in with Vezdepost (no API key)')
                   : t('api_key', 'API Key')}
               </button>
             ))}
@@ -503,7 +453,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
             {auth === 'oauth' &&
               ` ${t(
                 'oauth_sign_in_hint',
-                'Your agent will open a browser window to sign in to Postiz.'
+                'Your agent will open a browser window to sign in to Vezdepost.'
               )}`}
           </div>
           <pre className="bg-newBgColorInner border border-newBorder rounded-[8px] p-[12px] text-[12px] whitespace-pre-wrap break-all overflow-x-auto leading-[1.5]">
@@ -521,31 +471,6 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
             )}
             <CopyButton text={config} label={t('copy', 'Copy')} />
           </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const cliSection = (
-    <div className="bg-newBgColorInnerInner rounded-[12px] border border-newBorder overflow-hidden flex flex-col">
-      <div className="bg-newBgColorInner px-[20px] py-[14px] border-b border-newBorder">
-        <div className="text-[15px] font-[600]">{t('cli', 'CLI')}</div>
-        <div className="text-[13px] text-customColor18 mt-[2px]">
-          {t(
-            'cli_onboarding_description',
-            'Install the Postiz CLI and the skill that teaches your agent how to use it'
-          )}
-        </div>
-      </div>
-      <div className="p-[20px] flex flex-col gap-[8px] flex-1">
-        <pre className="bg-newBgColorInner border border-newBorder rounded-[8px] p-[12px] text-[12px] whitespace-pre-wrap break-all overflow-x-auto leading-[1.5] flex-1">
-          {cliCommands.join('\n')}
-        </pre>
-        <div className="flex gap-[8px]">
-          <CopyButton
-            text={cliCommands.join(' && ')}
-            label={t('copy', 'Copy')}
-          />
         </div>
       </div>
     </div>
@@ -610,18 +535,10 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
 
           {agent === apiTab ? (
             apiSection
-          ) : isChatOnlyMcpClient(agent) ? (
-            <>
-              {connectorSection}
-              {chatSection}
-            </>
           ) : (
             <>
               {connectorSection}
-              <div className="grid grid-cols-2 gap-[16px]">
-                {mcpSection}
-                {cliSection}
-              </div>
+              {mcpSection}
             </>
           )}
         </div>

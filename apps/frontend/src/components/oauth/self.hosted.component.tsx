@@ -79,13 +79,13 @@ export const OAuthSelfHosted: FC<{
       <div className="flex flex-col gap-[4px]">
         <div className="text-[16px] font-semibold">Use self-hosted</div>
         <div className="text-[14px] text-gray-400">
-          {appName} will work with your own Postiz instance. Postiz Cloud
+          {appName} will work with your own Vezdepost instance. The hosted cloud
           relays its requests, and your API key is stored encrypted.
         </div>
       </div>
 
       {/* plain text fields: a password field makes browsers autofill the
-          saved Postiz login (email + password) into this form */}
+          saved Vezdepost login (email + password) into this form */}
       <Input
         name="instance_url"
         label="Instance URL"
