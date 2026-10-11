@@ -34,6 +34,7 @@ export const InstagramPreview: FC<{
     );
 
     const finalValue =
+      `<span dir="auto">` +
       newContent
         .slice(start, end)
         .replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
@@ -43,7 +44,7 @@ export const InstagramPreview: FC<{
       newContent.slice(end).replace(/\[\[\[([.\s\S]*?)]]]/, (match, match1) => {
         return `<span class="font-bold font-[arial]" style="color: #ae8afc">${match1}</span>`;
       }) +
-      `</mark>`;
+      `</mark></span>`;
 
     return { text: finalValue, images: p.image };
   });
@@ -81,7 +82,7 @@ export const InstagramPreview: FC<{
           className="!bg-cover w-full aspect-[calc(16/9)] rounded-[8px] overflow-hidden"
         />
       )}
-      <div className="text-[14px] font-[400] whitespace-pre-line">
+      <div dir="auto" className="text-[14px] font-[400] whitespace-pre-line">
         <strong className="text-[15px] font-[600]">{integration?.name} </strong>
         <SanitizedPostContent
           as="span"
@@ -182,7 +183,7 @@ export const InstagramPreview: FC<{
                 </div>
                 <div className="flex flex-col gap-[6px] flex-1">
                   <div className="flex gap-[4px] py-[8px]">
-                    <div className="whitespace-pre-line text-[14px] font-[400] flex-1">
+                    <div dir="auto" className="whitespace-pre-line text-[14px] font-[400] flex-1">
                       <strong className="text-[15px] font-[600]">
                         {integration?.name}{' '}
                       </strong>

@@ -49,44 +49,49 @@ export class ValidUrlExtension implements ValidatorConstraintInterface {
   }
 }
 
+// also used for media urls that don't come through a DTO, like pictures in a post body
+export const isAllowedUploadPath = (text: string) => {
+  if (typeof text !== 'string' || !text) {
+    return false;
+  }
+
+  const looksRemote =
+    /^[a-z][a-z\d+.-]*:/i.test(text) || text.startsWith('//');
+  if (!looksRemote) {
+    return !!normalizedLocalMediaPath(text);
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+
+  const restrictedHostname = process.env.RESTRICT_UPLOAD_DOMAINS?.trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    .replace(/\.$/, '');
+  if (!restrictedHostname) {
+    return true;
+  }
+
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  return (
+    hostname === restrictedHostname ||
+    hostname.endsWith(`.${restrictedHostname}`)
+  );
+};
+
 @ValidatorConstraint({ name: 'checkValidPath', async: false })
 export class ValidUrlPath implements ValidatorConstraintInterface {
   validate(text: string, args: ValidationArguments) {
-    if (typeof text !== 'string' || !text) {
-      return false;
-    }
-
-    const looksRemote =
-      /^[a-z][a-z\d+.-]*:/i.test(text) || text.startsWith('//');
-    if (!looksRemote) {
-      return !!normalizedLocalMediaPath(text);
-    }
-
-    let parsed: URL;
-    try {
-      parsed = new URL(text);
-    } catch {
-      return false;
-    }
-
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return false;
-    }
-
-    const restrictedHostname = process.env.RESTRICT_UPLOAD_DOMAINS?.trim()
-      .toLowerCase()
-      .replace(/^https?:\/\//, '')
-      .split('/')[0]
-      .replace(/\.$/, '');
-    if (!restrictedHostname) {
-      return true;
-    }
-
-    const hostname = parsed.hostname.toLowerCase().replace(/\.$/, '');
-    return (
-      hostname === restrictedHostname ||
-      hostname.endsWith(`.${restrictedHostname}`)
-    );
+    return isAllowedUploadPath(text);
   }
 
   defaultMessage(args: ValidationArguments) {

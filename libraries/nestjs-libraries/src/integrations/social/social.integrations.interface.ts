@@ -38,6 +38,23 @@ export interface IAuthenticator {
     postId: string,
     fromDate: number
   ): Promise<AnalyticsData[]>;
+  resolveReleaseId?(
+    accessToken: string,
+    releaseId: string,
+    integration: Integration,
+    settings: any,
+    releaseURL: string
+  ): Promise<
+    | { postId: string; releaseURL: string }
+    | { pending: true }
+    | { unavailable: true }
+    | undefined
+  >; // Final id + URL to persist when the stored releaseId is still a publish id, pending when the platform has no final id yet, unavailable when the post will never get one, undefined when nothing to resolve
+  releaseUrl?(
+    accessToken: string,
+    releaseId: string,
+    integration: Integration
+  ): Promise<string | undefined>; // URL of a post the user connected by hand
   changeNickname?(
     id: string,
     accessToken: string,
@@ -92,6 +109,13 @@ export interface ISocialMediaIntegration {
     integration: Integration
   ): Promise<PostResponse[]>; // Schedules a new post
 
+  postPending?(
+    id: string,
+    accessToken: string,
+    postDetails: PostDetails[],
+    integration: Integration
+  ): Promise<PostResponse[]>; // Like `post`, but may return a `pending` response the workflow resolves via checkPostStatus / finalizePost
+
   comment?(
     id: string,
     postId: string,
@@ -106,8 +130,25 @@ export type PostResponse = {
   id: string; // The db internal id of the post
   postId: string; // The ID of the scheduled post returned by the platform
   releaseURL: string; // The URL of the post on the platform
-  status: string; // Status of the operation or initial post status
+  status: string; // Status of the operation or initial post status, 'pending' means the workflow must poll checkPostStatus
+  pendingData?: any; // Opaque provider state used by checkPostStatus / finalizePost, never inspected by generic code
 };
+
+// Returned by checkPostStatus / finalizePost:
+// 'pending' - the platform is still processing, poll again later
+// 'ready' - processing is done, the workflow must call finalizePost to run the remaining mutations
+// 'completed' - the post is fully published
+//
+// Contract: once finalizePost's mutations have actually gone through on the
+// platform, checkPostStatus must return 'completed' - never 'ready' again -
+// otherwise a finalizePost retry after an unknown-outcome failure would re-run
+// the mutations and duplicate the post. The only exception: when finalizePost's
+// mutation is idempotent (like setting a thumbnail), returning 'ready' again is
+// allowed, since re-running it cannot duplicate anything.
+export type PendingCheckResponse =
+  | { status: 'pending'; pendingData: any }
+  | { status: 'ready'; pendingData: any }
+  | { status: 'completed'; postId: string; releaseURL: string };
 
 export type PostDetails<T = any> = {
   id: string;
@@ -173,8 +214,9 @@ export interface SocialProvider
   convertToJPEG?: boolean;
   stripLinks?: () => boolean;
   refreshCron?: boolean;
+  refreshErrorMessage?(err: any): string | undefined;
   dto?: any;
-  maxLength: (additionalSettings?: any) => number;
+  maxLength: (additionalSettings?: any, settings?: any) => number;
   capabilityMeasurement?: Pick<ContentLimit, 'unit' | 'counter'>;
   fetchCapabilityRuntime?(
     integration: Integration,
@@ -185,10 +227,25 @@ export interface SocialProvider
     settings: any,
     additionalSettings: any[]
   ): Promise<string | true>;
+  checkPostStatus(
+    accessToken: string,
+    pendingData: any,
+    integration: Integration
+  ): Promise<PendingCheckResponse>;
+  migrationMatch(
+    auth: Pick<AuthTokenDetails, 'id' | 'username'>,
+    integration: Integration
+  ): boolean;
+  finalizePost(
+    accessToken: string,
+    pendingData: any,
+    integration: Integration
+  ): Promise<PendingCheckResponse>;
   isWeb3?: boolean;
   isChromeExtension?: boolean;
   extensionCookies?: { name: string; domain: string }[];
   editor: 'none' | 'normal' | 'markdown' | 'html';
+  inlineImages?: (settings?: any) => boolean;
   customFields?: () => Promise<CustomFieldDefinition[]>;
   customFieldsInstructions?: CustomFieldsInstructionsDefinition;
   name: string;

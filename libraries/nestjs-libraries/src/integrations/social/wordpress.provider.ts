@@ -7,16 +7,22 @@ import {
 import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { WordpressDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/wordpress.dto';
 import slugify from 'slugify';
 // import FormData from 'form-data';
 import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 import { lookup } from 'mime-types';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
+import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { string } from 'yup';
 
+const WORDPRESS_USER_AGENT = 'Postiz/1.0 (+https://postiz.com)';
+
+@Rules(
+  'WordPress publishes the content as an article: pictures go inside the content as <img src="..."> where they should appear, the src must be a picture from the media library (upload it with uploadFromUrlTool first), attachments are not published, the cover picture is the main_image setting'
+)
 export class WordpressProvider
   extends SocialAbstract
   implements SocialProvider
@@ -26,7 +32,7 @@ export class WordpressProvider
   isBetweenSteps = false;
   editor = 'html' as const;
   scopes = [] as string[];
-  override maxConcurrentJob = 5; // WordPress self-hosted typically has generous limits
+  override maxConcurrentJob = 8; // WordPress sites are the customer's own servers
   dto = WordpressDto;
   customFieldsInstructions = {
     title: 'Connect your WordPress site',
@@ -44,11 +50,15 @@ export class WordpressProvider
     return 100000;
   }
 
+  inlineImages() {
+    return true;
+  }
+
   async generateAuthUrl() {
-    const state = makeId(6);
+    const state = makeSecureId(6);
     return {
       url: state,
-      codeVerifier: makeId(10),
+      codeVerifier: makeSecureId(10),
       state,
     };
   }
@@ -128,6 +138,7 @@ export class WordpressProvider
       response = await fetch(`${domain}/wp-json/wp/v2/users/me`, {
         headers: {
           Authorization: `Basic ${auth}`,
+          'User-Agent': WORDPRESS_USER_AGENT,
         },
         // @ts-ignore - undici-only option; blocks SSRF to internal IPs
         dispatcher: getSsrfSafeDispatcher(),
@@ -226,6 +237,7 @@ export class WordpressProvider
     const response = await fetch(`${body.domain}${path}`, {
       headers: {
         Authorization: `Basic ${auth}`,
+        'User-Agent': WORDPRESS_USER_AGENT,
       },
       // @ts-ignore - undici-only option; blocks SSRF to internal IPs
       dispatcher: getSsrfSafeDispatcher(),
@@ -327,6 +339,7 @@ export class WordpressProvider
             'Content-Type':
               lookup(mainImagePath.split(/[?#]/, 1)[0]) ||
               'application/octet-stream',
+            'User-Agent': WORDPRESS_USER_AGENT,
           },
           body: image,
         })
@@ -349,6 +362,7 @@ export class WordpressProvider
           headers: {
             Authorization: `Basic ${auth}`,
             'Content-Type': 'application/json',
+            'User-Agent': WORDPRESS_USER_AGENT,
           },
           method: 'POST',
           body: JSON.stringify({
