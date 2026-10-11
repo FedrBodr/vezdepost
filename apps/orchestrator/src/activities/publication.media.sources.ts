@@ -21,6 +21,11 @@ export const PUBLICATION_SECONDARY_MEDIA_SOURCE_FIELDS = [
     container: 'media',
     field: 'thumbnail',
   },
+  {
+    providerIdentifier: 'x',
+    container: 'settings',
+    field: 'article_cover',
+  },
 ] as const;
 
 export type PublicationMediaSource = Partial<MediaContent> &

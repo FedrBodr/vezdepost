@@ -277,6 +277,9 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
   }
 
   private async uploadFileToReddit(accessToken: string, path: string) {
+    // Resolve (and authorize, through media.source) the source before asking
+    // Reddit for an upload slot. S3 requires the exact part length.
+    const fileSize = await this.mediaSize(path, this.identifier);
     const mimeType = lookup(path);
     const formData = new FormData();
     formData.append('filepath', path.split('/').pop());
@@ -301,8 +304,6 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     ).json();
 
     // Stream the file into Reddit's S3 form instead of buffering it in memory.
-    // S3 requires the exact part length, which comes from a HEAD request.
-    const fileSize = await this.mediaSize(path, this.identifier);
     const stream = await this.mediaStream(path, this.identifier);
 
     const upload = (fields as { name: string; value: string }[]).reduce(

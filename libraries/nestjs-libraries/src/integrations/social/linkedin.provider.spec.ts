@@ -99,7 +99,11 @@ const prepareProvider = () => {
     .mockResolvedValue(converted);
   const processMediaForPosts = vi
     .spyOn(provider as any, 'processMediaForPosts')
-    .mockResolvedValue({ 'post-1': ['asset-1'] });
+    .mockResolvedValue({
+      mediaUploads: { 'post-1': ['asset-1'] },
+      poll: [],
+      graceChecks: 0,
+    });
   const createMainPost = vi
     .spyOn(provider as any, 'createMainPost')
     .mockResolvedValue('urn:li:share:1');
@@ -114,17 +118,25 @@ const prepareProvider = () => {
 };
 
 describe('LinkedinProvider carousel fallback', () => {
-  it('converts two images and publishes them as a PDF carousel', async () => {
-    const setup = prepareProvider();
-    const postDetails = details([image('one'), image('two')], true);
-
-    await setup.provider.post(
+  const pending = async (
+    setup: ReturnType<typeof prepareProvider>,
+    postDetails: any[]
+  ) => {
+    const [response] = await setup.provider.postPending(
       'person-1',
       'token',
       postDetails,
       {} as any,
       'personal'
     );
+    return response.pendingData as any;
+  };
+
+  it('converts two images and publishes them as a PDF carousel', async () => {
+    const setup = prepareProvider();
+    const postDetails = details([image('one'), image('two')], true);
+
+    const pendingData = await pending(setup, postDetails);
 
     expect(setup.convertImagesToPdfCarousel).toHaveBeenCalledWith(
       postDetails,
@@ -136,13 +148,21 @@ describe('LinkedinProvider carousel fallback', () => {
       'person-1',
       'personal'
     );
+    expect(pendingData).toMatchObject({ isPdf: true, mediaIds: ['asset-1'] });
+
+    await setup.provider.finalizePost(
+      'token',
+      { ...pendingData, attempting: true, confirmed: true },
+      {} as any
+    );
     expect(setup.createMainPost).toHaveBeenCalledWith(
       'person-1',
       'token',
-      setup.converted[0],
+      setup.converted[0].message,
       ['asset-1'],
       'personal',
-      true
+      true,
+      'slides'
     );
   });
 
@@ -156,13 +176,7 @@ describe('LinkedinProvider carousel fallback', () => {
       const setup = prepareProvider();
       const postDetails = details(media as any, true);
 
-      await setup.provider.post(
-        'person-1',
-        'token',
-        postDetails,
-        {} as any,
-        'personal'
-      );
+      const pendingData = await pending(setup, postDetails);
 
       expect(setup.convertImagesToPdfCarousel).not.toHaveBeenCalled();
       expect(setup.processMediaForPosts).toHaveBeenCalledWith(
@@ -171,14 +185,7 @@ describe('LinkedinProvider carousel fallback', () => {
         'person-1',
         'personal'
       );
-      expect(setup.createMainPost).toHaveBeenCalledWith(
-        'person-1',
-        'token',
-        postDetails[0],
-        ['asset-1'],
-        'personal',
-        false
-      );
+      expect(pendingData.isPdf).toBe(false);
     }
   );
 
@@ -186,23 +193,10 @@ describe('LinkedinProvider carousel fallback', () => {
     const setup = prepareProvider();
     const postDetails = details([image('one'), image('two')], false);
 
-    await setup.provider.post(
-      'person-1',
-      'token',
-      postDetails,
-      {} as any,
-      'personal'
-    );
+    const pendingData = await pending(setup, postDetails);
 
     expect(setup.convertImagesToPdfCarousel).not.toHaveBeenCalled();
-    expect(setup.createMainPost).toHaveBeenCalledWith(
-      'person-1',
-      'token',
-      postDetails[0],
-      ['asset-1'],
-      'personal',
-      false
-    );
+    expect(pendingData.isPdf).toBe(false);
   });
 
   it.each([

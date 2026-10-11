@@ -297,6 +297,9 @@ export class PinterestProvider
     // the pin itself is only created by finalizePost, so nothing here is
     // irreversible - a failure leaves only an orphaned media upload.
     if (findMp4) {
+      // resolve (and authorize, through media.source) the source before
+      // asking Pinterest for an upload slot
+      const contentLength = await this.mediaSize(findMp4.path, this.identifier);
       const { upload_url, media_id, upload_parameters } = await (
         await this.fetch('https://api.pinterest.com/v5/media', {
           method: 'POST',
@@ -311,7 +314,6 @@ export class PinterestProvider
       ).json();
 
       // read through media.source (SSRF-safe, confined to uploads, bounded)
-      const contentLength = await this.mediaSize(findMp4.path, this.identifier);
       const data = await this.mediaStream(findMp4.path, this.identifier);
 
       const formData = Object.keys(upload_parameters)

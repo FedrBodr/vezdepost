@@ -25,7 +25,21 @@ const sources: Array<[string, RegExp[]]> = [
   ],
 ];
 
+// Media helpers on SocialAbstract that go through media.source
+const SOURCE_HELPERS =
+  /this\.(?:mediaSize|mediaStream|mediaChunk|readOrFetch)\(/;
+
 describe('social adapter MediaSource contract', () => {
+  it.each(
+    readdirSync(resolve(__dirname)).filter((name) =>
+      name.endsWith('.provider.ts')
+    )
+  )('%s never downloads media with the raw SSRF-safe axios', (file) => {
+    const source = readFileSync(resolve(__dirname, file), 'utf8');
+    // API calls to fixed endpoints (template literals) are fine
+    expect(source).not.toMatch(/getSsrfSafeAxios\(\)\.get\(\s*[^\s`]/);
+  });
+
   it.each(sources)(
     '%s has no raw attacker-influenced source download',
     (file, forbidden) => {
@@ -37,12 +51,12 @@ describe('social adapter MediaSource contract', () => {
   it.each([
     [
       'reddit.provider.ts',
-      'readMediaSourceBuffer(path)',
+      'this.mediaSize(path',
       "this.fetch(\n        'https://oauth.reddit.com/api/media/asset'",
     ],
     [
       'pinterest.provider.ts',
-      'withMediaSourceStream(',
+      'this.mediaSize(findMp4.path',
       "this.fetch('https://api.pinterest.com/v5/media'",
     ],
     [
@@ -67,27 +81,23 @@ describe('social adapter MediaSource contract', () => {
     }
   );
 
-  it('acquires Discord comment attachments before creating a thread', () => {
+  it('streams Discord attachments through the media helpers', () => {
     const source = readFileSync(
       resolve(__dirname, 'discord.provider.ts'),
       'utf8'
-    ).split('async comment(', 2)[1];
-    expect(source.indexOf('readMediaSourceBuffer(')).toBeLessThan(
-      source.indexOf('/threads`')
     );
+    expect(source).toMatch(/this\.mediaSize\(item\.path/);
+    expect(source).toMatch(/this\.mediaStream\(item\.path/);
   });
 
-  it('acquires the YouTube thumbnail before uploading the destination video', () => {
+  it('reads the YouTube thumbnail through media.source with the image cap', () => {
     const source = readFileSync(
       resolve(__dirname, 'youtube.provider.ts'),
       'utf8'
     );
-    expect(
-      source.indexOf('readMediaSourceBuffer(settings.thumbnail.path')
-    ).toBeGreaterThanOrEqual(0);
-    expect(
-      source.indexOf('readMediaSourceBuffer(settings.thumbnail.path')
-    ).toBeLessThan(source.indexOf('youtubeClient.videos.insert'));
+    expect(source).toMatch(
+      /this\.readOrFetch\(pendingData\.thumbnail, \{\s*maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES/
+    );
   });
 
   it.each([
@@ -97,7 +107,7 @@ describe('social adapter MediaSource contract', () => {
     'vk.group.provider.ts',
   ])('%s supplies known source length to multipart form-data', (file) => {
     const source = readFileSync(resolve(__dirname, file), 'utf8');
-    expect(source).toMatch(/knownLength:\s*size/);
+    expect(source).toMatch(/knownLength:\s*(?:size|contentLength)/);
   });
 
   it('registers every adapter secondary source field read by the server', () => {
@@ -111,7 +121,8 @@ describe('social adapter MediaSource contract', () => {
       if (
         /(?:readMediaSourceBuffer|readOrFetch|withMediaSourceStream|getMediaSourceMetadata|withMediaSourceRange)/.test(
           source
-        )
+        ) ||
+        SOURCE_HELPERS.test(source)
       ) {
         for (const match of source.matchAll(
           /settings\s*(?:\?\.|\.)\s*([a-z_]\w*)\s*(?:\?\.|\.)\s*path/gi
@@ -119,7 +130,10 @@ describe('social adapter MediaSource contract', () => {
           detected.add(`${providerIdentifier}:settings:${match[1]}`);
         }
       }
-      if (/getImageDimensions|readMediaSourceBuffer/.test(source)) {
+      if (
+        /getImageDimensions|readMediaSourceBuffer/.test(source) ||
+        SOURCE_HELPERS.test(source)
+      ) {
         for (const match of source.matchAll(
           /(?:post\.)?media(?:\?\.)?(?:\[\d+\])?(?:\?\.)?\.thumbnail\b/g
         )) {

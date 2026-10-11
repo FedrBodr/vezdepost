@@ -4,10 +4,6 @@ import {
   authorizeMediaSource,
   readMediaSourceBuffer,
 } from '@gitroom/helpers/utils/media.source';
-import {
-  SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
-  SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
-} from '@gitroom/helpers/utils/ssrf.safe.fetch';
 
 vi.mock('@gitroom/helpers/utils/media.source', () => ({
   authorizeMediaSource: vi.fn(async () => undefined),
@@ -40,9 +36,6 @@ describe('RedditProvider secondary media ordering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(authorizeMediaSource).mockResolvedValue(undefined);
-    vi.mocked(readMediaSourceBuffer).mockResolvedValue(
-      Buffer.from('primary-video')
-    );
     provider = new RedditProvider();
   });
 
@@ -50,123 +43,58 @@ describe('RedditProvider secondary media ordering', () => {
     vi.restoreAllMocks();
   });
 
-  it('stops before main-media acquisition when thumbnail materialization fails after authorization', async () => {
-    vi.mocked(readMediaSourceBuffer).mockImplementation(async (path) => {
-      if (path === thumbnailPath) {
-        throw new Error('Remote media body download aborted by timeout');
-      }
-      return Buffer.from('primary-video');
-    });
-    const providerFetch = vi
-      .spyOn(provider, 'fetch')
-      .mockRejectedValue(new Error('provider upload slot invoked'));
-    const uploadFetch = vi
-      .spyOn(globalThis, 'fetch')
-      .mockRejectedValue(new Error('upload destination invoked'));
+  it('stops before any provider call when the video thumbnail is not an allowed source', async () => {
+    vi.mocked(authorizeMediaSource).mockRejectedValue(
+      new Error('Invalid media source')
+    );
+    const providerFetch = vi.spyOn(provider, 'fetch');
 
     await expect(
-      provider.post('profile', 'token', [
+      provider.postPending('profile', 'token', [
         mediaPost({
           type: 'video',
           path: primaryPath,
           thumbnail: thumbnailPath,
         }),
       ])
-    ).rejects.toThrow(/body download aborted by timeout/i);
+    ).rejects.toThrow('Invalid media source');
 
     expect(authorizeMediaSource).toHaveBeenCalledWith(thumbnailPath);
-    expect(readMediaSourceBuffer).toHaveBeenCalledOnce();
-    expect(readMediaSourceBuffer).toHaveBeenCalledWith(thumbnailPath, {
-      maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
-      bodyTimeoutMs: SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
-    });
-    expect(readMediaSourceBuffer).not.toHaveBeenCalledWith(
-      primaryPath,
-      expect.anything()
-    );
     expect(providerFetch).not.toHaveBeenCalled();
-    expect(uploadFetch).not.toHaveBeenCalled();
   });
 
-  it('materializes the thumbnail once before main media and reuses its retained bytes for poster upload', async () => {
-    const thumbnail = Buffer.from('retained-thumbnail');
-    const primary = Buffer.from('primary-video');
-    vi.mocked(readMediaSourceBuffer).mockImplementation(async (path) =>
-      path === thumbnailPath ? thumbnail : primary
-    );
-    const providerFetch = vi
-      .spyOn(provider, 'fetch')
-      .mockImplementation(async (url) => {
-        if (String(url).endsWith('/api/media/asset')) {
-          return {
-            json: async () => ({
-              args: { action: '//uploads.reddit.test/file', fields: [] },
-            }),
-          } as Response;
-        }
-        throw new Error('stop after uploads');
-      });
-    const uploaded: Buffer[] = [];
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-      const file = (init?.body as FormData).get('file') as Blob;
-      uploaded.push(Buffer.from(await file.arrayBuffer()));
-      return {
-        text: async () =>
-          '<Location>https://reddit-upload.test/location</Location>',
-      } as Response;
-    });
+  it('defers every upload to finalizePost, carrying the media paths', async () => {
+    const providerFetch = vi.spyOn(provider, 'fetch');
 
-    await expect(
-      provider.post('profile', 'token', [
-        mediaPost({
-          type: 'video',
-          path: primaryPath,
-          thumbnail: thumbnailPath,
-        }),
-      ])
-    ).rejects.toThrow('stop after uploads');
+    const [response] = await provider.postPending('profile', 'token', [
+      mediaPost({
+        type: 'video',
+        path: primaryPath,
+        thumbnail: thumbnailPath,
+      }),
+    ]);
 
-    expect(authorizeMediaSource).toHaveBeenCalledWith(thumbnailPath);
-    expect(
-      vi.mocked(readMediaSourceBuffer).mock.calls.map(([path]) => path)
-    ).toEqual([thumbnailPath, primaryPath]);
-    expect(
-      vi
-        .mocked(readMediaSourceBuffer)
-        .mock.calls.filter(([path]) => path === thumbnailPath)
-    ).toHaveLength(1);
-    expect(readMediaSourceBuffer).toHaveBeenCalledWith(thumbnailPath, {
-      maxBytes: SAFE_REMOTE_IMAGE_FETCH_MAX_BYTES,
-      bodyTimeoutMs: SAFE_REMOTE_IMAGE_FETCH_BODY_TIMEOUT_MS,
+    expect(response.status).toBe('pending');
+    expect(response.pendingData).toMatchObject({
+      mediaPath: primaryPath,
+      mediaThumbnail: thumbnailPath,
+      cursor: 0,
     });
-    expect(uploaded).toEqual([primary, thumbnail]);
-    expect(
-      providerFetch.mock.calls.filter(([url]) =>
-        String(url).endsWith('/api/media/asset')
-      )
-    ).toHaveLength(2);
+    expect(readMediaSourceBuffer).not.toHaveBeenCalled();
+    expect(providerFetch).not.toHaveBeenCalled();
   });
 
-  it('preserves image media flow without secondary acquisition', async () => {
-    const providerFetch = vi
-      .spyOn(provider, 'fetch')
-      .mockRejectedValue(new Error('stop at image upload slot'));
+  it('checks the source before requesting an upload slot', async () => {
+    vi.spyOn(provider as any, 'mediaSize').mockRejectedValue(
+      new Error('Remote media body download aborted by timeout')
+    );
+    const providerFetch = vi.spyOn(provider, 'fetch');
 
     await expect(
-      provider.post('profile', 'token', [
-        mediaPost({
-          type: 'image',
-          path: 'https://cdn.example.test/image.jpg',
-        }),
-      ])
-    ).rejects.toThrow('stop at image upload slot');
+      (provider as any).uploadFileToReddit('token', primaryPath)
+    ).rejects.toThrow(/aborted by timeout/);
 
-    expect(authorizeMediaSource).not.toHaveBeenCalled();
-    expect(readMediaSourceBuffer).toHaveBeenCalledOnce();
-    expect(readMediaSourceBuffer).toHaveBeenCalledWith(
-      'https://cdn.example.test/image.jpg'
-    );
-    expect(providerFetch).toHaveBeenCalledOnce();
+    expect(providerFetch).not.toHaveBeenCalled();
   });
 });
 

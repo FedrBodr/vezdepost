@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   axiosGet: vi.fn(),
+  axiosPost: vi.fn(),
   fetch: vi.fn(),
+  mediaSize: vi.fn(),
+  mediaStream: vi.fn(),
 }));
 
 vi.mock('axios', () => ({ default: { get: mocks.axiosGet } }));
@@ -33,6 +36,14 @@ vi.mock(
 vi.mock('@gitroom/nestjs-libraries/integrations/social.abstract', () => ({
   SocialAbstract: class {
     fetch = mocks.fetch;
+    mediaSize = mocks.mediaSize;
+    mediaStream = mocks.mediaStream;
+    getSsrfSafeAxios() {
+      return { post: mocks.axiosPost };
+    }
+    runStreamedUpload(func: () => Promise<unknown>) {
+      return func();
+    }
     async getImageDimensions() {
       return { width: 912, height: 978 };
     }
@@ -42,7 +53,19 @@ vi.mock('@gitroom/nestjs-libraries/integrations/social.abstract', () => ({
   },
 }));
 
+import { Readable } from 'stream';
 import { TumblrProvider } from './tumblr.provider';
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+const readForm = (form: NodeJS.ReadableStream) =>
+  new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    form.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    form.on('end', () => resolve(Buffer.concat(chunks)));
+    form.on('error', reject);
+    form.resume();
+  });
 
 const response = () =>
   ({
@@ -59,6 +82,9 @@ beforeEach(() => {
   mocks.axiosGet.mockResolvedValue({
     data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47]),
   });
+  mocks.mediaSize.mockResolvedValue(PNG.length);
+  mocks.mediaStream.mockImplementation(async () => Readable.from([PNG]));
+  mocks.axiosPost.mockResolvedValue({ data: { response: { id_string: '42' } } });
 });
 
 describe('TumblrProvider multipart uploads', () => {
@@ -83,15 +109,12 @@ describe('TumblrProvider multipart uploads', () => {
       integration
     );
 
-    const options = mocks.fetch.mock.calls[0][1] as RequestInit;
-    const contentType = (options.headers as Record<string, string>)[
-      'Content-Type'
-    ];
+    const [, form, config] = mocks.axiosPost.mock.calls[0];
+    const contentType = config.headers['content-type'];
     const boundary = contentType.replace('multipart/form-data; boundary=', '');
-    const body = options.body as Buffer;
+    const body = await readForm(form);
     const serialized = body.toString('latin1');
 
-    expect(Buffer.isBuffer(body)).toBe(true);
     expect(contentType).toMatch(/^multipart\/form-data; boundary=/);
     expect(serialized).toContain(
       'Content-Disposition: form-data; name="json"\r\n' +
@@ -102,7 +125,7 @@ describe('TumblrProvider multipart uploads', () => {
       'Content-Disposition: form-data; name="media-0"; filename="test_image.png"\r\n' +
         'Content-Type: image/png\r\n\r\n'
     );
-    expect(body.includes(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBe(true);
+    expect(body.includes(PNG)).toBe(true);
     expect(serialized.endsWith(`--${boundary}--\r\n`)).toBe(true);
   });
 
