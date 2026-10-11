@@ -95,7 +95,7 @@ describe('RefreshIntegrationService token refresh failures', () => {
     errorLog.mockRestore();
   });
 
-  it('still disconnects on a transient failure outside the scheduled refresh', async () => {
+  it('still marks the channel for reconnect on a transient failure outside the scheduled refresh', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { service, integrationService } = setup(transient);
 
@@ -105,11 +105,13 @@ describe('RefreshIntegrationService token refresh failures', () => {
       'organization-fixture',
       'integration-fixture'
     );
-    expect(integrationService.disconnectChannel).toHaveBeenCalled();
+    // one notification with the cause; disconnectChannel would send a second
+    expect(integrationService.informAboutRefreshError).toHaveBeenCalled();
+    expect(integrationService.disconnectChannel).not.toHaveBeenCalled();
     errorLog.mockRestore();
   });
 
-  it('disconnects and logs the reason when the refresh token is rejected', async () => {
+  it('marks the channel for reconnect and logs the reason when the refresh token is rejected', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { service, integrationService } = setup(
       new Error('VK oauth2/auth failed with invalid_grant')
@@ -120,7 +122,8 @@ describe('RefreshIntegrationService token refresh failures', () => {
     ).resolves.toBe(false);
 
     expect(integrationService.refreshNeeded).toHaveBeenCalled();
-    expect(integrationService.disconnectChannel).toHaveBeenCalled();
+    expect(integrationService.informAboutRefreshError).toHaveBeenCalled();
+    expect(integrationService.disconnectChannel).not.toHaveBeenCalled();
     expect(JSON.stringify(errorLog.mock.calls)).toContain('invalid_grant');
     errorLog.mockRestore();
   });

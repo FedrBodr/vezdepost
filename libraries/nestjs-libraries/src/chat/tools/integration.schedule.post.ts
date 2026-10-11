@@ -93,7 +93,7 @@ If validation fails, the result contains output.errors describing what to fix; t
                     content: z
                       .string()
                       .describe(
-                        "The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, em, i, s, li, ul, ol, p (you can't have u and strong together; each li must be inside ul or ol), and img (<img src=\"...\">) only when the integration rules say pictures go inside the content. Only use tags the destination platform supports."
+                        'The content of the post, HTML, Each line must be wrapped in <p> here is the possible tags: h1, h2, h3, u, strong, em, i, s, li, ul, ol, p (you can\'t have u and strong together; each li must be inside ul or ol), and img (<img src="...">) only when the integration rules say pictures go inside the content. Only use tags the destination platform supports.'
                       ),
                     attachments: z
                       .array(attachmentUrl)
@@ -191,35 +191,25 @@ If validation fails, the result contains output.errors describing what to fix; t
             switch (failure.category) {
               case 'empty-content':
                 return {
-                  output: {
-                    errors: `${prefix}Your post should have at least one character or one image.`,
-                  },
+                  errors: `${prefix}Your post should have at least one character or one image.`,
                 };
               case 'invalid-settings':
                 return {
-                  output: {
-                    errors: `${prefix}${
-                      validation.settingsError || 'Please fix your settings'
-                    }${retry}`,
-                  },
+                  errors: `${prefix}${
+                    validation.settingsError || 'Please fix your settings'
+                  }${retry}`,
                 };
               case 'provider-validity':
                 return {
-                  output: {
-                    errors: `${prefix}${validation.errors}${retry}`,
-                  },
+                  errors: `${prefix}${validation.errors}${retry}`,
                 };
               case 'too-long':
                 return {
-                  output: {
-                    errors: `${prefix}The maximum characters is ${validation.maximumCharacters}${retry}`,
-                  },
+                  errors: `${prefix}The maximum characters is ${validation.maximumCharacters}${retry}`,
                 };
               case 'content-error':
                 return {
-                  output: {
-                    errors: `${prefix}${validation.contentError}${retry}`,
-                  },
+                  errors: `${prefix}${validation.contentError}${retry}`,
                 };
             }
           }

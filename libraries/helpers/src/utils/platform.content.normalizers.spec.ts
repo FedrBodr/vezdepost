@@ -386,11 +386,11 @@ describe('normalizePlatformFields', () => {
 
     expect(
       normalizePlatformFields({
-        canonicalHtml: '<p>https://exa</p><p>mple.com</p>',
+        canonicalHtml: '<p>https://exa</p><p>mple-path</p>',
         settings: {},
         capability: stripping,
       }).body.value
-    ).toBe('https://exa\n\nmple.com');
+    ).toBe('https://exa\n\nmple-path');
   });
 
   it('strips Markdown visible URLs before escaping while retaining link metadata', () => {

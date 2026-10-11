@@ -17,6 +17,7 @@ const REGISTERED_IDENTIFIERS = [
   'youtube',
   'gmb',
   'tiktok',
+  'tiktok-business',
   'pinterest',
   'dribbble',
   'discord',
@@ -46,13 +47,13 @@ const REGISTERED_IDENTIFIERS = [
 ] as const;
 
 describe('registered platform capability matrix', () => {
-  it('resolves the exact 37-destination inventory through V2', async () => {
+  it('resolves the exact 38-destination inventory through V2', async () => {
     const identifiers = socialIntegrationList.map(
       (integration) => integration.identifier
     );
 
     expect(identifiers).toEqual(REGISTERED_IDENTIFIERS);
-    expect(new Set(identifiers).size).toBe(37);
+    expect(new Set(identifiers).size).toBe(38);
 
     const manager = new IntegrationManager();
     const resolved = await Promise.all(
@@ -69,8 +70,8 @@ describe('registered platform capability matrix', () => {
       ({ verification }) => verification === 'unverified-adapter'
     );
 
-    expect(PROFILE_IDENTIFIERS.length).toBe(33);
-    expect(profiled.size).toBe(33);
+    expect(PROFILE_IDENTIFIERS.length).toBe(34);
+    expect(profiled.size).toBe(34);
     expect(bridged.map(({ identifier }) => identifier)).toEqual([
       'moltbook',
       'whop',
@@ -80,6 +81,7 @@ describe('registered platform capability matrix', () => {
 
     const ALIASES: Record<string, string> = {
       'linkedin-page': 'linkedin',
+      'tiktok-business': 'tiktok',
       'instagram-standalone': 'instagram',
     };
     const aliased = resolved.filter(({ identifier }) => identifier in ALIASES);
@@ -91,6 +93,7 @@ describe('registered platform capability matrix', () => {
     ).toEqual([
       { identifier: 'linkedin-page', profileIdentifier: 'linkedin' },
       { identifier: 'instagram-standalone', profileIdentifier: 'instagram' },
+      { identifier: 'tiktok-business', profileIdentifier: 'tiktok' },
     ]);
 
     const x = resolved.find(({ identifier }) => identifier === 'x');

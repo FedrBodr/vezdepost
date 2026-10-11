@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@gitroom/helpers/utils/read.or.fetch', () => ({
-  readOrFetch: vi.fn().mockResolvedValue(Buffer.from('image')),
+vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  readMediaSourceBuffer: vi.fn().mockResolvedValue(Buffer.from('image')),
 }));
 vi.mock('sharp', () => ({
   default: vi.fn(() => ({
@@ -9,7 +10,7 @@ vi.mock('sharp', () => ({
   })),
 }));
 
-import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
+import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
 import { SocialAbstract } from './social.abstract';
 
 class ImageDimensionsProbe extends SocialAbstract {
@@ -22,7 +23,7 @@ class ImageDimensionsProbe extends SocialAbstract {
 
 describe('SocialAbstract image dimension reads', () => {
   beforeEach(() => {
-    vi.mocked(readOrFetch).mockClear();
+    vi.mocked(readMediaSourceBuffer).mockClear();
   });
 
   it('uses the purpose-specific image byte cap and body timeout', async () => {
@@ -32,7 +33,7 @@ describe('SocialAbstract image dimension reads', () => {
       )
     ).resolves.toEqual({ width: 800, height: 600 });
 
-    expect(readOrFetch).toHaveBeenCalledWith(
+    expect(readMediaSourceBuffer).toHaveBeenCalledWith(
       'https://media.example.test/photo.jpg',
       { maxBytes: 10 * 1024 * 1024, bodyTimeoutMs: 30_000 }
     );
