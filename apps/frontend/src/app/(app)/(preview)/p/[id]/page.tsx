@@ -14,7 +14,6 @@ import { CopyClient } from '@gitroom/frontend/components/preview/copy.client';
 import { getT } from '@gitroom/react/translation/get.translation.service.backend';
 import { RenderPreviewDateClient } from '@gitroom/frontend/components/preview/render.preview.date.client';
 import { CreationMethodBadge } from '@gitroom/frontend/components/launches/creation.method.badge';
-import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 
 dayjs.extend(utc);
 export const metadata: Metadata = {
@@ -122,7 +121,7 @@ export default async function Auth(
                     <div className="flex flex-col gap-[16px]">
                       <PostContentClient
                         postId={p.id}
-                        html={sanitizePostContent(p.content)}
+                        content={p.content}
                       />
                       {!!JSON.parse(p?.image || '[]').length && (
                         <div className="flex w-full gap-[10px]">

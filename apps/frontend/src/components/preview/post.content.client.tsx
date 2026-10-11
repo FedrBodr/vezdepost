@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import clsx from 'clsx';
+import { sanitizePostContent } from '@gitroom/helpers/utils/sanitize.post.content';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import {
   PendingAnchor,
@@ -132,10 +133,12 @@ const marksOf = (root: HTMLElement, id: string) =>
     root.querySelectorAll<HTMLElement>('mark[data-thread-ids]')
   ).filter((mark) => mark.dataset.threadIds!.split(',').includes(id));
 
-export const PostContentClient: FC<{ postId: string; html: string }> = ({
+export const PostContentClient: FC<{ postId: string; content: string }> = ({
   postId,
-  html,
+  content,
 }) => {
+  // sanitized here, in the browser bundle, never in the Server Component
+  const html = useMemo(() => sanitizePostContent(content), [content]);
   const t = useT();
   const {
     comments,

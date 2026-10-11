@@ -1000,11 +1000,7 @@ export const OnlyEditor = forwardRef<
   const editor = useEditor({
     extensions: [
       Document,
-      Paragraph.configure({
-        HTMLAttributes: {
-          dir: 'auto',
-        },
-      }),
+      Paragraph,
       Text,
       PlainTextPasteExtension.configure({
         applyPasteRules:
