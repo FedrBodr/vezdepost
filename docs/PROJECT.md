@@ -55,6 +55,16 @@ Document: project-overview
 отключает редирект для пользователя («Полная версия»). Планшеты и десктоп не
 редиректятся. Спека: `docs/superpowers/specs/2026-10-12-mobile-version-design.md`.
 
+Экран «Пост» отправляет в `POST /posts/quick`; медиа грузится через
+`/media/upload-simple` с клиентским сжатием картинок (>1.5 МБ или >2048 px →
+JPEG 0.85, GIF не трогаем). «Очередь» читает `/posts/list?state=scheduled`
+и удаляет `DELETE /posts/:group`. Web-манифест `/manifest.webmanifest`
+(иконки `public/icons/vezdepost-*.png`) объявляет Share Target: Android
+отправляет файлы POST-ом в `/m/share`, который заливает их в медиатеку и
+редиректит на `/m?shared=<payload>`. Цели продукта: события
+`mobile_channel_added` и `mobile_quick_post_sent` уходят в PostHog и в
+`dataLayer` (для GTM/Метрики).
+
 ## Деплой и проверка изменений
 
 - Ветка **prod** — продакшн. `git push` в prod = деплой: на сервере cron

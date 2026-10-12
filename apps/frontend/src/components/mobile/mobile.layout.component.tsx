@@ -10,17 +10,23 @@ import { MobileTabBar } from '@gitroom/frontend/components/mobile/mobile.tab.bar
 import { DesktopVersionLink } from '@gitroom/frontend/components/mobile/desktop.version.link';
 import { useMobileUser } from '@gitroom/frontend/components/mobile/use.mobile.user';
 import { MobileQueryNotice } from '@gitroom/frontend/components/mobile/mobile.query.notice';
+import { AuthenticatedAppOpened } from '@gitroom/frontend/components/layout/authenticated.app.opened';
+import { useUserTimezoneSync } from '@gitroom/frontend/components/layout/use.personal.streak';
 
 /** Phone shell: top bar, scrolling content, bottom tabs. Desktop stays untouched. */
 export const MobileLayoutComponent: FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const { data: user } = useMobileUser();
+  const { data: user, mutate } = useMobileUser();
+  // Same side effects as the desktop layout: timezone sync drives "В очередь"
+  // and date scheduling; the app-opened event feeds product analytics.
+  useUserTimezoneSync(user?.timezoneName, mutate);
   if (!user) {
     return null;
   }
   return (
     <ContextWrapper user={user}>
+      <AuthenticatedAppOpened />
       <MantineWrapper>
         <Toaster />
         <MobileQueryNotice />
