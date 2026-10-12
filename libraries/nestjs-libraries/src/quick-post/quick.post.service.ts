@@ -40,7 +40,10 @@ export type QuickPostResult = {
 };
 
 export type QuickPostDeps = {
-  integrationService: Pick<IntegrationService, 'getIntegrationsList'>;
+  integrationService: Pick<
+    IntegrationService,
+    'getIntegrationsList' | 'findFreeDateTime'
+  >;
   postsService: Pick<
     PostsService,
     'validatePosts' | 'mapTypeToPost' | 'createPost' | 'findFreeDateTime'
@@ -121,22 +124,34 @@ export class QuickPostService {
     );
   }
 
-  private async scheduleFor(
+  /**
+   * One date for every channel, resolved before any post is created, so
+   * "queue" behaves like the editor's main flow (a single organization-wide
+   * slot) rather than staggering the same post across channels.
+   */
+  private async resolveSchedule(
     organizationId: string,
-    integrationId: string,
     schedule: QuickPostSchedule
   ): Promise<{ type: 'now' | 'schedule'; date: string }> {
     switch (schedule.type) {
       case 'now':
         return { type: 'now', date: this.now().toISOString() };
-      case 'queue':
+      case 'queue': {
+        // findFreeDateTime recurses day by day until it finds a slot, so an
+        // organization without posting times would never return.
+        const times = await this.deps.integrationService.findFreeDateTime(
+          organizationId
+        );
+        if (!times.length) {
+          throw new QuickPostError(
+            'У каналов нет расписания — задайте время публикации'
+          );
+        }
         return {
           type: 'schedule',
-          date: await this.deps.postsService.findFreeDateTime(
-            organizationId,
-            integrationId
-          ),
+          date: await this.deps.postsService.findFreeDateTime(organizationId),
         };
+      }
       case 'date':
         return { type: 'schedule', date: schedule.date };
     }
@@ -170,6 +185,7 @@ export class QuickPostService {
       );
     }
 
+    const when = await this.resolveSchedule(organizationId, input.schedule);
     const content = plainTextToHtml(input.text);
     const image = input.media.map(({ id, path }) => ({ id, path }));
 
@@ -193,11 +209,6 @@ export class QuickPostService {
           result.failed.push({ ...channel, error: problem });
           continue;
         }
-        const when = await this.scheduleFor(
-          organizationId,
-          integration.id,
-          input.schedule
-        );
         const body = await this.deps.postsService.mapTypeToPost(
           {
             ...when,

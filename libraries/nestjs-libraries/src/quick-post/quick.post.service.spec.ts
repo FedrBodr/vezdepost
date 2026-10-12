@@ -60,6 +60,7 @@ const make = () => {
   const deps = {
     integrationService: {
       getIntegrationsList: vi.fn(async () => integrations),
+      findFreeDateTime: vi.fn(async () => [120, 400]),
     },
     postsService: {
       validatePosts: vi.fn(async (_org: string, posts: any[]) =>
@@ -75,9 +76,7 @@ const make = () => {
       ),
       mapTypeToPost: vi.fn(async (body: any) => body),
       createPost: vi.fn(async () => [{ postId: 'p1' }]),
-      findFreeDateTime: vi.fn(async (_org: string, id?: string) =>
-        id === 'vk-1' ? '2026-10-13T09:00:00.000Z' : '2026-10-13T12:00:00.000Z'
-      ),
+      findFreeDateTime: vi.fn(async () => '2026-10-13T02:00:00'),
     },
     now: () => new Date('2026-10-12T10:00:00.000Z'),
   };
@@ -132,7 +131,7 @@ describe('QuickPostService', () => {
     });
   });
 
-  it('uses a free slot per channel for queue', async () => {
+  it('uses one organization-wide free slot for every channel in queue', async () => {
     const { service, deps } = make();
 
     await service.publish(
@@ -146,25 +145,40 @@ describe('QuickPostService', () => {
       'WEB'
     );
 
-    expect(deps.postsService.findFreeDateTime).toHaveBeenCalledWith(
-      'org-1',
-      'vk-1'
-    );
-    expect(deps.postsService.findFreeDateTime).toHaveBeenCalledWith(
-      'org-1',
-      'tg-1'
-    );
-    const [first, second] = deps.postsService.mapTypeToPost.mock.calls.map(
+    expect(deps.postsService.findFreeDateTime).toHaveBeenCalledTimes(1);
+    expect(deps.postsService.findFreeDateTime).toHaveBeenCalledWith('org-1');
+    const dates = deps.postsService.mapTypeToPost.mock.calls.map(
       (call) => call[0]
     );
-    expect(first).toMatchObject({
-      type: 'schedule',
-      date: '2026-10-13T09:00:00.000Z',
-    });
-    expect(second).toMatchObject({
-      type: 'schedule',
-      date: '2026-10-13T12:00:00.000Z',
-    });
+    expect(dates).toHaveLength(2);
+    for (const body of dates) {
+      expect(body).toMatchObject({
+        type: 'schedule',
+        date: '2026-10-13T02:00:00',
+      });
+    }
+  });
+
+  it('refuses queue when no channel has posting times', async () => {
+    const { service, deps } = make();
+    deps.integrationService.findFreeDateTime.mockResolvedValueOnce([]);
+
+    await expect(
+      service.publish(
+        'org-1',
+        {
+          text: 'Hi',
+          media: [],
+          integrationIds: ['vk-1'],
+          schedule: { type: 'queue' },
+        },
+        'WEB'
+      )
+    ).rejects.toThrow(
+      new QuickPostError('У каналов нет расписания — задайте время публикации')
+    );
+    expect(deps.postsService.findFreeDateTime).not.toHaveBeenCalled();
+    expect(deps.postsService.createPost).not.toHaveBeenCalled();
   });
 
   it('schedules at the given date', async () => {

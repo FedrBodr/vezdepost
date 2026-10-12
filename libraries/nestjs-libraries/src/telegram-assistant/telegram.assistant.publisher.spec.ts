@@ -155,6 +155,22 @@ describe('TelegramAssistantPublisher', () => {
     expect(deps.postsService.createPost.mock.calls[0][2]).toBe('API');
   });
 
+  it('does not download files when every selected channel is unavailable', async () => {
+    const { publisher, deps } = make();
+
+    await expect(
+      publisher.publish('org-1', {
+        text: 'Hi',
+        files: [{ fileId: 'a', kind: 'image' }],
+        selected: ['off-1'],
+      })
+    ).rejects.toThrow(
+      new PublishError('Выбранные каналы недоступны — подключите их заново')
+    );
+    expect(deps.api.downloadFile).not.toHaveBeenCalled();
+    expect(deps.mediaService.saveFile).not.toHaveBeenCalled();
+  });
+
   it('ignores selected channels that are no longer active', async () => {
     const { publisher, deps } = make();
 

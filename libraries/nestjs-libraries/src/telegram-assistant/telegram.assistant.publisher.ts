@@ -45,6 +45,14 @@ export class TelegramAssistantPublisher {
     if (!draft.text.trim() && !draft.files.length) {
       throw new PublishError('Пустой пост');
     }
+    // Same order as before the extraction: refuse unavailable channels before
+    // any file reaches storage, so retries do not pile up orphan media.
+    const channels = await this.deps.quickPost.listChannels(organizationId);
+    if (!channels.some(({ id }) => draft.selected.includes(id))) {
+      throw new PublishError(
+        'Выбранные каналы недоступны — подключите их заново'
+      );
+    }
 
     const media = [];
     for (const file of draft.files) {
