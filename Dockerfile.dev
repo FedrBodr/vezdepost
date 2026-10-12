@@ -3,6 +3,8 @@ ARG NEXT_PUBLIC_VERSION
 ENV NEXT_PUBLIC_VERSION=$NEXT_PUBLIC_VERSION
 ARG NEXT_PUBLIC_GTM_ID
 ENV NEXT_PUBLIC_GTM_ID=$NEXT_PUBLIC_GTM_ID
+# procps: pm2 kills a process tree via `ps --ppid`; without it pm2 kills only
+# the pnpm wrapper and the orphaned node keeps the port (EADDRINUSE)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     make \
@@ -10,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     nginx \
     ffmpeg \
+    procps \
 && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system www \
