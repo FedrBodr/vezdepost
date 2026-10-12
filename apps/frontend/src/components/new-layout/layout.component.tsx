@@ -40,6 +40,7 @@ import NotificationComponent from '@gitroom/frontend/components/notifications/no
 import { OrganizationSelector } from '@gitroom/frontend/components/layout/organization.selector';
 import { StreakComponent } from '@gitroom/frontend/components/layout/streak.component';
 import { TelegramAssistantButton } from '@gitroom/frontend/components/layout/telegram.assistant.button';
+import { MobileVersionLink } from '@gitroom/frontend/components/mobile/mobile.version.link';
 import { PreConditionComponent } from '@gitroom/frontend/components/layout/pre-condition.component';
 import { AttachToFeedbackIcon } from '@gitroom/frontend/components/new-layout/sentry.feedback.component';
 import { FirstBillingComponent } from '@gitroom/frontend/components/billing/first.billing.component';
@@ -174,6 +175,7 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
                           <Title />
                         </div>
                         <div className="flex gap-[20px] mobile:gap-[14px] items-center text-textItemBlur">
+                          <MobileVersionLink />
                           <TelegramAssistantButton />
                           <StreakComponent />
                           <div className="w-[1px] h-[20px] bg-blockSeparator mobile:hidden" />
