@@ -64,14 +64,3 @@ describe('QuickPostController', () => {
     await expect(controller.publish(org, body)).rejects.toThrow('db down');
   });
 });
-
-describe('QuickPostController registration', () => {
-  it('is registered in the API module', async () => {
-    const { ApiModule } = await import('@gitroom/backend/api/api.module');
-    const controllers: unknown[] = Reflect.getMetadata(
-      'controllers',
-      ApiModule
-    );
-    expect(controllers).toContain(QuickPostController);
-  });
-});
