@@ -33,11 +33,12 @@ export type AssistantEvent =
 export type AssistantTransport = {
   name: AssistantTransportName;
   maxFileBytes: number;
+  /** Returns the messenger's message id (numeric for Telegram, string for MAX). */
   sendMessage(
     chatId: string,
     text: string,
     keyboard?: AssistantKeyboard
-  ): Promise<string>;
+  ): Promise<string | number>;
   editMessage(
     chatId: string,
     messageId: string,

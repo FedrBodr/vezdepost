@@ -22,7 +22,7 @@ export type Draft = {
   text: string;
   files: DraftFile[];
   selected: string[];
-  panelMessageId?: number;
+  panelMessageId?: number | string;
 };
 export type DraftChannel = {
   id: string;

@@ -37,7 +37,12 @@ export class TelegramAssistantPublisher {
     return this.deps.quickPost.listChannels(organizationId);
   }
 
-  async publish(organizationId: string, draft: Draft): Promise<PublishResult> {
+  async publish(
+    organizationId: string,
+    draft: Draft,
+    download: (fileId: string) => Promise<Buffer> = (fileId) =>
+      this.deps.api.downloadFile(fileId)
+  ): Promise<PublishResult> {
     // Validate before downloading so an empty draft never touches storage.
     if (!draft.selected.length) {
       throw new PublishError('Выберите хотя бы один канал');
@@ -57,7 +62,7 @@ export class TelegramAssistantPublisher {
     const media = [];
     for (const file of draft.files) {
       const stored = await this.deps.storeFile(
-        await this.deps.api.downloadFile(file.fileId),
+        await download(file.fileId),
         file.kind
       );
       const saved = await this.deps.mediaService.saveFile(
