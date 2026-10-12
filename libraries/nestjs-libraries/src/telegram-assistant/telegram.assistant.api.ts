@@ -38,7 +38,8 @@ export type TelegramAssistantUpdate = {
 
 type Downloader = (url: string, maxBytes: number) => Promise<Buffer>;
 
-const downloadOverHttps: Downloader = (url, maxBytes) =>
+/** Plain HTTPS download with a byte cap; shared with the MAX transport. */
+export const downloadOverHttps: Downloader = (url, maxBytes) =>
   new Promise((resolve, reject) => {
     const request = httpsGet(url, { timeout: 120_000 }, (response) => {
       if (response.statusCode !== 200) {
