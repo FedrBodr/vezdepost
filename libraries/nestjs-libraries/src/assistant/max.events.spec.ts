@@ -40,7 +40,7 @@ describe('maxUpdateToEvent', () => {
       chatId: '500',
       userId: '42',
       text: '',
-      file: { fileId: 'https://cdn/x.jpg', kind: 'image' },
+      files: [{ fileId: 'https://cdn/x.jpg', kind: 'image' }],
     });
   });
 
@@ -54,6 +54,32 @@ describe('maxUpdateToEvent', () => {
         }) as any
       )
     ).toMatchObject({ kind: 'message', unsupported: true });
+  });
+
+  it('keeps every photo of an album', () => {
+    const event = maxUpdateToEvent(
+      created({
+        attachments: [
+          { type: 'image', payload: { url: 'https://cdn/1.jpg', token: 't' } },
+          { type: 'image', payload: { url: 'https://cdn/2.jpg', token: 't' } },
+        ],
+      }) as any
+    ) as any;
+    expect(event.files).toHaveLength(2);
+    expect(event.unsupported).toBeUndefined();
+  });
+
+  it('refuses the whole message when a video comes with a photo', () => {
+    const event = maxUpdateToEvent(
+      created({
+        attachments: [
+          { type: 'image', payload: { url: 'https://cdn/1.jpg', token: 't' } },
+          { type: 'video', payload: { url: 'https://cdn/v', token: 't' } },
+        ],
+      }) as any
+    ) as any;
+    expect(event.unsupported).toBe(true);
+    expect(event.files).toBeUndefined();
   });
 
   it('maps a button press', () => {

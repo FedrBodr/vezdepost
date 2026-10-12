@@ -38,9 +38,10 @@ fi
 
 # The token goes to curl through a config file on stdin, not argv.
 response=$(
-  printf 'url = "https://platform-api.max.ru/me"\nheader = "Authorization: %s"\n' "$token" |
+  printf 'url = "https://platform-api2.max.ru/me"\nheader = "Authorization: %s"\n' "$token" |
     curl -sS --max-time 15 --config - 2>/dev/null || true
 )
+username=''
 if [[ "$response" == *'"user_id"'* ]]; then
   username=$(printf '%s' "$response" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')
   verified="MAX verified the token for @${username:-unknown}"
@@ -58,13 +59,24 @@ chmod 600 "$ENV_FILE"
 temp_file=$(mktemp "$REPO_DIR/.env.max-assistant.XXXXXX")
 trap 'rm -f "$temp_file"' EXIT
 
+# The bot username comes from /me: MAX assigns it, so it is never guessed.
+# Without a verified name the frontend keeps the MAX button hidden.
 written=0
+name_written=0
 while IFS= read -r line || [[ -n "$line" ]]; do
   case "$line" in
     MAX_ASSISTANT_TOKEN=*)
       if [[ "$written" -eq 0 ]]; then
         printf 'MAX_ASSISTANT_TOKEN=%s\n' "$token"
         written=1
+      fi
+      ;;
+    MAX_ASSISTANT_BOT_NAME=*)
+      if [[ -n "$username" && "$name_written" -eq 0 ]]; then
+        printf 'MAX_ASSISTANT_BOT_NAME=%s\n' "$username"
+        name_written=1
+      elif [[ -z "$username" ]]; then
+        printf '%s\n' "$line"
       fi
       ;;
     *)
@@ -76,6 +88,9 @@ done < "$ENV_FILE" > "$temp_file"
 if [[ "$written" -eq 0 ]]; then
   printf 'MAX_ASSISTANT_TOKEN=%s\n' "$token" >> "$temp_file"
 fi
+if [[ -n "$username" && "$name_written" -eq 0 ]]; then
+  printf 'MAX_ASSISTANT_BOT_NAME=%s\n' "$username" >> "$temp_file"
+fi
 
 chmod 600 "$temp_file"
 mv "$temp_file" "$ENV_FILE"
@@ -84,3 +99,8 @@ unset token MAX_ASSISTANT_TOKEN response
 
 echo "$verified"
 echo 'MAX assistant token stored in .env'
+if [[ -n "$username" ]]; then
+  echo "MAX_ASSISTANT_BOT_NAME=$username stored in .env"
+else
+  echo 'Bot username not verified: set MAX_ASSISTANT_BOT_NAME in .env by hand before enabling the button' >&2
+fi

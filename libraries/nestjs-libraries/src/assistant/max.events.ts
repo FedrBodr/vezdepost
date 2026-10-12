@@ -31,24 +31,27 @@ const urlOf = (payload: unknown) =>
     ? (payload as { url?: unknown }).url
     : undefined;
 
-const fileOf = (
+const filesOf = (
   attachments: NonNullable<NonNullable<MaxUpdate['message']>['body']>['attachments']
-): { file?: AssistantFile; unsupported?: boolean } => {
+): { files?: AssistantFile[]; unsupported?: boolean } => {
+  const files: AssistantFile[] = [];
   for (const attachment of attachments || []) {
     const url = urlOf(attachment.payload);
     if (attachment.type === 'image' && typeof url === 'string' && url) {
-      return { file: { fileId: url, kind: 'image' } };
+      files.push({ fileId: url, kind: 'image' });
+      continue;
     }
     if (
       attachment.type === 'video' ||
       attachment.type === 'file' ||
       attachment.type === 'audio'
     ) {
-      // Video download URLs are not verified on a live bot yet (spec stage 5).
+      // Video download URLs are not verified on a live bot yet (spec stage 5):
+      // refuse the whole message rather than silently keeping only the photos.
       return { unsupported: true };
     }
   }
-  return {};
+  return files.length ? { files } : {};
 };
 
 /** Dialog messages, button presses and /start deep links become assistant events. */
@@ -85,13 +88,13 @@ export const maxUpdateToEvent = (update: MaxUpdate): AssistantEvent | null => {
   ) {
     return null;
   }
-  const { file, unsupported } = fileOf(message.body?.attachments);
+  const { files, unsupported } = filesOf(message.body?.attachments);
   return {
     kind: 'message',
     chatId: String(message.recipient.chat_id),
     userId: String(message.sender.user_id),
     text: (message.body?.text ?? '').trim(),
-    ...(file ? { file } : {}),
+    ...(files ? { files } : {}),
     ...(unsupported ? { unsupported: true } : {}),
   };
 };

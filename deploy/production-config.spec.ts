@@ -25,7 +25,9 @@ describe('production configuration', () => {
     expect(override).toContain(
       "MAX_ASSISTANT_TOKEN: '${MAX_ASSISTANT_TOKEN:-}'"
     );
-    expect(override).toContain("MAX_ASSISTANT_BOT_NAME: 'vezdepost_assistant_bot'");
+    expect(override).toContain(
+      "MAX_ASSISTANT_BOT_NAME: '${MAX_ASSISTANT_BOT_NAME:-}'"
+    );
     expect(example).toContain('MAX_ASSISTANT_TOKEN=""');
     expect(example).toContain('MOBILE_ROUTE_ENABLED="false"');
     expect(example).toContain('NEXT_PUBLIC_POSTHOG_KEY=""');

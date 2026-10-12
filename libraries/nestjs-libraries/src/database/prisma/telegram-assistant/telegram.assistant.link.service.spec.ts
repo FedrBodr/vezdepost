@@ -63,6 +63,25 @@ describe('TelegramAssistantLinkService', () => {
     );
   });
 
+  it('refuses to build a MAX link when no MAX bot name is configured', async () => {
+    const previous = process.env.MAX_ASSISTANT_BOT_NAME;
+    delete process.env.MAX_ASSISTANT_BOT_NAME;
+    try {
+      const service = new TelegramAssistantLinkService(
+        makeRepository() as any,
+        new MemoryKeyValueStore(),
+        'vezde_post_bot'
+      );
+      await expect(service.createLinkUrl('u', 'o', 'max')).rejects.toThrow(
+        'MAX_ASSISTANT_BOT_NAME is not set'
+      );
+    } finally {
+      if (previous !== undefined) {
+        process.env.MAX_ASSISTANT_BOT_NAME = previous;
+      }
+    }
+  });
+
   it('links the Telegram user once per code', async () => {
     const { service, repository } = make();
     const code = new URL(

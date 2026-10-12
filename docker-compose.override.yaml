@@ -56,7 +56,8 @@ services:
       # Separate MAX bot for the assistant: the channel provider already
       # consumes getUpdates on MAX_TOKEN
       MAX_ASSISTANT_TOKEN: '${MAX_ASSISTANT_TOKEN:-}'
-      MAX_ASSISTANT_BOT_NAME: 'vezdepost_assistant_bot'
+      # Written to .env by 37-configure-max-assistant.sh from the bot's /me
+      MAX_ASSISTANT_BOT_NAME: '${MAX_ASSISTANT_BOT_NAME:-}'
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
       VK_ID: '${VK_ID:?set in .env}'

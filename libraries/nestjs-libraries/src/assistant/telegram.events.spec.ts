@@ -38,7 +38,7 @@ describe('telegramUpdateToEvent', () => {
       chatId: '7',
       userId: '7',
       text: 'c',
-      file: { fileId: 'l', kind: 'image', size: 9 },
+      files: [{ fileId: 'l', kind: 'image', size: 9 }],
     });
   });
 

@@ -83,7 +83,7 @@ describe('AssistantRouter', () => {
 
   it('builds a draft and renders the panel', async () => {
     const { handle, transport } = make();
-    await handle(msg('Hello', { file: { fileId: 'f', kind: 'image', size: 10 } }));
+    await handle(msg('Hello', { files: [{ fileId: 'f', kind: 'image', size: 10 }] }));
     const [, text, keyboard] = transport.sendMessage.mock.calls.at(-1);
     expect(text).toContain('Файлы: 1');
     expect(keyboard.inline_keyboard[0][0].callback_data).toBe('t:vk-1');
@@ -91,8 +91,34 @@ describe('AssistantRouter', () => {
 
   it('refuses a file above the transport limit', async () => {
     const { handle, transport } = make();
-    await handle(msg('', { file: { fileId: 'f', kind: 'image', size: 5000 } }));
+    await handle(msg('', { files: [{ fileId: 'f', kind: 'image', size: 5000 }] }));
     expect(transport.sendMessage.mock.calls[0][1]).toContain('больше');
+  });
+
+  it('adds every file of a multi-file message', async () => {
+    const { handle, transport } = make();
+    await handle(
+      msg('', {
+        files: [
+          { fileId: 'a', kind: 'image', size: 10 },
+          { fileId: 'b', kind: 'image', size: 10 },
+        ],
+      })
+    );
+    expect(transport.sendMessage.mock.calls.at(-1)[1]).toContain('Файлы: 2');
+  });
+
+  it('tells MAX users that only photos are accepted', async () => {
+    const { handle, transport } = make();
+    await handle(msg('/help'));
+    expect(lastText(transport)).toContain('текст или фото');
+    expect(lastText(transport)).not.toContain('видео');
+    await handle(msg('', { unsupported: true }));
+    // The refusal is sent first; the draft panel follows it, as in Telegram.
+    const texts = transport.sendMessage.mock.calls.map((call) => call[1]);
+    expect(texts).toContain(
+      'Видео из MAX пока не принимается — отправьте фото или опубликуйте через сайт.'
+    );
   });
 
   it('publishes with the transport downloader', async () => {

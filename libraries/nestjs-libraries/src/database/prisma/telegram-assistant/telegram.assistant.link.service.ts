@@ -43,9 +43,9 @@ export class TelegramAssistantLinkService {
     this._telegramBot = botName(
       telegramBot ?? process.env.TELEGRAM_ASSISTANT_BOT_NAME ?? 'vezde_post_bot'
     );
-    this._maxBot = botName(
-      maxBot ?? process.env.MAX_ASSISTANT_BOT_NAME ?? 'vezdepost_assistant_bot'
-    );
+    // No default: MAX assigns bot usernames, so the real one comes from /me
+    // (docs/server-scripts/37-configure-max-assistant.sh writes it to .env).
+    this._maxBot = botName(maxBot ?? process.env.MAX_ASSISTANT_BOT_NAME ?? '');
   }
 
   async createLinkUrl(
@@ -60,9 +60,13 @@ export class TelegramAssistantLinkService {
       'PX',
       LINK_CODE_TTL_MS
     );
-    return transport === 'max'
-      ? `https://max.ru/${this._maxBot}?start=${code}`
-      : `https://t.me/${this._telegramBot}?start=${code}`;
+    if (transport === 'max') {
+      if (!this._maxBot) {
+        throw new Error('MAX_ASSISTANT_BOT_NAME is not set');
+      }
+      return `https://max.ru/${this._maxBot}?start=${code}`;
+    }
+    return `https://t.me/${this._telegramBot}?start=${code}`;
   }
 
   async consumeLinkCode(

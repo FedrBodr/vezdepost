@@ -72,7 +72,7 @@ export const telegramUpdateToEvent = (
     chatId: String(message.chat.id),
     userId: String(message.from.id),
     text: (message.text ?? message.caption ?? '').trim(),
-    ...(file ? { file } : {}),
+    ...(file ? { files: [file] } : {}),
     ...(unsupported ? { unsupported: true } : {}),
   };
 };

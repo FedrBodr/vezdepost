@@ -17,7 +17,8 @@ export type AssistantEvent =
       chatId: string;
       userId: string;
       text: string;
-      file?: AssistantFile;
+      /** One message may carry several files (MAX albums); Telegram sends one. */
+      files?: AssistantFile[];
       unsupported?: boolean;
     }
   | {

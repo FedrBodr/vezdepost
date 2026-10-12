@@ -88,16 +88,23 @@ export class AssistantRouter {
 
   private get draftErrors() {
     const mb = Math.round(this.deps.transport.maxFileBytes / 1024 / 1024);
+    const telegram = this.name === 'telegram';
     return {
-      unsupported:
-        'Этот тип файла не поддерживается — отправьте фото или видео.',
+      unsupported: telegram
+        ? 'Этот тип файла не поддерживается — отправьте фото или видео.'
+        : 'Видео из MAX пока не принимается — отправьте фото или опубликуйте через сайт.',
       too_large: `Файл больше ${mb} МБ — ${
-        this.name === 'telegram'
+        telegram
           ? 'Telegram не даёт боту скачать такой'
           : 'бот не может скачать такой'
       }. Сожмите видео или опубликуйте через сайт.`,
       too_many: 'В одном посте до 10 файлов.',
     };
+  }
+
+  /** What the user may send: Telegram takes video, MAX photos only for now. */
+  private get mediaWords() {
+    return this.name === 'telegram' ? 'текст, фото или видео' : 'текст или фото';
   }
 
   private track(work: Promise<void>) {
@@ -149,7 +156,7 @@ export class AssistantRouter {
     const mb = Math.round(this.deps.transport.maxFileBytes / 1024 / 1024);
     return [
       'Как постить:',
-      `1. Отправьте сюда текст, фото или видео (до ${mb} МБ, можно альбомом).`,
+      `1. Отправьте сюда ${this.mediaWords} (до ${mb} МБ, можно альбомом).`,
       '2. Отметьте каналы в черновике.',
       '3. Нажмите «🚀 Опубликовать».',
       '',
@@ -199,7 +206,7 @@ export class AssistantRouter {
         link
           ? `✅ Готово, ${messengerTitle(
               this.name
-            )} привязан к Вездепосту. Отправьте текст, фото или видео — я предложу каналы.`
+            )} привязан к Вездепосту. Отправьте ${this.mediaWords} — я предложу каналы.`
           : `Ссылка устарела. Откройте ${this.deps.appUrl} и нажмите «${this.deps.linkButtonLabel}» ещё раз.`
       );
       return;
@@ -216,15 +223,24 @@ export class AssistantRouter {
     }
 
     const key = this.deps.draftKeyOf(userId);
-    const current = await this.deps.drafts.get(key);
-    const { draft, error } = addToDraft(
-      current,
-      { text, file: event.file, unsupported: event.unsupported },
-      transport.maxFileBytes
-    );
+    let draft = await this.deps.drafts.get(key);
+    // Text goes in with the first file; every further file of the same
+    // message (MAX albums) is added on its own so the file limit applies.
+    const inputs: Array<Parameters<typeof addToDraft>[1]> = event.files?.length
+      ? event.files.map((file, index) => ({
+          text: index === 0 ? text : '',
+          file,
+        }))
+      : [{ text, unsupported: event.unsupported }];
+    let firstError: keyof typeof this.draftErrors | undefined;
+    for (const input of inputs) {
+      const result = addToDraft(draft, input, transport.maxFileBytes);
+      draft = result.draft;
+      firstError = firstError ?? result.error;
+    }
     await this.deps.drafts.save(key, draft);
-    if (error) {
-      await transport.sendMessage(chatId, this.draftErrors[error]);
+    if (firstError) {
+      await transport.sendMessage(chatId, this.draftErrors[firstError]);
     }
     this.schedulePanel(userId, chatId, link.organizationId);
   }
