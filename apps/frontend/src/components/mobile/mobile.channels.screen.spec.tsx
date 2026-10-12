@@ -3,7 +3,11 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const list = vi.hoisted(() => ({ data: [] as any[], mutate: vi.fn() }));
+const list = vi.hoisted(() => ({
+  data: [] as any[],
+  isLoading: false,
+  mutate: vi.fn(),
+}));
 const addProvider = vi.hoisted(() => vi.fn());
 
 vi.mock('@gitroom/react/translation/get.transation.service.client', () => ({
@@ -15,8 +19,8 @@ vi.mock(
     useIntegrationList: () => list,
   })
 );
-vi.mock('@gitroom/frontend/components/launches/add.provider.component', () => ({
-  useAddProvider: () => addProvider,
+vi.mock('@gitroom/frontend/components/mobile/use.mobile.add.provider', () => ({
+  useMobileAddProvider: () => addProvider,
 }));
 vi.mock('@gitroom/frontend/components/layout/telegram.assistant.button', () => ({
   TelegramAssistantButton: () => (
@@ -40,6 +44,7 @@ const channel = (overrides: Record<string, unknown>) => ({
 beforeEach(() => {
   cleanup();
   list.data = [];
+  list.isLoading = false;
   addProvider.mockClear();
 });
 
@@ -63,6 +68,13 @@ describe('MobileChannelsScreen', () => {
     expect(screen.getByText('Нужно переподключить')).toBeTruthy();
     expect(screen.getByText('Отключён')).toBeTruthy();
     expect(screen.queryByText('Пока нет каналов')).toBeNull();
+  });
+
+  it('shows neither the list nor the empty state while loading', () => {
+    list.isLoading = true;
+    render(<MobileChannelsScreen />);
+    expect(screen.queryByText('Пока нет каналов')).toBeNull();
+    expect(screen.getByText('Загружаем…')).toBeTruthy();
   });
 
   it('offers the Telegram assistant link', () => {

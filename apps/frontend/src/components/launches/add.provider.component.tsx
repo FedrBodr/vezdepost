@@ -603,8 +603,11 @@ export const AddProviderComponent: FC<{
   update?: () => void;
   onboarding?: boolean;
   isMobile?: boolean;
+  /** Phone browser layout only (list instead of grid); no WebView behaviour. */
+  compact?: boolean;
 }> = (props) => {
-  const { update, social, article, onboarding, isMobile } = props;
+  const { update, social, article, onboarding, isMobile, compact } = props;
+  const listLayout = !!isMobile || !!compact;
   const { isGeneral, extensionId } = useVariables();
   const { data: storiesAvailability } = useTelegramStoriesAvailability();
   const toaster = useToaster();
@@ -955,10 +958,10 @@ export const AddProviderComponent: FC<{
       <div className="flex flex-col">
         <div
           className={clsx(
-            isMobile && 'gap-[20px] flex flex-col',
-            !isMobile &&
+            listLayout && 'gap-[20px] flex flex-col',
+            !listLayout &&
               'grid grid-cols-5 gap-[10px] justify-items-center justify-center mobile:!grid-cols-3',
-            isMobile ? {} : onboarding ? 'grid-cols-9' : 'grid-cols-5'
+            listLayout ? {} : onboarding ? 'grid-cols-9' : 'grid-cols-5'
           )}
         >
           {social
@@ -982,7 +985,7 @@ export const AddProviderComponent: FC<{
                     : undefined
                 }
                 canConnect={item.canConnect}
-                isMobile={!!isMobile}
+                isMobile={listLayout}
                 requestLabel={t('request_platform', 'Request')}
                 requestedLabel={t('platform_requested', 'Requested')}
                 onConnect={

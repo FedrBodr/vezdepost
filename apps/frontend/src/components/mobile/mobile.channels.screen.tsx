@@ -4,7 +4,7 @@ import React, { FC, useCallback } from 'react';
 import clsx from 'clsx';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
-import { useAddProvider } from '@gitroom/frontend/components/launches/add.provider.component';
+import { useMobileAddProvider } from '@gitroom/frontend/components/mobile/use.mobile.add.provider';
 import { TelegramAssistantButton } from '@gitroom/frontend/components/layout/telegram.assistant.button';
 
 type Channel = {
@@ -26,11 +26,11 @@ const statusOf = (channel: Channel) =>
 
 export const MobileChannelsScreen: FC = () => {
   const t = useT();
-  const { data, mutate } = useIntegrationList();
+  const { data, mutate, isLoading } = useIntegrationList();
   const refresh = useCallback(() => {
     mutate();
   }, [mutate]);
-  const addChannel = useAddProvider(refresh);
+  const addChannel = useMobileAddProvider(refresh);
   const channels: Channel[] = data || [];
 
   const statusLabel = {
@@ -54,7 +54,11 @@ export const MobileChannelsScreen: FC = () => {
         {t('mobile_channels_title', 'Каналы')}
       </h1>
 
-      {channels.length === 0 ? (
+      {isLoading ? (
+        <p className="text-textItemBlur text-[15px]">
+          {t('mobile_loading', 'Загружаем…')}
+        </p>
+      ) : channels.length === 0 ? (
         <p className="text-textItemBlur text-[15px]">
           {t('mobile_channels_empty', 'Пока нет каналов')}
         </p>

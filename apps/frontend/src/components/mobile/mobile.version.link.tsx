@@ -5,9 +5,12 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { setCookie } from '@gitroom/frontend/components/layout/layout.context';
 import { DESKTOP_COOKIE } from '@gitroom/frontend/components/mobile/mobile.detect';
 
-/** Desktop top bar link into the phone shell; clears the opt-out cookie. */
-export const MobileVersionLink: FC = () => {
+/** Desktop top bar link into the phone shell; hidden until the route is enabled. */
+export const MobileVersionLink: FC<{ enabled?: boolean }> = ({ enabled }) => {
   const t = useT();
+  if (!enabled) {
+    return null;
+  }
   return (
     <a
       href="/m"

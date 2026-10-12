@@ -5,5 +5,11 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  return <LayoutComponent>{children}</LayoutComponent>;
+  return (
+    <LayoutComponent
+      mobileRouteEnabled={process.env.MOBILE_ROUTE_ENABLED === 'true'}
+    >
+      {children}
+    </LayoutComponent>
+  );
 }

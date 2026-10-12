@@ -19,6 +19,7 @@ import { MobilePostScreen } from './mobile.post.screen';
 beforeEach(() => {
   cleanup();
   list.data = [];
+  list.isLoading = false;
 });
 
 describe('MobilePostScreen', () => {
@@ -26,6 +27,14 @@ describe('MobilePostScreen', () => {
     render(<MobilePostScreen />);
     const link = screen.getByRole('link', { name: 'Подключить первый канал' });
     expect(link.getAttribute('href')).toBe('/m/channels');
+  });
+
+  it('does not show the first-run call to action while channels load', () => {
+    list.isLoading = true;
+    render(<MobilePostScreen />);
+    expect(
+      screen.queryByRole('link', { name: 'Подключить первый канал' })
+    ).toBeNull();
   });
 
   it('shows the editor placeholder once a channel exists', () => {

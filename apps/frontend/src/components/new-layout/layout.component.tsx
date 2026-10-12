@@ -54,7 +54,13 @@ const jakartaSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
 });
 
-export const LayoutComponent = ({ children }: { children: ReactNode }) => {
+export const LayoutComponent = ({
+  children,
+  mobileRouteEnabled,
+}: {
+  children: ReactNode;
+  mobileRouteEnabled?: boolean;
+}) => {
   const fetch = useFetch();
 
   const { backendUrl, billingEnabled, isGeneral } = useVariables();
@@ -175,7 +181,7 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
                           <Title />
                         </div>
                         <div className="flex gap-[20px] mobile:gap-[14px] items-center text-textItemBlur">
-                          <MobileVersionLink />
+                          <MobileVersionLink enabled={mobileRouteEnabled} />
                           <TelegramAssistantButton />
                           <StreakComponent />
                           <div className="w-[1px] h-[20px] bg-blockSeparator mobile:hidden" />

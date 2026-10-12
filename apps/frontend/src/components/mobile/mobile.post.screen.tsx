@@ -8,8 +8,12 @@ import { useIntegrationList } from '@gitroom/frontend/components/launches/helper
 /** Stage 3 replaces the placeholder with the quick post editor. */
 export const MobilePostScreen: FC = () => {
   const t = useT();
-  const { data } = useIntegrationList();
+  const { data, isLoading } = useIntegrationList();
   const channels = data || [];
+
+  if (isLoading) {
+    return null;
+  }
 
   if (channels.length === 0) {
     return (
