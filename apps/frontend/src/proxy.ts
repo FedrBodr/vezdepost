@@ -255,5 +255,7 @@ async function routeRequest(request: NextRequest) {
 
 // See "Matching Paths" below to learn more
 export const config = {
-  matcher: '/((?!api/|_next/|_static/|_vercel|[\\w-]+\\.\\w+).*)',
+  // m/share receives multipart uploads; the proxy's body clone is capped at
+  // 10 MB, so that route handler checks auth itself.
+  matcher: '/((?!api/|_next/|_static/|_vercel|m/share|[\\w-]+\\.\\w+).*)',
 };

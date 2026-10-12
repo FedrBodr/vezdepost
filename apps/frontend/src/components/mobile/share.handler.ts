@@ -24,16 +24,23 @@ export const handleShare = async (
     );
 
   const media: { id: string; path: string }[] = [];
+  let failed = 0;
   for (const file of files) {
-    const uploaded = await deps.upload(file);
+    const uploaded = await deps.upload(file).catch(() => null);
     if (uploaded) {
       media.push(uploaded);
+    } else {
+      failed += 1;
     }
   }
 
   const joined = parts.join('\n');
-  if (!joined && media.length === 0) {
+  if (!joined && files.length === 0) {
     return '/m';
   }
-  return `/m?shared=${encodeSharePayload({ text: joined, media })}`;
+  return `/m?shared=${encodeSharePayload({
+    text: joined,
+    media,
+    ...(failed ? { failed } : {}),
+  })}`;
 };

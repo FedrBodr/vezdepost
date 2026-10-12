@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { shouldCompress, sizeProblem, targetSize } from './image.compression';
+import {
+  shouldCompress,
+  sizeProblem,
+  targetSize,
+  typeProblem,
+} from './image.compression';
 
 const MB = 1024 * 1024;
 
@@ -40,5 +45,21 @@ describe('sizeProblem', () => {
       'Можно только фото или видео'
     );
     expect(sizeProblem({ type: 'video/mp4', size: 20 * MB })).toBeNull();
+  });
+});
+
+describe('typeProblem', () => {
+  it('explains unsupported phone formats before uploading', () => {
+    expect(typeProblem({ type: 'video/quicktime', name: 'a.mov' })).toBe(
+      'Видео: только MP4'
+    );
+    expect(typeProblem({ type: 'image/heic', name: 'a.heic' })).toBe(
+      'Формат HEIC не поддерживается'
+    );
+    expect(typeProblem({ type: '', name: 'IMG_1.HEIC' })).toBe(
+      'Формат HEIC не поддерживается'
+    );
+    expect(typeProblem({ type: 'video/mp4', name: 'a.mp4' })).toBeNull();
+    expect(typeProblem({ type: 'image/jpeg', name: 'a.jpg' })).toBeNull();
   });
 });

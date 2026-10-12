@@ -164,6 +164,48 @@ describe('MobilePostScreen', () => {
     expect(goal).toHaveBeenCalledWith('mobile_quick_post_sent');
   });
 
+  it('keeps only the failed channels selected for a retry', async () => {
+    fetchMock.mockResolvedValueOnce(
+      okResponse({
+        published: [{ id: 'vk-1', name: 'Мой VK' }],
+        failed: [{ id: 'tg-1', name: 'Канал', error: 'слишком длинный текст' }],
+      })
+    );
+    render(<MobilePostScreen />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Привет' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Мой VK' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Канал' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Опубликовать' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('⚠️ Канал: слишком длинный текст')).toBeTruthy()
+    );
+    expect(
+      screen.getByRole('button', { name: 'Мой VK' }).getAttribute('aria-pressed')
+    ).toBe('false');
+    expect(
+      screen.getByRole('button', { name: 'Канал' }).getAttribute('aria-pressed')
+    ).toBe('true');
+  });
+
+  it('explains when shared files could not be received or uploaded', () => {
+    search.params = new URLSearchParams({ share_error: '1' });
+    render(<MobilePostScreen />);
+    expect(
+      screen.getByText(
+        'Не удалось принять файлы — попробуйте добавить их кнопкой «+»'
+      )
+    ).toBeTruthy();
+    cleanup();
+    search.params = new URLSearchParams({
+      shared: encodeSharePayload({ text: 'x', media: [], failed: 2 }),
+    });
+    render(<MobilePostScreen />);
+    expect(screen.getByText('Не загрузились файлы: 2')).toBeTruthy();
+  });
+
   it('shows the server message on 400', async () => {
     fetchMock.mockResolvedValueOnce(
       okResponse({ message: 'Дата публикации уже прошла' }, 400)

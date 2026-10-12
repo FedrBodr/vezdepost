@@ -87,6 +87,33 @@ describe('MobileQueueScreen', () => {
     expect(queue.mutate).toHaveBeenCalledTimes(1);
   });
 
+  it('shows a multi-channel group as one row and names every channel before deleting', async () => {
+    queue.data = {
+      posts: [
+        item,
+        {
+          ...item,
+          id: 'p2',
+          integration: {
+            ...item.integration,
+            id: 'tg-1',
+            name: 'Канал',
+            picture: '/tg.jpg',
+          },
+        },
+      ],
+    };
+    confirm.mockResolvedValueOnce(true);
+    fetchMock.mockResolvedValueOnce({ ok: true } as Response);
+    render(<MobileQueueScreen />);
+    expect(screen.getAllByRole('button', { name: 'Удалить' })).toHaveLength(1);
+    expect(screen.getByText('Мой VK, Канал')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(confirm.mock.calls[0][0]).toContain('Мой VK, Канал');
+    expect(fetchMock).toHaveBeenCalledWith('/posts/g1', { method: 'DELETE' });
+  });
+
   it('does nothing when deletion is declined', async () => {
     confirm.mockResolvedValueOnce(false);
     render(<MobileQueueScreen />);

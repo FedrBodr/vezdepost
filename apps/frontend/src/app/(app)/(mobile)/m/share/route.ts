@@ -20,9 +20,27 @@ const upload = async (file: File) => {
     : null;
 };
 
-/** Android Web Share Target: files and text arrive here as multipart/form-data. */
+/**
+ * Android Web Share Target: files and text arrive here as multipart/form-data.
+ * The path is excluded from the proxy matcher (its body clone is capped at
+ * 10 MB), so the auth check happens here.
+ */
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
+  if (!request.cookies.get('auth') && !request.headers.get('auth')) {
+    return NextResponse.redirect(
+      new URL('/auth?returnUrl=%2Fm', request.nextUrl.href),
+      303
+    );
+  }
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return NextResponse.redirect(
+      new URL('/m?share_error=1', request.nextUrl.href),
+      303
+    );
+  }
   const target = await handleShare(form, { upload });
   return NextResponse.redirect(new URL(target, request.nextUrl.href), 303);
 }

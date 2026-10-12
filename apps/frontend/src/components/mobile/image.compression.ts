@@ -32,6 +32,31 @@ export const targetSize = (width: number, height: number) => {
   };
 };
 
+/**
+ * Formats the backend refuses that phones commonly produce. Checked before
+ * any upload so the user gets a reason instead of a generic failure.
+ */
+export const typeProblem = (file: {
+  type: string;
+  name: string;
+}): string | null => {
+  const name = file.name.toLowerCase();
+  if (
+    file.type === 'image/heic' ||
+    file.type === 'image/heif' ||
+    /\.(heic|heif)$/.test(name)
+  ) {
+    return 'Формат HEIC не поддерживается';
+  }
+  if (
+    (file.type.startsWith('video/') && file.type !== 'video/mp4') ||
+    /\.(mov|3gp|webm|avi|mkv)$/.test(name)
+  ) {
+    return 'Видео: только MP4';
+  }
+  return null;
+};
+
 /** Checked after compression, against the backend limits. */
 export const sizeProblem = (file: FileLike): string | null => {
   if (file.type.startsWith('image/')) {

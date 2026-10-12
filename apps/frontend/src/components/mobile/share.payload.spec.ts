@@ -12,6 +12,12 @@ describe('share payload', () => {
     expect(decodeSharePayload(encoded)).toEqual(payload);
   });
 
+  it('carries the number of files that failed to upload', () => {
+    expect(
+      decodeSharePayload(encodeSharePayload({ text: '', media: [], failed: 3 }))
+    ).toEqual({ text: '', media: [], failed: 3 });
+  });
+
   it('returns null for missing or broken values', () => {
     expect(decodeSharePayload(null)).toBeNull();
     expect(decodeSharePayload('***')).toBeNull();

@@ -1,6 +1,8 @@
 export type SharePayload = {
   text: string;
   media: { id: string; path: string }[];
+  /** Files the Share Target could not upload (shown to the user). */
+  failed?: number;
 };
 
 const toBase64Url = (value: string) =>
@@ -29,6 +31,10 @@ export const decodeSharePayload = (
     if (typeof parsed?.text !== 'string' || !Array.isArray(parsed?.media)) {
       return null;
     }
+    const failed =
+      typeof parsed.failed === 'number' && parsed.failed > 0
+        ? Math.floor(parsed.failed)
+        : undefined;
     return {
       text: parsed.text,
       media: parsed.media
@@ -37,6 +43,7 @@ export const decodeSharePayload = (
             m && typeof m.id === 'string' && typeof m.path === 'string'
         )
         .map((m: any) => ({ id: m.id, path: m.path })),
+      ...(failed ? { failed } : {}),
     };
   } catch {
     return null;

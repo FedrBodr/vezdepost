@@ -85,15 +85,17 @@ export const MobilePostScreen: FC = () => {
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
   const [result, setResult] = useState<Result | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const initialised = useRef(false);
 
-  // One-time init: shared payload and remembered channels.
+  // One-time init: shared payload, share errors and remembered channels.
   useEffect(() => {
     if (initialised.current) {
       return;
     }
     initialised.current = true;
     const shared = decodeSharePayload(searchParams.get('shared'));
+    const shareError = searchParams.get('share_error');
     const stored = readStoredChannels();
     setDraft((current) => ({
       ...current,
@@ -101,12 +103,27 @@ export const MobilePostScreen: FC = () => {
       media: shared?.media || current.media,
       selected: stored,
     }));
-    if (shared && typeof window !== 'undefined') {
+    if (shareError) {
+      setShareNotice(
+        t(
+          'mobile_share_error',
+          'Не удалось принять файлы — попробуйте добавить их кнопкой «+»'
+        )
+      );
+    } else if (shared?.failed) {
+      setShareNotice(
+        `${t('mobile_share_failed_files', 'Не загрузились файлы: ')}${
+          shared.failed
+        }`
+      );
+    }
+    if ((shared || shareError) && typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.delete('shared');
+      url.searchParams.delete('share_error');
       window.history.replaceState(null, '', url.toString());
     }
-  }, [searchParams]);
+  }, [searchParams, t]);
 
   // Drop remembered ids that no longer exist or are inactive once channels load.
   const activeIds = useMemo(
@@ -229,6 +246,14 @@ export const MobilePostScreen: FC = () => {
         setDraft((current) => ({ ...emptyDraft(), selected: current.selected }));
         setDateValue('');
         setUploadErrors([]);
+      } else {
+        // A retry must only go to the channels that did not get the post.
+        const failedIds = new Set(outcome.failed.map((f) => f.id));
+        setDraft((current) => {
+          const selected = current.selected.filter((id) => failedIds.has(id));
+          storeChannels(selected);
+          return { ...current, selected };
+        });
       }
     } catch {
       setServerError(
@@ -283,6 +308,9 @@ export const MobilePostScreen: FC = () => {
 
   return (
     <div className="flex flex-col gap-[16px] pt-[16px]">
+      {shareNotice && (
+        <div className="text-[13px] text-amber-400">{shareNotice}</div>
+      )}
       <textarea
         value={draft.text}
         onChange={(event) =>

@@ -1,4 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+
+vi.mock('@gitroom/helpers/utils/internal.fetch', () => ({
+  internalFetch: vi.fn(),
+}));
+import { POST } from './route';
 import { handleShare } from '@gitroom/frontend/components/mobile/share.handler';
 import { decodeSharePayload } from '@gitroom/frontend/components/mobile/share.payload';
 
@@ -46,11 +52,51 @@ describe('handleShare', () => {
     });
   });
 
-  it('skips files the upload rejects and goes to a plain /m when nothing is left', async () => {
+  it('reports files the upload rejects instead of dropping them silently', async () => {
     const upload = vi.fn(async () => null);
     const form = new FormData();
     form.append('media', new File(['a'], 'a.jpg', { type: 'image/jpeg' }));
 
-    expect(await handleShare(form, { upload })).toBe('/m');
+    const target = await handleShare(form, { upload });
+    expect(payloadOf(target)).toEqual({ text: '', media: [], failed: 1 });
+  });
+
+  it('goes to a plain /m when nothing at all was shared', async () => {
+    expect(await handleShare(new FormData(), { upload: vi.fn() })).toBe('/m');
+  });
+});
+
+describe('POST /m/share', () => {
+  it('redirects to the editor with share_error when the body cannot be read', async () => {
+    const request = new NextRequest('https://app.vezdepost.ru/m/share', {
+      method: 'POST',
+      headers: {
+        'content-type': 'multipart/form-data; boundary=cut',
+        cookie: 'auth=token',
+      },
+      body: '--cut\r\nContent-Disposition: form-data; name="media"; filename="a.jpg"\r\n\r\ntruncated',
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe(
+      'https://app.vezdepost.ru/m?share_error=1'
+    );
+  });
+
+  it('sends an unauthenticated share to login', async () => {
+    const request = new NextRequest('https://app.vezdepost.ru/m/share', {
+      method: 'POST',
+    });
+    const response = await POST(request);
+    expect(response.headers.get('location')).toBe(
+      'https://app.vezdepost.ru/auth?returnUrl=%2Fm'
+    );
+  });
+});
+
+describe('proxy matcher', () => {
+  it('leaves /m/share to the route handler so the 10 MB proxy body cap does not apply', async () => {
+    const { config } = await import('@gitroom/frontend/proxy');
+    expect(config.matcher).toContain('m/share');
   });
 });
