@@ -4,26 +4,31 @@ import { TelegramAssistantLinkService } from './telegram.assistant.link.service'
 
 const makeRepository = () => {
   const links = new Map<string, any>();
+  const key = (transport: string, id: string) => `${transport}:${id}`;
   return {
     links,
     upsertLink: vi.fn(
       async (
+        transport: string,
         telegramUserId: string,
         userId: string,
         organizationId: string
       ) => {
-        const link = { telegramUserId, userId, organizationId };
-        links.set(telegramUserId, link);
+        const link = { transport, telegramUserId, userId, organizationId };
+        links.set(key(transport, telegramUserId), link);
         return link;
       }
     ),
-    findByTelegramUserId: vi.fn(
-      async (telegramUserId: string) => links.get(telegramUserId) ?? null
+    findByMessengerUserId: vi.fn(
+      async (transport: string, telegramUserId: string) =>
+        links.get(key(transport, telegramUserId)) ?? null
     ),
     isActiveMember: vi.fn(async () => true),
-    deleteByTelegramUserId: vi.fn(async (telegramUserId: string) => {
-      links.delete(telegramUserId);
-    }),
+    deleteByMessengerUserId: vi.fn(
+      async (transport: string, telegramUserId: string) => {
+        links.delete(key(transport, telegramUserId));
+      }
+    ),
   };
 };
 
@@ -33,7 +38,8 @@ const make = () => {
   const service = new TelegramAssistantLinkService(
     repository as any,
     store,
-    'vezde_post_bot'
+    'vezde_post_bot',
+    'vezdepost_assistant_bot'
   );
   return { service, repository, store };
 };
@@ -46,6 +52,14 @@ describe('TelegramAssistantLinkService', () => {
 
     expect(url).toMatch(
       /^https:\/\/t\.me\/vezde_post_bot\?start=[A-Za-z0-9_-]{16,64}$/
+    );
+  });
+
+  it('builds a MAX deep link', async () => {
+    const { service } = make();
+    const url = await service.createLinkUrl('u', 'o', 'max');
+    expect(url).toMatch(
+      /^https:\/\/max\.ru\/vezdepost_assistant_bot\?start=[A-Za-z0-9_-]+$/
     );
   });
 
@@ -62,6 +76,12 @@ describe('TelegramAssistantLinkService', () => {
     });
     await expect(service.consumeLinkCode(code, 888)).resolves.toBeNull();
     expect(repository.upsertLink).toHaveBeenCalledTimes(1);
+    expect(repository.upsertLink).toHaveBeenCalledWith(
+      'telegram',
+      '777',
+      'user-1',
+      'org-1'
+    );
   });
 
   it('rejects unknown codes', async () => {
@@ -83,6 +103,39 @@ describe('TelegramAssistantLinkService', () => {
     await expect(service.findLink(999)).resolves.toBeNull();
   });
 
+  it('finds a legacy link by transport telegram', async () => {
+    const { service, repository } = make();
+    repository.links.set('telegram:5', {
+      transport: 'telegram',
+      telegramUserId: '5',
+      userId: 'u',
+      organizationId: 'o',
+    });
+    await expect(service.findLink(5)).resolves.toMatchObject({
+      organizationId: 'o',
+    });
+    expect(repository.findByMessengerUserId).toHaveBeenCalledWith(
+      'telegram',
+      '5'
+    );
+  });
+
+  it('keeps links apart per transport', async () => {
+    const { service, store } = make();
+    await store.set(
+      'tg-assistant:link:c1',
+      JSON.stringify({ userId: 'u1', organizationId: 'o1' })
+    );
+    await store.set(
+      'tg-assistant:link:c2',
+      JSON.stringify({ userId: 'u2', organizationId: 'o2' })
+    );
+    await service.consumeLinkCode('c1', 5, 'telegram');
+    await service.consumeLinkCode('c2', 5, 'max');
+    expect((await service.findLink(5, 'telegram'))?.organizationId).toBe('o1');
+    expect((await service.findLink(5, 'max'))?.organizationId).toBe('o2');
+  });
+
   it('drops the link once the user left the organization', async () => {
     const { service, repository } = make();
     const code = new URL(
@@ -93,6 +146,9 @@ describe('TelegramAssistantLinkService', () => {
 
     await expect(service.findLink(777)).resolves.toBeNull();
     expect(repository.isActiveMember).toHaveBeenCalledWith('user-1', 'org-1');
-    expect(repository.deleteByTelegramUserId).toHaveBeenCalledWith('777');
+    expect(repository.deleteByMessengerUserId).toHaveBeenCalledWith(
+      'telegram',
+      '777'
+    );
   });
 });

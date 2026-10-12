@@ -13,6 +13,7 @@ import { PoliciesGuard } from '@gitroom/backend/services/auth/permissions/permis
 import { PermissionsService } from '@gitroom/backend/services/auth/permissions/permissions.service';
 import { IntegrationsController } from '@gitroom/backend/api/routes/integrations.controller';
 import { TelegramAssistantController } from '@gitroom/backend/api/routes/telegram.assistant.controller';
+import { AssistantLinkController } from '@gitroom/backend/api/routes/assistant.link.controller';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { SettingsController } from '@gitroom/backend/api/routes/settings.controller';
 import { PostsController } from '@gitroom/backend/api/routes/posts.controller';
@@ -64,6 +65,7 @@ const authenticatedController = [
   AnalyticsController,
   IntegrationsController,
   TelegramAssistantController,
+  AssistantLinkController,
   SettingsController,
   PostsController,
   QuickPostController,

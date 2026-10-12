@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
 
+export type AssistantLinkTransport = 'telegram' | 'max';
+
 @Injectable()
 export class TelegramAssistantLinkRepository {
   constructor(
@@ -8,23 +10,34 @@ export class TelegramAssistantLinkRepository {
     private _membership: PrismaRepository<'userOrganization'>
   ) {}
 
-  upsertLink(telegramUserId: string, userId: string, organizationId: string) {
+  upsertLink(
+    transport: AssistantLinkTransport,
+    telegramUserId: string,
+    userId: string,
+    organizationId: string
+  ) {
     return this._link.model.telegramAssistantLink.upsert({
-      where: { telegramUserId },
-      create: { telegramUserId, userId, organizationId },
+      where: { transport_telegramUserId: { transport, telegramUserId } },
+      create: { transport, telegramUserId, userId, organizationId },
       update: { userId, organizationId },
     });
   }
 
-  findByTelegramUserId(telegramUserId: string) {
+  findByMessengerUserId(
+    transport: AssistantLinkTransport,
+    telegramUserId: string
+  ) {
     return this._link.model.telegramAssistantLink.findUnique({
-      where: { telegramUserId },
+      where: { transport_telegramUserId: { transport, telegramUserId } },
     });
   }
 
-  deleteByTelegramUserId(telegramUserId: string) {
+  deleteByMessengerUserId(
+    transport: AssistantLinkTransport,
+    telegramUserId: string
+  ) {
     return this._link.model.telegramAssistantLink.deleteMany({
-      where: { telegramUserId },
+      where: { transport, telegramUserId },
     });
   }
 

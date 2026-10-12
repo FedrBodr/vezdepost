@@ -51,6 +51,7 @@ export class TelegramAssistantRouter {
     this.inner = new AssistantRouter({
       transport,
       linkService: {
+        // Two-argument calls: the link service defaults to 'telegram'.
         consumeLinkCode: (code, _transport, userId) =>
           deps.linkService.consumeLinkCode(code, Number(userId)),
         findLink: (_transport, userId) =>

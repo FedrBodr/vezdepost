@@ -4,13 +4,18 @@ import {
   KeyValueStore,
   redisKeyValueStore,
 } from '@gitroom/nestjs-libraries/integrations/social/telegram.kv.store';
-import { TelegramAssistantLinkRepository } from '@gitroom/nestjs-libraries/database/prisma/telegram-assistant/telegram.assistant.link.repository';
+import {
+  AssistantLinkTransport,
+  TelegramAssistantLinkRepository,
+} from '@gitroom/nestjs-libraries/database/prisma/telegram-assistant/telegram.assistant.link.repository';
 
 export const TELEGRAM_ASSISTANT_STORE = 'TELEGRAM_ASSISTANT_STORE';
 export const TELEGRAM_ASSISTANT_BOT_NAME = 'TELEGRAM_ASSISTANT_BOT_NAME';
+export const MAX_ASSISTANT_BOT_NAME = 'MAX_ASSISTANT_BOT_NAME';
 
 const LINK_CODE_TTL_MS = 15 * 60 * 1_000;
 const codeKey = (code: string) => `tg-assistant:link:${code}`;
+const botName = (value: string) => value.replace(/^@/, '');
 
 export type TelegramAssistantLink = {
   telegramUserId: string;
@@ -18,26 +23,36 @@ export type TelegramAssistantLink = {
   organizationId: string;
 };
 
-/** Links a Telegram user to a Vezdepost user and organization via /start. */
+/**
+ * Links a messenger user (Telegram or MAX) to a Vezdepost user and
+ * organization via a one-time /start code. The class name is historical.
+ */
 @Injectable()
 export class TelegramAssistantLinkService {
   private readonly _store: KeyValueStore;
-  private readonly _botName: string;
+  private readonly _telegramBot: string;
+  private readonly _maxBot: string;
 
   constructor(
     private _repository: TelegramAssistantLinkRepository,
     @Optional() @Inject(TELEGRAM_ASSISTANT_STORE) store?: KeyValueStore,
-    @Optional() @Inject(TELEGRAM_ASSISTANT_BOT_NAME) botName?: string
+    @Optional() @Inject(TELEGRAM_ASSISTANT_BOT_NAME) telegramBot?: string,
+    @Optional() @Inject(MAX_ASSISTANT_BOT_NAME) maxBot?: string
   ) {
     this._store = store ?? redisKeyValueStore;
-    this._botName = (
-      botName ??
-      process.env.TELEGRAM_ASSISTANT_BOT_NAME ??
-      'vezde_post_bot'
-    ).replace(/^@/, '');
+    this._telegramBot = botName(
+      telegramBot ?? process.env.TELEGRAM_ASSISTANT_BOT_NAME ?? 'vezde_post_bot'
+    );
+    this._maxBot = botName(
+      maxBot ?? process.env.MAX_ASSISTANT_BOT_NAME ?? 'vezdepost_assistant_bot'
+    );
   }
 
-  async createLinkUrl(userId: string, organizationId: string) {
+  async createLinkUrl(
+    userId: string,
+    organizationId: string,
+    transport: AssistantLinkTransport = 'telegram'
+  ) {
     const code = randomBytes(18).toString('base64url');
     await this._store.set(
       codeKey(code),
@@ -45,12 +60,15 @@ export class TelegramAssistantLinkService {
       'PX',
       LINK_CODE_TTL_MS
     );
-    return `https://t.me/${this._botName}?start=${code}`;
+    return transport === 'max'
+      ? `https://max.ru/${this._maxBot}?start=${code}`
+      : `https://t.me/${this._telegramBot}?start=${code}`;
   }
 
   async consumeLinkCode(
     code: string,
-    telegramUserId: number | string
+    messengerUserId: number | string,
+    transport: AssistantLinkTransport = 'telegram'
   ): Promise<TelegramAssistantLink | null> {
     const raw = await this._store.get(codeKey(code));
     if (!raw) {
@@ -59,7 +77,8 @@ export class TelegramAssistantLinkService {
     await this._store.del(codeKey(code));
     const { userId, organizationId } = JSON.parse(raw);
     const link = await this._repository.upsertLink(
-      String(telegramUserId),
+      transport,
+      String(messengerUserId),
       userId,
       organizationId
     );
@@ -71,9 +90,13 @@ export class TelegramAssistantLinkService {
   }
 
   /** The link, if its user still belongs to the organization. */
-  async findLink(telegramUserId: number | string) {
-    const link = await this._repository.findByTelegramUserId(
-      String(telegramUserId)
+  async findLink(
+    messengerUserId: number | string,
+    transport: AssistantLinkTransport = 'telegram'
+  ) {
+    const link = await this._repository.findByMessengerUserId(
+      transport,
+      String(messengerUserId)
     );
     if (!link) {
       return null;
@@ -81,7 +104,10 @@ export class TelegramAssistantLinkService {
     if (
       !(await this._repository.isActiveMember(link.userId, link.organizationId))
     ) {
-      await this._repository.deleteByTelegramUserId(link.telegramUserId);
+      await this._repository.deleteByMessengerUserId(
+        transport,
+        link.telegramUserId
+      );
       return null;
     }
     return link;

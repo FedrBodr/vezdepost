@@ -1847,11 +1847,15 @@ model Announcement {
 // Telegram user linked to a Vezdepost user/organization for @vezde_post_bot.
 model TelegramAssistantLink {
   id             String   @id @default(uuid())
-  telegramUserId String   @unique
+  // Messenger that owns telegramUserId: "telegram" | "max".
+  transport      String   @default("telegram")
+  // Messenger user id (column name kept: a rename is drop+add under db push).
+  telegramUserId String
   userId         String
   organizationId String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  @@unique([transport, telegramUserId])
   @@index([organizationId])
 }
