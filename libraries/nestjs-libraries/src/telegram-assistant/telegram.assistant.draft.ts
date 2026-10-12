@@ -72,29 +72,55 @@ const fileOf = (
   return {};
 };
 
+export type DraftInput = {
+  text: string;
+  file?: DraftFile & { size?: number };
+  unsupported?: boolean;
+};
+
+/** Adds one incoming message to the draft; the draft is unchanged on error. */
+export const addToDraft = (
+  draft: Draft,
+  input: DraftInput,
+  maxFileBytes: number
+): { draft: Draft; error?: 'unsupported' | 'too_large' | 'too_many' } => {
+  const { file, unsupported } = input;
+  if (unsupported) {
+    return { draft, error: 'unsupported' };
+  }
+  if (file && (file.size ?? 0) > maxFileBytes) {
+    return { draft, error: 'too_large' };
+  }
+  if (file && draft.files.length >= MAX_FILES) {
+    return { draft, error: 'too_many' };
+  }
+  const text = input.text.trim();
+  return {
+    draft: {
+      ...draft,
+      text: [draft.text, text].filter(Boolean).join('\n\n'),
+      files: file
+        ? [...draft.files, { fileId: file.fileId, kind: file.kind }]
+        : draft.files,
+    },
+  };
+};
+
 /** Adds a Telegram message to the draft; the draft is unchanged on error. */
 export const addMessageToDraft = (
   draft: Draft,
   message: Message
 ): { draft: Draft; error?: 'unsupported' | 'too_large' | 'too_many' } => {
   const { file, size, unsupported } = fileOf(message);
-  if (unsupported) {
-    return { draft, error: 'unsupported' };
-  }
-  if (file && (size ?? 0) > TELEGRAM_DOWNLOAD_MAX_BYTES) {
-    return { draft, error: 'too_large' };
-  }
-  if (file && draft.files.length >= MAX_FILES) {
-    return { draft, error: 'too_many' };
-  }
-  const text = (message.text ?? message.caption ?? '').trim();
-  return {
-    draft: {
-      ...draft,
-      text: [draft.text, text].filter(Boolean).join('\n\n'),
-      files: file ? [...draft.files, file] : draft.files,
+  return addToDraft(
+    draft,
+    {
+      text: (message.text ?? message.caption ?? '').trim(),
+      file: file ? { ...file, size } : undefined,
+      unsupported,
     },
-  };
+    TELEGRAM_DOWNLOAD_MAX_BYTES
+  );
 };
 
 export const toggleChannel = (draft: Draft, channelId: string): Draft => ({
@@ -137,18 +163,21 @@ export const renderPanel = (
 
 export { plainTextToHtml } from '@gitroom/nestjs-libraries/quick-post/quick.post.service';
 
-const draftKey = (telegramUserId: number) =>
-  `tg-assistant:draft:${telegramUserId}`;
+/** Numeric keys are Telegram user ids (legacy key format); strings are transport-scoped. */
+const draftKey = (key: number | string) =>
+  typeof key === 'number'
+    ? `tg-assistant:draft:${key}`
+    : `assistant:draft:${key}`;
 
 export class DraftStore {
   constructor(private readonly store: KeyValueStore) {}
 
-  async get(telegramUserId: number): Promise<Draft> {
+  async get(telegramUserId: number | string): Promise<Draft> {
     const raw = await this.store.get(draftKey(telegramUserId));
     return raw ? JSON.parse(raw) : emptyDraft();
   }
 
-  async save(telegramUserId: number, draft: Draft) {
+  async save(telegramUserId: number | string, draft: Draft) {
     await this.store.set(
       draftKey(telegramUserId),
       JSON.stringify(draft),
@@ -157,7 +186,7 @@ export class DraftStore {
     );
   }
 
-  async clear(telegramUserId: number) {
+  async clear(telegramUserId: number | string) {
     await this.store.del(draftKey(telegramUserId));
   }
 }
