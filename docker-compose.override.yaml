@@ -53,6 +53,10 @@ services:
       TELEGRAM_STORIES_ORG_IDS: '${TELEGRAM_STORIES_ORG_IDS:-}'
       TELEGRAM_ASSISTANT_TOKEN: '${TELEGRAM_ASSISTANT_TOKEN:-}'
       TELEGRAM_ASSISTANT_BOT_NAME: 'vezde_post_bot'
+      # Separate MAX bot for the assistant: the channel provider already
+      # consumes getUpdates on MAX_TOKEN
+      MAX_ASSISTANT_TOKEN: '${MAX_ASSISTANT_TOKEN:-}'
+      MAX_ASSISTANT_BOT_NAME: 'vezdepost_assistant_bot'
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
       VK_ID: '${VK_ID:?set in .env}'

@@ -5,7 +5,14 @@ import type {
 import type { MaxUpdate } from '@gitroom/nestjs-libraries/assistant/max.events';
 
 export const MAX_DOWNLOAD_MAX_BYTES = 20 * 1024 * 1024;
-const UPDATE_TYPES = ['message_created', 'message_callback', 'bot_started'];
+
+/** Update types the assistant subscribes to (a subset of the library's union). */
+export type MaxUpdateType = 'message_created' | 'message_callback' | 'bot_started';
+const UPDATE_TYPES: MaxUpdateType[] = [
+  'message_created',
+  'message_callback',
+  'bot_started',
+];
 
 type MaxKeyboard = {
   type: 'inline_keyboard';
@@ -45,7 +52,7 @@ export type MaxBotApi = {
     extra?: { notification?: string }
   ): Promise<unknown>;
   getUpdates(
-    types?: string[],
+    types?: MaxUpdateType[],
     extra?: { marker?: number; timeout?: number }
   ): Promise<{ updates?: MaxUpdate[]; marker?: number } | MaxUpdate[]>;
 };

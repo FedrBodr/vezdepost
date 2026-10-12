@@ -6,6 +6,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
 import { useMobileAddProvider } from '@gitroom/frontend/components/mobile/use.mobile.add.provider';
 import { TelegramAssistantButton } from '@gitroom/frontend/components/layout/telegram.assistant.button';
+import { MaxAssistantButton } from '@gitroom/frontend/components/layout/max.assistant.button';
 
 type Channel = {
   id: string;
@@ -113,8 +114,9 @@ export const MobileChannelsScreen: FC = () => {
             'Отправьте боту фото и текст — он опубликует их в выбранные каналы.'
           )}
         </p>
-        <div>
+        <div className="flex flex-wrap gap-[8px]">
           <TelegramAssistantButton />
+          <MaxAssistantButton />
         </div>
       </section>
     </div>

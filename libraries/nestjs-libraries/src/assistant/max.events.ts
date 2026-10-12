@@ -13,7 +13,7 @@ export type MaxUpdate = {
     body?: {
       mid: string;
       text?: string | null;
-      attachments?: Array<{ type: string; payload?: { url?: string } }> | null;
+      attachments?: Array<{ type: string; payload?: unknown }> | null;
     };
   } | null;
   callback?: {
@@ -26,12 +26,18 @@ export type MaxUpdate = {
   payload?: string | null;
 };
 
+const urlOf = (payload: unknown) =>
+  payload && typeof payload === 'object' && 'url' in payload
+    ? (payload as { url?: unknown }).url
+    : undefined;
+
 const fileOf = (
   attachments: NonNullable<NonNullable<MaxUpdate['message']>['body']>['attachments']
 ): { file?: AssistantFile; unsupported?: boolean } => {
   for (const attachment of attachments || []) {
-    if (attachment.type === 'image' && attachment.payload?.url) {
-      return { file: { fileId: attachment.payload.url, kind: 'image' } };
+    const url = urlOf(attachment.payload);
+    if (attachment.type === 'image' && typeof url === 'string' && url) {
+      return { file: { fileId: url, kind: 'image' } };
     }
     if (
       attachment.type === 'video' ||
