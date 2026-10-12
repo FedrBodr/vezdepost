@@ -16,6 +16,7 @@ import { TelegramAssistantController } from '@gitroom/backend/api/routes/telegra
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { SettingsController } from '@gitroom/backend/api/routes/settings.controller';
 import { PostsController } from '@gitroom/backend/api/routes/posts.controller';
+import { QuickPostController } from '@gitroom/backend/api/routes/quick.post.controller';
 import { MediaController } from '@gitroom/backend/api/routes/media.controller';
 import { ClippingController } from '@gitroom/backend/api/routes/clipping.controller';
 import { MediaWidgetController } from '@gitroom/backend/api/routes/media.widget.controller';
@@ -65,6 +66,7 @@ const authenticatedController = [
   TelegramAssistantController,
   SettingsController,
   PostsController,
+  QuickPostController,
   MediaController,
   ClippingController,
   BillingController,

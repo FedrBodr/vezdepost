@@ -58,6 +58,7 @@ import { StreakRepository } from '@gitroom/nestjs-libraries/database/prisma/stre
 import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.service';
 import { TelegramAssistantLinkRepository } from '@gitroom/nestjs-libraries/database/prisma/telegram-assistant/telegram.assistant.link.repository';
 import { TelegramAssistantLinkService } from '@gitroom/nestjs-libraries/database/prisma/telegram-assistant/telegram.assistant.link.service';
+import { QuickPostNestService } from '@gitroom/nestjs-libraries/quick-post/quick.post.nest.service';
 
 @Global()
 @Module({
@@ -121,6 +122,7 @@ import { TelegramAssistantLinkService } from '@gitroom/nestjs-libraries/database
     StreakService,
     TelegramAssistantLinkRepository,
     TelegramAssistantLinkService,
+    QuickPostNestService,
   ],
   get exports() {
     return this.providers;
