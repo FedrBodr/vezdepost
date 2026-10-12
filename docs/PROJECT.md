@@ -35,6 +35,16 @@ Document: project-overview
 - `docs/devops/`, `docs/server-scripts/` — runbooks и скрипты сервера
 - `docs/superpowers/` — планы/спеки фич (например, MAX-провайдер)
 
+### Quick post API
+
+`POST /posts/quick` создаёт по одному посту на каждый выбранный канал с
+настройками сети по умолчанию. Тело:
+`{ text, media: [{id, path}], integrationIds, schedule: {type: 'now'|'queue'|'date', date?} }`.
+Ответ: `{ published: [{id, name}], failed: [{id, name, error}] }`.
+Логика в `libraries/nestjs-libraries/src/quick-post/`; Telegram-ассистент
+публикует через тот же сервис с creation method `API`. Спека:
+`docs/superpowers/specs/2026-10-12-mobile-version-design.md`.
+
 ## Деплой и проверка изменений
 
 - Ветка **prod** — продакшн. `git push` в prod = деплой: на сервере cron
