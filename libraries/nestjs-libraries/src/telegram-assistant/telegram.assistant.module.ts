@@ -16,6 +16,7 @@ import { DraftStore } from '@gitroom/nestjs-libraries/telegram-assistant/telegra
 import { TelegramAssistantPublisher } from '@gitroom/nestjs-libraries/telegram-assistant/telegram.assistant.publisher';
 import { TelegramAssistantRouter } from '@gitroom/nestjs-libraries/telegram-assistant/telegram.assistant.router';
 import { TelegramAssistantPoller } from '@gitroom/nestjs-libraries/telegram-assistant/telegram.assistant.poller';
+import { QuickPostService } from '@gitroom/nestjs-libraries/quick-post/quick.post.service';
 import { storeTelegramFile } from '@gitroom/nestjs-libraries/telegram-assistant/telegram.assistant.storage';
 
 /** Runs @vezde_post_bot inside the backend when its token is configured. */
@@ -48,8 +49,10 @@ export class TelegramAssistantWorker
         api,
         storeFile: (buffer) => storeTelegramFile(buffer, storage),
         mediaService: this._mediaService,
-        integrationService: this._integrationService,
-        postsService: this._postsService,
+        quickPost: new QuickPostService({
+          integrationService: this._integrationService,
+          postsService: this._postsService,
+        }),
       }),
     });
     this.poller = new TelegramAssistantPoller(

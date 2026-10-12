@@ -135,17 +135,7 @@ export const renderPanel = (
   },
 });
 
-const escapeHtml = (value: string) =>
-  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-/** Plain Telegram text to the editor's HTML: one paragraph per line. */
-export const plainTextToHtml = (text: string) =>
-  text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => `<p>${escapeHtml(line)}</p>`)
-    .join('');
+export { plainTextToHtml } from '@gitroom/nestjs-libraries/quick-post/quick.post.service';
 
 const draftKey = (telegramUserId: number) =>
   `tg-assistant:draft:${telegramUserId}`;

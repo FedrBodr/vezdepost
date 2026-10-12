@@ -3,6 +3,7 @@ import {
   PublishError,
   TelegramAssistantPublisher,
 } from './telegram.assistant.publisher';
+import { QuickPostService } from '@gitroom/nestjs-libraries/quick-post/quick.post.service';
 
 const integrations = [
   {
@@ -59,6 +60,22 @@ const validResult = (name: string) => ({
 
 const make = () => {
   let mediaNumber = 0;
+  const postsService = {
+    validatePosts: vi.fn(async (_org: string, posts: any[]) =>
+      posts.map((post) =>
+        post.integration.id === 'pin-1'
+          ? {
+              ...validResult('Boards'),
+              valid: false,
+              settingsError: 'Board is required',
+            }
+          : validResult(post.integration.id)
+      )
+    ),
+    mapTypeToPost: vi.fn(async (body: any) => body),
+    createPost: vi.fn(async () => [{ postId: 'p1' }]),
+    findFreeDateTime: vi.fn(async () => '2026-10-13T09:00:00.000Z'),
+  };
   const deps = {
     api: { downloadFile: vi.fn(async (id: string) => Buffer.from(id)) },
     storeFile: vi.fn(async (buffer: Buffer) => ({
@@ -72,24 +89,13 @@ const make = () => {
         path,
       })),
     },
-    integrationService: {
-      getIntegrationsList: vi.fn(async () => integrations),
-    },
-    postsService: {
-      validatePosts: vi.fn(async (_org: string, posts: any[]) =>
-        posts.map((post) =>
-          post.integration.id === 'pin-1'
-            ? {
-                ...validResult('Boards'),
-                valid: false,
-                settingsError: 'Board is required',
-              }
-            : validResult(post.integration.id)
-        )
-      ),
-      mapTypeToPost: vi.fn(async (body: any) => body),
-      createPost: vi.fn(async () => [{ postId: 'p1' }]),
-    },
+    postsService,
+    quickPost: new QuickPostService({
+      integrationService: {
+        getIntegrationsList: vi.fn(async () => integrations),
+      },
+      postsService,
+    } as any),
   };
   return { publisher: new TelegramAssistantPublisher(deps as any), deps };
 };
@@ -135,6 +141,18 @@ describe('TelegramAssistantPublisher', () => {
       published: ['My VK', 'Channel'],
       failed: [{ name: 'Boards', error: 'Board is required' }],
     });
+  });
+
+  it('creates bot posts with the API creation method', async () => {
+    const { publisher, deps } = make();
+
+    await publisher.publish('org-1', {
+      text: 'Hi',
+      files: [],
+      selected: ['vk-1'],
+    });
+
+    expect(deps.postsService.createPost.mock.calls[0][2]).toBe('API');
   });
 
   it('ignores selected channels that are no longer active', async () => {
