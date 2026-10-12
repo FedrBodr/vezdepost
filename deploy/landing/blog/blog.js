@@ -26,11 +26,15 @@
   } catch (e) {}
 })();
 
-// конверсионные события в Метрику — те же цели, что на лендинге
+// конверсионные события в Метрику и GA4 — те же, что на лендинге
 document.addEventListener('click', function (e) {
   var a = e.target.closest ? e.target.closest('a') : null;
-  if (!a || typeof ym === 'undefined') return;
-  if (a.href.indexOf('app.vezdepost.ru') !== -1) ym(110559699, 'reachGoal', 'cta_app_click');
-  else if (a.href.indexOf('github.com/FedrBodr') !== -1) ym(110559699, 'reachGoal', 'github_click');
-  else if (a.href.indexOf('t.me/FedrBodr') !== -1) ym(110559699, 'reachGoal', 'tg_footer_click');
+  if (!a) return;
+  var goal = a.href.indexOf('app.vezdepost.ru') !== -1 ? 'cta_app_click'
+    : a.href.indexOf('github.com/FedrBodr') !== -1 ? 'github_click'
+    : a.href.indexOf('t.me/FedrBodr') !== -1 ? 'tg_footer_click'
+    : null;
+  if (!goal) return;
+  if (typeof ym === 'function') ym(110559699, 'reachGoal', goal);
+  if (typeof gtag === 'function') gtag('event', goal, { link_url: a.href });
 });

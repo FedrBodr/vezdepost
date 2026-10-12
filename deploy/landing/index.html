@@ -8,6 +8,11 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
 })(window,document,'script','dataLayer','GTM-5JNQTLP2');</script>
 <!-- End Google Tag Manager -->
+<!-- Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-NG6Q7F0Z9N"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
+gtag('js',new Date());gtag('config','G-NG6Q7F0Z9N');</script>
+<!-- End Google Analytics 4 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="yandex-verification" content="d52236b56c480f80">
@@ -748,6 +753,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             language: selected
           });
         }
+        if (typeof window.gtag === 'function') {
+          window.gtag('event', 'language_switch', { language: selected });
+        }
       }
     } finally {
       document.documentElement.classList.remove('i18n-pending');
@@ -805,13 +813,18 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 </script>
 
 <script>
-// конверсионные события в Метрику (цели создаются в интерфейсе Метрики)
+// конверсионные события: цели Метрики (создаются в интерфейсе Метрики) и
+// одноимённые события GA4 (ключевые события отмечаются в интерфейсе GA4)
 document.addEventListener('click', function (e) {
   var a = e.target.closest ? e.target.closest('a') : null;
-  if (!a || typeof ym === 'undefined') return;
-  if (a.href.indexOf('app.vezdepost.ru') !== -1) ym(110559699, 'reachGoal', 'cta_app_click');
-  else if (a.href.indexOf('github.com/FedrBodr') !== -1) ym(110559699, 'reachGoal', 'github_click');
-  else if (a.href.indexOf('t.me/FedrBodr') !== -1) ym(110559699, 'reachGoal', a.closest('#services') ? 'services_click' : 'tg_footer_click');
+  if (!a) return;
+  var goal = a.href.indexOf('app.vezdepost.ru') !== -1 ? 'cta_app_click'
+    : a.href.indexOf('github.com/FedrBodr') !== -1 ? 'github_click'
+    : a.href.indexOf('t.me/FedrBodr') !== -1 ? (a.closest('#services') ? 'services_click' : 'tg_footer_click')
+    : null;
+  if (!goal) return;
+  if (typeof ym === 'function') ym(110559699, 'reachGoal', goal);
+  if (typeof gtag === 'function') gtag('event', goal, { link_url: a.href });
 });
 </script>
 </body>

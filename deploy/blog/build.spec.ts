@@ -61,6 +61,7 @@ describe('blog build', () => {
       expect(() => JSON.parse(script.textContent || '')).not.toThrow();
     }
     expect(document.head.innerHTML).toContain('GTM-5JNQTLP2');
+    expect(document.querySelector('script[src*="gtag/js?id=G-NG6Q7F0Z9N"]')).not.toBeNull();
     expect(document.querySelector('script[src="/blog/blog.js"]')).not.toBeNull();
     expect(document.querySelector('a[href="https://app.vezdepost.ru"]')).not.toBeNull();
   });
@@ -114,5 +115,10 @@ describe('landing links to the blog', () => {
     const document = new JSDOM(landing).window.document;
     expect(document.querySelector('.nav-links a[href="/blog/"]')).not.toBeNull();
     expect(document.querySelector('footer a[href="/blog/"]')).not.toBeNull();
+  });
+
+  it('loads Google Analytics 4', () => {
+    const document = new JSDOM(landing).window.document;
+    expect(document.querySelector('script[src*="gtag/js?id=G-NG6Q7F0Z9N"]')).not.toBeNull();
   });
 });
