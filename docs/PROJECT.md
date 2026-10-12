@@ -94,6 +94,19 @@ Cron раз в 5 минут запускает `docs/server-scripts/ops-alerts.s
   (github.com/FedrBodr), `services_click` (t.me/FedrBodr внутри #services),
   `tg_footer_click` (t.me/FedrBodr вне #services, т.е. футер).
   Новая конверсия = новая ветка в этом слушателе + цель в интерфейсе Метрики.
+- Google Analytics 4: ресурс «Vezdepost (vezdepost.ru)» (property 558479479,
+  аккаунт AhMiranami 408932779), поток `G-NG6Q7F0Z9N`. Тег gtag.js — прямо в
+  head лендинга и в `GTM_HEAD` генератора блога (не через GTM — так он в репо и
+  под тестом). Тот же кликовый слушатель шлёт одноимённые события GA4
+  (`gtag('event', goal, {link_url})`), `language_switch` — с параметром
+  `language`. Хранение данных — 14 мес. Ключевое событие — `cta_app_click`
+  (отмечается звёздочкой в Admin → Events, когда событие появится в списке).
+  Приложение app.vezdepost.ru GA4 пока не грузит.
+- Search Console: основной ресурс `sc-domain:vezdepost.ru` (владелец — другой
+  Google-аккаунт; сервис-аккаунт — Full user). Для связки с GA4 добавлен
+  ресурс `https://vezdepost.ru/` (URL-prefix), подтверждён через тег GA4 —
+  **не удалять gtag с главной**, иначе подтверждение слетит. GA4 ↔ GSC связаны,
+  в отчётах GA4 опубликованы коллекции Life cycle и Search Console.
 
 ### Атрибуция пользователей (WOK-523)
 
