@@ -61,7 +61,9 @@ Document: project-overview
 Экран «Пост» отправляет в `POST /posts/quick`; медиа грузится через
 `/media/upload-simple` с клиентским сжатием картинок (>1.5 МБ или >2048 px →
 JPEG 0.85, GIF не трогаем). «Очередь» читает `/posts/list?state=scheduled`
-и удаляет `DELETE /posts/:group`. Web-манифест `/manifest.webmanifest`
+и удаляет `DELETE /posts/:group`; ниже блок «Опубликованные» листает
+`state=published` по 20 штук (`use.mobile.history.tsx`), строка ведёт на
+`releaseURL` публикации. Посты со статусом ERROR бэкенд в список не отдаёт. Web-манифест `/manifest.webmanifest`
 (иконки `public/icons/vezdepost-*.png`) объявляет Share Target: Android
 отправляет файлы POST-ом в `/m/share`, который заливает их в медиатеку и
 редиректит на `/m?shared=<payload>`. Цели продукта: события
