@@ -45,6 +45,16 @@ Document: project-overview
 публикует через тот же сервис с creation method `API`. Спека:
 `docs/superpowers/specs/2026-10-12-mobile-version-design.md`.
 
+### Мобильная версия `/m`
+
+Отдельный маршрут для телефонов (`apps/frontend/src/app/(app)/(mobile)/m`,
+компоненты в `apps/frontend/src/components/mobile/`). Детект по user-agent
+живёт в `apps/frontend/src/proxy.ts` и включается переменной
+`MOBILE_ROUTE_ENABLED=true` (compose override; переключатель
+`docs/server-scripts/35-toggle-mobile-route.sh on|off`). Cookie `vz-desktop=1`
+отключает редирект для пользователя («Полная версия»). Планшеты и десктоп не
+редиректятся. Спека: `docs/superpowers/specs/2026-10-12-mobile-version-design.md`.
+
 ## Деплой и проверка изменений
 
 - Ветка **prod** — продакшн. `git push` в prod = деплой: на сервере cron

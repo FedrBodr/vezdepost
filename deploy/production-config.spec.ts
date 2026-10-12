@@ -19,6 +19,10 @@ describe('production configuration', () => {
     expect(override).toContain(
       "NEXT_PUBLIC_POSTHOG_HOST: '${NEXT_PUBLIC_POSTHOG_HOST:-}'"
     );
+    expect(override).toContain(
+      "MOBILE_ROUTE_ENABLED: '${MOBILE_ROUTE_ENABLED:-false}'"
+    );
+    expect(example).toContain('MOBILE_ROUTE_ENABLED="false"');
     expect(example).toContain('NEXT_PUBLIC_POSTHOG_KEY=""');
     expect(example).toContain(
       'NEXT_PUBLIC_POSTHOG_HOST="https://eu.i.posthog.com"'

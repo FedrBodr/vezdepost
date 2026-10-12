@@ -71,6 +71,8 @@ services:
       NEXT_PUBLIC_POSTHOG_HOST: '${NEXT_PUBLIC_POSTHOG_HOST:-}'
       # GA4 stream shared with the landing; public measurement ID, read at runtime
       GOOGLE_ANALYTICS_ID: 'G-NG6Q7F0Z9N'
+      # Phone user agents are redirected from /launches to /m when 'true'
+      MOBILE_ROUTE_ENABLED: '${MOBILE_ROUTE_ENABLED:-false}'
 
   # TLS terminator and host router:
   #   vezdepost.ru, www -> static landing (deploy/landing)
