@@ -17,6 +17,10 @@ import {
   languageCookieMaxAgeSeconds,
   languages,
 } from '@gitroom/react/translation/i18n.config';
+import {
+  DESKTOP_COOKIE,
+  resolveMobileRedirect,
+} from '@gitroom/frontend/components/mobile/mobile.detect';
 acceptLanguage.languages(languages);
 
 export const resolveProxyLanguage = (
@@ -229,6 +233,17 @@ async function routeRequest(request: NextRequest) {
           nextUrl.href
         )
       );
+    }
+
+    const mobileTarget = resolveMobileRedirect({
+      pathname: nextUrl.pathname,
+      search: nextUrl.search,
+      userAgent: request.headers.get('user-agent'),
+      desktopCookie: request.cookies.get(DESKTOP_COOKIE)?.value,
+      enabled: process.env.MOBILE_ROUTE_ENABLED === 'true',
+    });
+    if (mobileTarget) {
+      return NextResponse.redirect(new URL(mobileTarget, nextUrl.href));
     }
 
     return topResponse;
