@@ -65,6 +65,22 @@ JPEG 0.85, GIF не трогаем). «Очередь» читает `/posts/lis
 `mobile_channel_added` и `mobile_quick_post_sent` уходят в PostHog и в
 `dataLayer` (для GTM/Метрики).
 
+### Ассистент в мессенджерах (Telegram + MAX)
+
+Общая логика в `libraries/nestjs-libraries/src/assistant/` (роутер, события,
+транспорт); Telegram — адаптер в `telegram-assistant/`, MAX — `assistant/max.*`.
+Привязки в таблице `TelegramAssistantLink` с колонкой `transport`
+(`telegram` | `max`), уникальность по паре. Перед деплоем сборки с этой
+колонкой прогнать `docs/server-scripts/36-preapply-assistant-transport.sql`
+на копии прода. MAX-ассистент включается `MAX_ASSISTANT_TOKEN`
+(`docs/server-scripts/37-configure-max-assistant.sh`) и именем
+`MAX_ASSISTANT_BOT_NAME`; это отдельный бот от `MAX_TOKEN` (провайдер каналов
+читает его `getUpdates`). Ссылка привязки: `POST /assistant/link/:transport`.
+Ограничение первой версии: из MAX принимаются текст и фото; видео отклоняется
+с подсказкой, пока не проверен URL скачивания видео на живом боте. На живом
+боте также проверить, что диплинк `https://max.ru/<bot>?start=<code>` приходит
+как `bot_started.payload`; если нет, пользователь шлёт `/start <code>` вручную.
+
 ## Деплой и проверка изменений
 
 - Ветка **prod** — продакшн. `git push` в prod = деплой: на сервере cron
