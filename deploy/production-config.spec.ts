@@ -136,4 +136,12 @@ describe('production configuration', () => {
     expect(caddyfile).toMatch(/app\.vezdepost\.ru \{\s*import access_log/);
     expect(override).toContain('caddy-data:/data');
   });
+
+  it('sends the app to the same GA4 stream as the landing', () => {
+    const override = readRootFile('docker-compose.override.yaml');
+    const landing = readRootFile('deploy/landing/index.html');
+
+    expect(override).toContain("GOOGLE_ANALYTICS_ID: 'G-NG6Q7F0Z9N'");
+    expect(landing).toContain('gtag/js?id=G-NG6Q7F0Z9N');
+  });
 });

@@ -15,7 +15,10 @@ import { PHProvider } from '@gitroom/react/helpers/posthog';
 import UtmSaver from '@gitroom/helpers/utils/utm.saver';
 import { DubAnalytics } from '@gitroom/frontend/components/layout/dubAnalytics';
 import { FacebookComponent } from '@gitroom/frontend/components/layout/facebook.component';
-import { GoogleTagManagerComponent } from '@gitroom/frontend/components/layout/gtm.component';
+import {
+  GoogleAnalyticsComponent,
+  GoogleTagManagerComponent,
+} from '@gitroom/frontend/components/layout/gtm.component';
 import { getLanguageDirection } from '@gitroom/react/translation/i18n.config';
 import { getRequestLanguage } from '@gitroom/react/translation/get.request.language';
 import { HtmlComponent } from '@gitroom/frontend/components/layout/html.component';
@@ -110,6 +113,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <DubAnalytics />
             <FacebookComponent />
             <GoogleTagManagerComponent gtmId={process.env.NEXT_PUBLIC_GTM_ID} />
+            <GoogleAnalyticsComponent
+              measurementId={process.env.GOOGLE_ANALYTICS_ID}
+            />
             <Plausible
               domain={!!process.env.IS_GENERAL ? 'postiz.com' : 'gitroom.com'}
             >

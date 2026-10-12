@@ -69,6 +69,8 @@ services:
       X_API_SECRET: '${X_API_SECRET:-}'
       NEXT_PUBLIC_POSTHOG_KEY: '${NEXT_PUBLIC_POSTHOG_KEY:-}'
       NEXT_PUBLIC_POSTHOG_HOST: '${NEXT_PUBLIC_POSTHOG_HOST:-}'
+      # GA4 stream shared with the landing; public measurement ID, read at runtime
+      GOOGLE_ANALYTICS_ID: 'G-NG6Q7F0Z9N'
 
   # TLS terminator and host router:
   #   vezdepost.ru, www -> static landing (deploy/landing)

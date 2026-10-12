@@ -101,7 +101,11 @@ Cron раз в 5 минут запускает `docs/server-scripts/ops-alerts.s
   (`gtag('event', goal, {link_url})`), `language_switch` — с параметром
   `language`. Хранение данных — 14 мес. Ключевое событие — `cta_app_click`
   (отмечается звёздочкой в Admin → Events, когда событие появится в списке).
-  Приложение app.vezdepost.ru GA4 пока не грузит.
+  Приложение app.vezdepost.ru шлёт в тот же поток: `GoogleAnalyticsComponent`
+  в `apps/frontend/src/components/layout/gtm.component.tsx`, ID — runtime-env
+  `GOOGLE_ANALYTICS_ID` (литерал в `docker-compose.override.yaml`). Контейнер
+  GTM-5JNQTLP2 (его тоже грузит приложение через `/g.js`) принадлежит другому
+  Google-аккаунту, поэтому GA4 подключён не через GTM.
 - Search Console: основной ресурс `sc-domain:vezdepost.ru` (владелец — другой
   Google-аккаунт; сервис-аккаунт — Full user). Для связки с GA4 добавлен
   ресурс `https://vezdepost.ru/` (URL-prefix), подтверждён через тег GA4 —
