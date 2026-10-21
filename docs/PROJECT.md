@@ -156,7 +156,8 @@ Cron раз в 5 минут запускает `docs/server-scripts/ops-alerts.s
   под тестом). Тот же кликовый слушатель шлёт одноимённые события GA4
   (`gtag('event', goal, {link_url})`), `language_switch` — с параметром
   `language`. Хранение данных — 14 мес. Ключевое событие — `cta_app_click`
-  (отмечается звёздочкой в Admin → Events, когда событие появится в списке).
+  (отмечено 2026-10-21; новое событие можно отметить в Admin → Events только
+  после того, как оно появится в списке, до 24 ч).
   Приложение app.vezdepost.ru шлёт в тот же поток: `GoogleAnalyticsComponent`
   в `apps/frontend/src/components/layout/gtm.component.tsx`, ID — runtime-env
   `GOOGLE_ANALYTICS_ID` (литерал в `docker-compose.override.yaml`). Контейнер
