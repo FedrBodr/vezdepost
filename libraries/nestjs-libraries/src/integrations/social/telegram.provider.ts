@@ -23,7 +23,15 @@ import {
 import { telegramRichMediaEligible } from '@gitroom/helpers/utils/telegram.rich.normalization';
 import { callTelegramApi } from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
 import { TelegramUpdatesHub } from '@gitroom/nestjs-libraries/integrations/social/telegram.updates.hub';
-import { redisKeyValueStore } from '@gitroom/nestjs-libraries/integrations/social/telegram.kv.store';
+import {
+  KeyValueStore,
+  redisKeyValueStore,
+} from '@gitroom/nestjs-libraries/integrations/social/telegram.kv.store';
+import {
+  isConnectionCandidate,
+  rememberChatConnection,
+  takeVerifiedChat,
+} from '@gitroom/nestjs-libraries/integrations/social/chat.connection.store';
 
 const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
 // Added to support local storage posting
@@ -83,7 +91,8 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     private readonly updatesHub = new TelegramUpdatesHub(
       botClient,
       redisKeyValueStore
-    )
+    ),
+    private readonly connectionStore: KeyValueStore = redisKeyValueStore
   ) {
     super();
   }
@@ -113,9 +122,10 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
 
   async generateAuthUrl() {
     const state = makeSecureId(17);
+    // The nonce doubles as codeVerifier so authenticate can find the verified chat.
     return {
       url: state,
-      codeVerifier: makeSecureId(10),
+      codeVerifier: state,
       state,
     };
   }
@@ -125,6 +135,16 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     codeVerifier: string;
     refresh?: string;
   }) {
+    if (
+      !(await takeVerifiedChat(
+        this.connectionStore,
+        'telegram',
+        params.codeVerifier,
+        params.code
+      ))
+    ) {
+      return 'Telegram connection expired. Start again.';
+    }
     const chat = await this.botClient.getChat(params.code);
 
     console.log(JSON.stringify(chat));
@@ -149,6 +169,7 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
   }
 
   private async verifyConnection(
+    nonce: string,
     chatId: number
   ): Promise<TelegramConnectionResult> {
     const [chat, bot] = await Promise.all([
@@ -158,9 +179,12 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     const member = await this.botClient.getChatMember(chatId, bot.id);
     const status = evaluateTelegramPermissions(chat.type, member);
 
-    return status === 'ready'
-      ? { status, chatId }
-      : { status, candidateChatId: chatId };
+    const result: TelegramConnectionResult =
+      status === 'ready'
+        ? { status, chatId }
+        : { status, candidateChatId: chatId };
+    await rememberChatConnection(this.connectionStore, 'telegram', nonce, result);
+    return result;
   }
 
   async getBotId(query: {
@@ -171,13 +195,24 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
   }): Promise<TelegramConnectionResult> {
     try {
       if (query.chatId !== undefined) {
-        return await this.verifyConnection(query.chatId);
+        // Re-checking permissions is allowed only for the chat that posted the nonce.
+        if (
+          !(await isConnectionCandidate(
+            this.connectionStore,
+            'telegram',
+            query.word,
+            query.chatId
+          ))
+        ) {
+          return { status: 'waiting' };
+        }
+        return await this.verifyConnection(query.word, query.chatId);
       }
 
       await this.updatesHub.poll();
       const command = await this.updatesHub.findConnectionCommand(query.word);
       if (command) {
-        return await this.verifyConnection(command.chatId);
+        return await this.verifyConnection(query.word, command.chatId);
       }
 
       return { status: 'waiting' };

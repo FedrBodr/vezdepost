@@ -4,7 +4,7 @@ import {
   PostResponse,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
-import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import dayjs from 'dayjs';
 import {
   SocialAbstract,
@@ -14,6 +14,15 @@ import { Integration } from '@prisma/client';
 import striptags from 'striptags';
 import { Bot } from '@maxhub/max-bot-api';
 import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
+import {
+  KeyValueStore,
+  redisKeyValueStore,
+} from '@gitroom/nestjs-libraries/integrations/social/telegram.kv.store';
+import {
+  isConnectionCandidate,
+  rememberChatConnection,
+  takeVerifiedChat,
+} from '@gitroom/nestjs-libraries/integrations/social/chat.connection.store';
 
 // Bot token is permanent (like Telegram's). Constructing with an unset token
 // must not throw at import time so other providers keep loading.
@@ -66,7 +75,10 @@ export const evaluateMaxPermissions = (
 };
 
 export class MaxProvider extends SocialAbstract implements SocialProvider {
-  constructor(private readonly botClient: Bot['api'] = bot.api) {
+  constructor(
+    private readonly botClient: Bot['api'] = bot.api,
+    private readonly connectionStore: KeyValueStore = redisKeyValueStore
+  ) {
     super();
   }
 
@@ -113,19 +125,26 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
   }
 
   async generateAuthUrl() {
-    const state = makeId(17);
-    return { url: state, codeVerifier: makeId(10), state };
+    const state = makeSecureId(17);
+    // The nonce doubles as codeVerifier so authenticate can find the verified chat.
+    return { url: state, codeVerifier: state, state };
   }
 
-  private async verifyConnection(chatId: number): Promise<MaxConnectionResult> {
+  private async verifyConnection(
+    nonce: string,
+    chatId: number
+  ): Promise<MaxConnectionResult> {
     const [, membership] = await Promise.all([
       this.botClient.getChat(chatId),
       this.botClient.getChatMembership(chatId),
     ]);
     const status = evaluateMaxPermissions(membership);
-    return status === 'ready'
-      ? { status, chatId }
-      : { status, candidateChatId: chatId };
+    const result: MaxConnectionResult =
+      status === 'ready'
+        ? { status, chatId }
+        : { status, candidateChatId: chatId };
+    await rememberChatConnection(this.connectionStore, 'max', nonce, result);
+    return result;
   }
 
   async getBotId(query: {
@@ -135,7 +154,18 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
   }): Promise<MaxConnectionResult> {
     try {
       if (query.chatId !== undefined) {
-        return await this.verifyConnection(query.chatId);
+        // Re-checking permissions is allowed only for the chat that posted the nonce.
+        if (
+          !(await isConnectionCandidate(
+            this.connectionStore,
+            'max',
+            query.word,
+            query.chatId
+          ))
+        ) {
+          return { status: 'waiting' };
+        }
+        return await this.verifyConnection(query.word, query.chatId);
       }
 
       const updates: any = await this.botClient.getUpdates(
@@ -152,7 +182,7 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
       const chatId = match?.message?.recipient?.chat_id;
 
       if (typeof chatId === 'number') {
-        return await this.verifyConnection(chatId);
+        return await this.verifyConnection(query.word, chatId);
       }
 
       const marker =
@@ -173,6 +203,16 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     codeVerifier: string;
     refresh?: string;
   }) {
+    if (
+      !(await takeVerifiedChat(
+        this.connectionStore,
+        'max',
+        params.codeVerifier,
+        params.code
+      ))
+    ) {
+      return 'MAX connection expired. Start again.';
+    }
     const chat: any = await this.botClient.getChat(Number(params.code));
 
     return {

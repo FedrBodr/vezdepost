@@ -496,10 +496,11 @@ describe('TelegramProvider media captions', () => {
 });
 
 describe('Telegram connection discovery', () => {
-  const providerFor = (bot: any) =>
+  const providerFor = (bot: any, store = new MemoryKeyValueStore()) =>
     new TelegramProvider(
       bot,
-      new TelegramUpdatesHub(bot, new MemoryKeyValueStore())
+      new TelegramUpdatesHub(bot, new MemoryKeyValueStore()),
+      store
     );
 
   beforeEach(() => {
@@ -691,14 +692,80 @@ describe('Telegram connection discovery', () => {
     });
   });
 
+  const connectUpdate = (nonce: string, chatId: number) => ({
+    update_id: 77,
+    message: {
+      text: `/connect ${nonce}`,
+      chat: { id: chatId, type: 'supergroup' },
+    },
+  });
+
   it('rechecks a candidate chat without fetching updates again', async () => {
-    const bot = makeConnectionBot();
+    const bot = makeConnectionBot({
+      member: { status: 'member' },
+      updates: [connectUpdate('nonce_123', -1001)],
+    });
     const provider = providerFor(bot);
+    await provider.getBotId({ word: 'nonce_123' });
+    bot.getChatMember.mockResolvedValue({ status: 'administrator' });
+    bot.getUpdates.mockClear();
 
     await expect(
       provider.getBotId({ word: 'nonce_123', chatId: -1001 })
     ).resolves.toEqual({ status: 'ready', chatId: -1001 });
     expect(bot.getUpdates).not.toHaveBeenCalled();
+  });
+
+  it('does not recheck a chat that never posted the nonce', async () => {
+    const bot = makeConnectionBot();
+    const provider = providerFor(bot);
+
+    await expect(
+      provider.getBotId({ word: 'nonce_123', chatId: -1001 })
+    ).resolves.toEqual({ status: 'waiting' });
+    expect(bot.getChatMember).not.toHaveBeenCalled();
+  });
+
+  it('authenticates only the chat that posted the nonce, once', async () => {
+    const bot = makeConnectionBot({
+      updates: [connectUpdate('nonce_123', -1001)],
+    });
+    const provider = providerFor(bot);
+    const { state, codeVerifier } = await provider.generateAuthUrl();
+    expect(codeVerifier).toBe(state);
+    await provider.getBotId({ word: 'nonce_123' });
+
+    await expect(
+      provider.authenticate({ code: '@someone_else', codeVerifier: 'nonce_123' })
+    ).resolves.toBe('Telegram connection expired. Start again.');
+    await expect(
+      provider.authenticate({ code: '-1001', codeVerifier: 'nonce_123' })
+    ).resolves.toBe('Telegram connection expired. Start again.');
+  });
+
+  it('authenticates the verified chat', async () => {
+    const bot = makeConnectionBot({
+      updates: [connectUpdate('nonce_123', -1001)],
+    });
+    const provider = providerFor(bot);
+    await provider.getBotId({ word: 'nonce_123' });
+
+    await expect(
+      provider.authenticate({ code: '-1001', codeVerifier: 'nonce_123' })
+    ).resolves.toMatchObject({ accessToken: '-1001' });
+    await expect(
+      provider.authenticate({ code: '-1001', codeVerifier: 'nonce_123' })
+    ).resolves.toBe('Telegram connection expired. Start again.');
+  });
+
+  it('rejects a chat id that was not verified for the nonce', async () => {
+    const bot = makeConnectionBot();
+    const provider = providerFor(bot);
+
+    await expect(
+      provider.authenticate({ code: '@victim_channel', codeVerifier: 'nonce_123' })
+    ).resolves.toBe('Telegram connection expired. Start again.');
+    expect(bot.getChat).not.toHaveBeenCalled();
   });
 
   it('returns a recoverable status when Telegram fails', async () => {

@@ -516,8 +516,14 @@ export class IntegrationsController {
 
   @Get('/telegram/updates')
   async getUpdates(
-    @Query() query: { word: string; id?: string; chatId?: string }
+    @Query() query: { word: string; id?: string; chatId?: string },
+    @GetOrgFromRequest() org: Organization
   ) {
+    // The nonce is the login state; only the organization that started the
+    // connection may read its status.
+    if ((await ioRedis.get(`organization:${query.word}`)) !== org.id) {
+      throw new ForbiddenException('Integration not available');
+    }
     return new TelegramProvider().getBotId({
       word: query.word,
       ...(query.id && Number.isFinite(Number(query.id))
@@ -562,8 +568,14 @@ export class IntegrationsController {
 
   @Get('/max/updates')
   async getMaxUpdates(
-    @Query() query: { word: string; id?: string; chatId?: string }
+    @Query() query: { word: string; id?: string; chatId?: string },
+    @GetOrgFromRequest() org: Organization
   ) {
+    // The nonce is the login state; only the organization that started the
+    // connection may read its status.
+    if ((await ioRedis.get(`organization:${query.word}`)) !== org.id) {
+      throw new ForbiddenException('Integration not available');
+    }
     return new MaxProvider().getBotId({
       word: query.word,
       ...(query.id && Number.isFinite(Number(query.id))
