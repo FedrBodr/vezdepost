@@ -9,8 +9,8 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 const tabs = [
   { key: 'mobile_tab_post', fallback: 'Пост', href: '/m', exact: true },
   {
-    key: 'mobile_tab_queue',
-    fallback: 'Очередь',
+    key: 'mobile_tab_posts',
+    fallback: 'Посты',
     href: '/m/queue',
     exact: false,
   },

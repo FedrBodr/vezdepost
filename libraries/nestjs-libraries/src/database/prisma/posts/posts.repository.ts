@@ -264,14 +264,26 @@ export class PostsRepository {
         ? { state: State.DRAFT }
         : stateFilter === 'published'
         ? { state: State.PUBLISHED }
+        : stateFilter === 'past'
+        ? {
+            // Everything whose time has come: sent, failed, or still waiting
+            // for the worker although its slot is gone.
+            OR: [
+              { state: { in: [State.PUBLISHED, State.ERROR] } },
+              {
+                state: State.QUEUE,
+                publishDate: { lt: dayjs.utc().toDate() },
+              },
+            ],
+          }
         : {
             state: {
               in: [State.QUEUE, State.DRAFT, State.PUBLISHED, State.ERROR],
             },
           };
 
-    const orderDirection: 'asc' | 'desc' =
-      stateFilter === 'published' ? 'desc' : 'asc';
+    const newestFirst = stateFilter === 'published' || stateFilter === 'past';
+    const orderDirection: 'asc' | 'desc' = newestFirst ? 'desc' : 'asc';
 
     const where = {
       AND: [
@@ -284,9 +296,9 @@ export class PostsRepository {
         },
       ],
       ...stateAndDate,
-      // Published posts were already posted (publishDate in the past), so fetch
-      // all of them; everything else stays upcoming. Ordering handles the rest.
-      ...(stateFilter === 'published'
+      // Published and past posts already had their slot (publishDate in the
+      // past), so fetch all of them; everything else stays upcoming.
+      ...(newestFirst
         ? {}
         : { publishDate: { gte: dayjs.utc().toDate() } }),
       deletedAt: null as Date | null,
@@ -314,9 +326,12 @@ export class PostsRepository {
         where,
         skip,
         take: limit,
-        orderBy: {
-          publishDate: orderDirection,
-        },
+        // Channels of one group share publishDate; the id keeps past pages
+        // from repeating or skipping rows.
+        orderBy:
+          stateFilter === 'past'
+            ? [{ publishDate: orderDirection }, { id: orderDirection }]
+            : { publishDate: orderDirection },
         select: {
           id: true,
           content: true,

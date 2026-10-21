@@ -7,9 +7,9 @@ const page = (hasMore: boolean, ids: string[]) => ({
 });
 
 describe('historyKey', () => {
-  it('asks for the first published page', () => {
+  it('asks for the first past page', () => {
     expect(historyKey(0, null)).toBe(
-      '/posts/list?state=published&limit=20&page=0'
+      '/posts/list?state=past&limit=20&page=0'
     );
   });
 
@@ -19,7 +19,7 @@ describe('historyKey', () => {
 
   it('continues while the previous page has more', () => {
     expect(historyKey(2, page(true, ['a']))).toBe(
-      '/posts/list?state=published&limit=20&page=2'
+      '/posts/list?state=past&limit=20&page=2'
     );
   });
 });

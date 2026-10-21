@@ -23,7 +23,7 @@ describe('MobileTabBar', () => {
       screen.getByRole('link', { name: 'Пост' }).getAttribute('href')
     ).toBe('/m');
     expect(
-      screen.getByRole('link', { name: 'Очередь' }).getAttribute('href')
+      screen.getByRole('link', { name: 'Посты' }).getAttribute('href')
     ).toBe('/m/queue');
     expect(
       screen.getByRole('link', { name: 'Каналы' }).getAttribute('href')
