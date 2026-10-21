@@ -349,6 +349,52 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
     ).toEqual(['groups.get']);
   });
 
+  it('reconnects the stored community by its signed internal ID', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({
+          response: {
+            items: [
+              {
+                id: 123,
+                name: 'FedrBodr',
+                screen_name: 'fedrbodr_pro',
+                photo_200: 'https://vk.test/photo.jpg',
+              },
+            ],
+          },
+        })
+      )
+      .mockImplementationOnce(() =>
+        response({ response: { upload_url: uploadUrl } })
+      );
+
+    await expect(
+      provider.reConnect('vk-group-oauth:42', '-123', token)
+    ).resolves.toEqual({
+      id: '-123',
+      name: 'FedrBodr',
+      accessToken: token,
+      picture: 'https://vk.test/photo.jpg',
+      username: 'fedrbodr_pro',
+    });
+    const photoBody = fetchMock.mock.calls[1][1]?.body as FormData;
+    expect(photoBody.get('group_id')).toBe('123');
+  });
+
+  it('rejects a reconnect when the community is no longer managed', async () => {
+    vi.spyOn(provider, 'fetch').mockImplementationOnce(() =>
+      response({ response: { items: [{ id: 456, name: 'Other' }] } })
+    );
+
+    await expect(
+      provider.reConnect('vk-group-oauth:42', '-123', token)
+    ).rejects.toThrow(
+      'The selected VK community is not managed by this account.'
+    );
+  });
+
   it.each(['0', '-123', '00123', '123.0', ''])(
     'rejects a non-canonical positive selection ID before calling VK (%s)',
     async (page) => {

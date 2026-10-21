@@ -412,6 +412,27 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
+  // A reconnect skips the community selection step: the stored internal ID is
+  // the signed wall owner ID (-<group id>), so it is revalidated as the
+  // selection the administrator made originally.
+  async reConnect(
+    id: string,
+    requiredId: string,
+    accessToken: string
+  ): Promise<Omit<AuthTokenDetails, 'refreshToken' | 'expiresIn'>> {
+    const information = await this.fetchPageInformation(accessToken, {
+      page: requiredId.replace(/^-/, ''),
+    });
+
+    return {
+      id: information.id,
+      name: information.name,
+      accessToken: information.access_token,
+      picture: information.picture,
+      username: information.username,
+    };
+  }
+
   async pages(accessToken: string): Promise<VkManagedCommunity[]> {
     const response = await this.callGroupVk<unknown>(
       'groups.get',
