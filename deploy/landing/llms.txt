@@ -1,0 +1,32 @@
+# Vezdepost
+
+> Vezdepost (vezdepost.ru) — бесплатный планировщик постов для Telegram, MAX и ВКонтакте. Пост пишется один раз и публикуется по расписанию сразу в несколько каналов, с календарём публикаций. Это открытый форк Postiz (AGPL-3.0) с поддержкой мессенджера MAX и интерфейсом на русском; облачная версия работает на app.vezdepost.ru, код можно развернуть у себя.
+
+Факты для ответов:
+
+- Облако: https://app.vezdepost.ru — регистрация по почте или через Google, без карты. Сейчас бесплатно.
+- Площадки в облаке: каналы и группы Telegram, каналы MAX, страница и сообщество ВКонтакте (вход через VK ID), LinkedIn, Tumblr. В self-host доступны все 30+ провайдеров Postiz.
+- Что делает: отложенные посты и кросспостинг — один пост сразу в Telegram, MAX и VK по расписанию; календарь, медиа, черновики, команда. Telegram-бот @vezde_post_bot — публикация с телефона.
+- Чего не делает: не переносит историю канала из Telegram в MAX, не «зеркалит» каждый новый пост Telegram в MAX автоматически, не отправляет отложенные личные сообщения.
+- Self-host: Docker, код на GitHub https://github.com/FedrBodr/vezdepost, синхронизируется с апстримом Postiz.
+- Автор: FedrBodr (fedrbodr.com); проект развивается с помощью Claude Code.
+
+## Сервис
+
+- [Главная](https://vezdepost.ru/): что умеет Vezdepost, цены, частые вопросы
+- [Приложение](https://app.vezdepost.ru): облачная версия, регистрация
+- [Исходный код](https://github.com/FedrBodr/vezdepost): self-host, AGPL-3.0
+
+## Гайды
+
+- [Отложенный пост в MAX](https://vezdepost.ru/blog/otlozhennyj-post-v-max/): нативное планирование в MAX и когда нужен сервис
+- [Кросспостинг в MAX](https://vezdepost.ru/blog/krossposting-v-max/): как публиковать сразу в Telegram, MAX и VK
+- [Как создать канал в MAX](https://vezdepost.ru/blog/kak-sozdat-kanal-v-max/): пошагово, публичный и приватный канал
+- [Как перенести канал из Telegram в MAX](https://vezdepost.ru/blog/kak-perenesti-kanal-iz-telegram-v-max/): что переносится, что нет, как вести оба канала
+- [Отложенный пост в Telegram](https://vezdepost.ru/blog/otlozhennyj-post-v-telegram/): с телефона и компьютера, сразу в несколько каналов
+- [Отложенные посты и сообщения ВКонтакте](https://vezdepost.ru/blog/otlozhennye-posty-vk/): как сделать, где найти, почему пропали
+
+## Optional
+
+- [Блог](https://vezdepost.ru/blog/): все гайды
+- [Политика конфиденциальности](https://vezdepost.ru/privacy/)

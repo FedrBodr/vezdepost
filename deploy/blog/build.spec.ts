@@ -108,6 +108,16 @@ describe('IndexNow', () => {
   });
 });
 
+describe('llms.txt', () => {
+  it('links every blog article for AI search engines', () => {
+    const llms = readFileSync(join(landingDir, 'llms.txt'), 'utf8');
+    expect(llms.startsWith('# Vezdepost\n')).toBe(true);
+    for (const article of articles) {
+      expect(llms, article.slug).toContain(`(https://vezdepost.ru/blog/${article.slug}/)`);
+    }
+  });
+});
+
 describe('landing links to the blog', () => {
   const landing = readFileSync(join(landingDir, 'index.html'), 'utf8');
 
