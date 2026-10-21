@@ -1052,5 +1052,13 @@
   "post_now_all_channels": "Опубликовать сейчас во всех каналах",
   "schedule_post_in_all_channels_question": "Этот пост создан для нескольких каналов. Запланировать его во всех?",
   "schedule_all_channels": "Запланировать во всех каналах",
-  "only_channel": "Только"
+  "only_channel": "Только",
+  "onboarding_done_step": "Готово",
+  "onboarding_start_hint": "Проще всего начать с Telegram или MAX — это займёт около 2 минут.",
+  "onboarding_guides": "Пошаговые инструкции:",
+  "onboarding_how_to_connect": "Как подключить канал:",
+  "onboarding_done_title": "Почти готово",
+  "onboarding_done_description": "Создайте пост в календаре: выберите день, напишите текст и отметьте каналы. Он выйдет в назначенное время.",
+  "onboarding_assistant_hint": "А ещё можно постить прямо из мессенджера: отправьте текст нашему боту — и он станет постом.",
+  "onboarding_help_hint": "Что-то не получается? Напишите автору — помогу:"
 }

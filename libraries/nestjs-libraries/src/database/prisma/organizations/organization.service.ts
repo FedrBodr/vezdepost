@@ -26,7 +26,7 @@ export class OrganizationService {
   ) {
     return this._organizationRepository.createOrgAndUser(
       body,
-      this._notificationsService.hasEmailProvider(),
+      this._notificationsService.emailActivationRequired(),
       ip,
       userAgent,
       signupSource

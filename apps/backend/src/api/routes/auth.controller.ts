@@ -71,7 +71,7 @@ export class AuthController {
       );
 
       const activationRequired =
-        body.provider === 'LOCAL' && this._emailService.hasProvider();
+        body.provider === 'LOCAL' && this._emailService.activationRequired();
 
       if (activationRequired) {
         response.header('activate', 'true');

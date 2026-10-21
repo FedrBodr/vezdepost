@@ -114,4 +114,8 @@ export class NotificationService {
   hasEmailProvider() {
     return this._emailService.hasProvider();
   }
+
+  emailActivationRequired() {
+    return this._emailService.activationRequired();
+  }
 }

@@ -28,6 +28,7 @@ import { OnlyURL } from '@gitroom/nestjs-libraries/dtos/webhooks/webhooks.dto';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { CreatePublicCommentDto } from '@gitroom/nestjs-libraries/dtos/comments/add.comment.dto';
+import { OnboardingService } from '@gitroom/nestjs-libraries/database/prisma/onboarding/onboarding.service';
 
 const pump = promisify(pipeline);
 
@@ -38,7 +39,8 @@ export class PublicController {
     private _trackService: TrackService,
     private _agentGraphInsertService: AgentGraphInsertService,
     private _postsService: PostsService,
-    private _subscriptionService: SubscriptionService
+    private _subscriptionService: SubscriptionService,
+    private _onboardingService: OnboardingService
   ) {}
   @Post('/agent')
   async createAgent(@Body() body: { text: string; apiKey: string }) {
@@ -164,6 +166,32 @@ export class PublicController {
     } catch (err) {
       return { success: false };
     }
+  }
+
+  @Get('/onboarding/unsubscribe')
+  async unsubscribeOnboarding(
+    @Query('token') token: string,
+    @Res() res: Response
+  ) {
+    const page = (text: string) =>
+      `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vezdepost</title></head><body style="font-family:sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;line-height:1.5;">${text}</body></html>`;
+
+    if (!(await this._onboardingService.unsubscribeByToken(token))) {
+      res
+        .status(400)
+        .type('html')
+        .send(page('<p>Ссылка для отписки недействительна.</p>'));
+      return;
+    }
+
+    res
+      .status(200)
+      .type('html')
+      .send(
+        page(
+          '<p>Готово — письма-подсказки больше не придут.</p><p><a href="https://vezdepost.ru">vezdepost.ru</a></p>'
+        )
+      );
   }
 
   @Get('/stream')

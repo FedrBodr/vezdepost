@@ -58,6 +58,19 @@ services:
       MAX_ASSISTANT_TOKEN: '${MAX_ASSISTANT_TOKEN:-}'
       # Written to .env by 37-configure-max-assistant.sh from the bot's /me
       MAX_ASSISTANT_BOT_NAME: '${MAX_ASSISTANT_BOT_NAME:-}'
+      # Outgoing email (Unisender Go SMTP). Off until 39-configure-email.sh
+      # writes EMAIL_PROVIDER and the credentials to .env
+      EMAIL_PROVIDER: '${EMAIL_PROVIDER:-}'
+      EMAIL_HOST: 'smtp.go1.unisender.ru'
+      EMAIL_PORT: '587'
+      EMAIL_SECURE: 'false'
+      EMAIL_USER: '${EMAIL_USER:-}'
+      EMAIL_PASS: '${EMAIL_PASS:-}'
+      EMAIL_FROM_NAME: 'Дмитрий из Vezdepost'
+      EMAIL_FROM_ADDRESS: '${EMAIL_FROM_ADDRESS:-}'
+      EMAIL_REPLY_TO: '${EMAIL_REPLY_TO:-}'
+      # Keep auto-activation: a confirm-your-email step loses new users
+      EMAIL_ACTIVATION_DISABLED: 'true'
       MAX_TOKEN: '${MAX_TOKEN:?set in .env}'
       MAX_BOT_NAME: 'se13478462_bot'
       VK_ID: '${VK_ID:?set in .env}'

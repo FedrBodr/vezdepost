@@ -17,6 +17,7 @@ export * from './send.email.workflow';
 export * from './refresh.token.workflow';
 export * from './streak.workflow';
 export * from './personal-streak-reminder.workflow';
+export * from './onboarding.workflow';
 export * from './generate.video.workflow';
 export * from './process.media.workflow';
 export * from './clipping.workflow';

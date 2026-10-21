@@ -6,6 +6,7 @@ import { NodeMailerProvider } from '@gitroom/nestjs-libraries/emails/node.mailer
 import { TemporalService } from 'nestjs-temporal-core';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { randomUUID } from 'crypto';
+import { isEmailActivationRequired } from '@gitroom/nestjs-libraries/services/email.activation';
 
 @Injectable()
 export class EmailService {
@@ -22,6 +23,10 @@ export class EmailService {
 
   hasProvider() {
     return !(this.emailService instanceof EmptyProvider);
+  }
+
+  activationRequired() {
+    return isEmailActivationRequired(this.hasProvider());
   }
 
   selectProvider(provider: string) {
@@ -118,7 +123,7 @@ export class EmailService {
                         margin: 0;
                     ">${process.env.EMAIL_FROM_NAME}</h2>
                     <div style="font-size: 12px">
-                      You can change your notification preferences in your <a href="${process.env.FRONTEND_URL}/settings">account settings.</a>
+                      Настройки уведомлений можно изменить в <a href="${process.env.FRONTEND_URL}/settings">настройках аккаунта</a>.
                      </div>
                 </div>
             </div>

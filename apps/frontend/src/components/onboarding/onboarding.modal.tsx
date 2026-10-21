@@ -23,6 +23,10 @@ import {
   mcpConnectorUrls,
 } from '@gitroom/frontend/components/public-api/public.component';
 import { McpClientIcon } from '@gitroom/frontend/components/public-api/mcp.client.icons';
+import {
+  OnboardingChannelHint,
+  OnboardingDoneStep,
+} from '@gitroom/frontend/components/onboarding/onboarding.guides';
 
 interface OnboardingModalProps {
   onClose: () => void;
@@ -36,8 +40,7 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ onClose }) => {
   const steps = useMemo(
     () => [
       t('connect_channels', 'Connect Channels'),
-      t('connect_agents', 'Connect Agents'),
-      t('watch_tutorial', 'Watch Tutorial'),
+      t('onboarding_done_step', 'Done'),
     ],
     [t]
   );
@@ -106,14 +109,10 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ onClose }) => {
                 onSkip={() => setStep(2)}
               />
             )}
+            {/* Vezdepost: the MCP-agents step and the upstream video are left
+                out; agents stay under Settings > Agents */}
             {step === 2 && (
-              <OnboardingStep2
-                onBack={() => setStep(1)}
-                onNext={() => setStep(3)}
-              />
-            )}
-            {step === 3 && (
-              <OnboardingStep3 onBack={() => setStep(2)} onFinish={onClose} />
+              <OnboardingDoneStep onBack={() => setStep(1)} onFinish={onClose} />
             )}
           </div>
         </div>
@@ -171,6 +170,8 @@ const OnboardingStep1: FC<{ onNext: () => void; onSkip: () => void }> = ({
           )}
         </div>
       </div>
+
+      <OnboardingChannelHint />
 
       {/* Connected channels */}
       {sortedIntegrations.length > 0 && (

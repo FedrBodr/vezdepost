@@ -11,6 +11,10 @@ import { ForgotReturnPasswordDto } from '@gitroom/nestjs-libraries/dtos/auth/for
 import { EmailService } from '@gitroom/nestjs-libraries/services/email.service';
 import { NewsletterService } from '@gitroom/nestjs-libraries/newsletter/newsletter.service';
 import { FirstTouch } from '@gitroom/helpers/utils/first.touch';
+import { OnboardingStarter } from '@gitroom/nestjs-libraries/temporal/onboarding.starter';
+
+const activationEmailHtml = (jwt: string) =>
+  `Чтобы активировать аккаунт, перейдите по <a href="${process.env.FRONTEND_URL}/auth/activate/${jwt}">ссылке</a>.`;
 
 @Injectable()
 export class AuthService {
@@ -18,7 +22,8 @@ export class AuthService {
     private _userService: UsersService,
     private _organizationService: OrganizationService,
     private _emailService: EmailService,
-    private _providerManager: AuthProviderManager
+    private _providerManager: AuthProviderManager,
+    private _onboardingStarter: OnboardingStarter
   ) {}
   async canRegister(provider: string) {
     if (
@@ -73,12 +78,19 @@ export class AuthService {
               )
             : false;
 
-        const obj = { addedOrg, jwt: await this.jwt(create.users[0].user) };
-        await this._emailService.sendEmailSync(
-          body.email,
-          'Activate your account',
-          `Click <a href="${process.env.FRONTEND_URL}/auth/activate/${obj.jwt}">here</a> to activate your account`
+        await this._onboardingStarter.startForNewUser(
+          create.id,
+          create.users[0].user.id
         );
+
+        const obj = { addedOrg, jwt: await this.jwt(create.users[0].user) };
+        if (this._emailService.activationRequired()) {
+          await this._emailService.sendEmailSync(
+            body.email,
+            'Подтвердите адрес почты',
+            activationEmailHtml(obj.jwt)
+          );
+        }
         return obj;
       }
 
@@ -181,6 +193,11 @@ export class AuthService {
 
     await NewsletterService.register(providerUser.email);
 
+    await this._onboardingStarter.startForNewUser(
+      create.id,
+      create.users[0].user.id
+    );
+
     try {
       if (providerInstance?.postRegistration) {
         await providerInstance.postRegistration(body.providerToken, create.id);
@@ -230,8 +247,8 @@ export class AuthService {
 
     await this._emailService.sendEmailSync(
       user.email,
-      'Reset your password',
-      `You have requested to reset your password. <br />Click <a href="${process.env.FRONTEND_URL}/auth/forgot/${resetValues}">here</a> to reset your password<br />The link will expire in 20 minutes`
+      'Сброс пароля',
+      `Вы запросили сброс пароля.<br />Чтобы задать новый пароль, перейдите по <a href="${process.env.FRONTEND_URL}/auth/forgot/${resetValues}">ссылке</a>.<br />Ссылка действует 20 минут. Если вы не запрашивали сброс, просто проигнорируйте это письмо.`
     );
   }
 
@@ -283,8 +300,8 @@ export class AuthService {
 
     await this._emailService.sendEmailSync(
       user.email,
-      'Activate your account',
-      `Click <a href="${process.env.FRONTEND_URL}/auth/activate/${jwt}">here</a> to activate your account`
+      'Подтвердите адрес почты',
+      activationEmailHtml(jwt)
     );
 
     return true;

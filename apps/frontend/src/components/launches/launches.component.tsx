@@ -4,6 +4,7 @@ import {
   AddProviderButton,
   CustomVariables,
 } from '@gitroom/frontend/components/launches/add.provider.component';
+import { NoChannelsGuides } from '@gitroom/frontend/components/onboarding/onboarding.guides';
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { capitalize, groupBy, orderBy } from 'lodash';
@@ -726,6 +727,7 @@ export const LaunchesComponent = () => {
                       <div className="text-[14px]">
                         {t('connect_your_accounts')}
                       </div>
+                      <NoChannelsGuides />
                     </div>
                   </div>
                 )}

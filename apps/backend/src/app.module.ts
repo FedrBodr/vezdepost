@@ -18,6 +18,7 @@ import { InfiniteWorkflowRegisterModule } from '@gitroom/nestjs-libraries/tempor
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { PersonalStreakReminderModule } from '@gitroom/nestjs-libraries/temporal/personal-streak-reminder.module';
+import { OnboardingModule } from '@gitroom/nestjs-libraries/temporal/onboarding.module';
 import { TelegramAssistantModule } from '@gitroom/nestjs-libraries/telegram-assistant/telegram.assistant.module';
 
 @Global()
@@ -33,6 +34,7 @@ import { TelegramAssistantModule } from '@gitroom/nestjs-libraries/telegram-assi
     ChatModule,
     getTemporalModule(false),
     PersonalStreakReminderModule,
+    OnboardingModule,
     TelegramAssistantModule,
     TemporalRegisterMissingSearchAttributesModule,
     InfiniteWorkflowRegisterModule,

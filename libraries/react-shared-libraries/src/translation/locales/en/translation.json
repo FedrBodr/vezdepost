@@ -1054,5 +1054,13 @@
   "post_now_all_channels": "Post all channels now",
   "schedule_post_in_all_channels_question": "This post was created for more than one channel. Do you want to schedule all of them?",
   "schedule_all_channels": "Schedule all channels",
-  "only_channel": "Only"
+  "only_channel": "Only",
+  "onboarding_done_step": "Done",
+  "onboarding_start_hint": "Easiest to start with Telegram or MAX: it takes about 2 minutes.",
+  "onboarding_guides": "Step-by-step guides:",
+  "onboarding_how_to_connect": "How to connect a channel:",
+  "onboarding_done_title": "Almost done",
+  "onboarding_done_description": "Create a post in the calendar: pick a day, write the text and choose the channels. It will be published at the set time.",
+  "onboarding_assistant_hint": "You can also post straight from a messenger: send the text to our bot and it becomes a post.",
+  "onboarding_help_hint": "Something not working? Write to the author, I will help:"
 }

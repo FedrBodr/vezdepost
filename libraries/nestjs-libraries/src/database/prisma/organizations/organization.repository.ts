@@ -461,7 +461,7 @@ export class OrganizationRepository {
 
   async createOrgAndUser(
     body: Omit<CreateOrgUserDto, 'providerToken'> & { providerId?: string },
-    hasEmail: boolean,
+    activationRequired: boolean,
     ip: string,
     userAgent: string,
     signupSource?: FirstTouch
@@ -477,7 +477,7 @@ export class OrganizationRepository {
             role: Role.SUPERADMIN,
             user: {
               create: {
-                activated: body.provider !== 'LOCAL' || !hasEmail,
+                activated: body.provider !== 'LOCAL' || !activationRequired,
                 email: body.email,
                 password: body.password
                   ? AuthService.hashPassword(body.password)

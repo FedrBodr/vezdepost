@@ -267,6 +267,24 @@ SEO-гайды под реальные запросы (исследование 
   Bing, на который опирается поиск ChatGPT. llms.txt добавлен, чтобы ИИ описывал
   сервис точно (лендинг обещает 30+ платформ, а в облаке включено 6).
 
+## Почта и онбординг новичков
+
+Почта — Unisender Go по SMTP (nodemailer). Включается скриптом
+`docs/server-scripts/39-configure-email.sh` (пишет EMAIL_PROVIDER, логин,
+пароль, адреса From/Reply-To в серверный `.env`); хост, порт, имя отправителя
+«Дмитрий из Vezdepost» и `EMAIL_ACTIVATION_DISABLED=true` — литералы в
+`docker-compose.override.yaml`. Активация по почте выключена намеренно: лишний
+шаг теряет новичков.
+
+Каждому новому пользователю стартует Temporal `onboardingWorkflow`
+(`onboarding_<userId>`): приветствие через 10 минут, напоминания на 1-й и 3-й
+день без каналов, «первый пост» через день после первого канала; цепочка
+останавливается на первом посте или отписке (`User.sendOnboardingEmails`).
+Тексты — `libraries/nestjs-libraries/src/onboarding/onboarding.emails.ts`.
+Привязавшим бота-ассистента то же уходит в Telegram/MAX. Модалка онбординга:
+каналы → «Готово» (шаг с MCP-агентами и видео Postiz убран). Решения и причины —
+`docs/superpowers/specs/2026-10-21-onboarding-activation-design.md`.
+
 ## Текущие хвосты (на 2026-07-11)
 
 - Бэкапы Postgres на сервере ещё не настроены.
