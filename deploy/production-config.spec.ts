@@ -28,6 +28,10 @@ describe('production configuration', () => {
     expect(override).toContain(
       "MAX_ASSISTANT_BOT_NAME: '${MAX_ASSISTANT_BOT_NAME:-}'"
     );
+    expect(override).toContain(
+      "LEGAL_REQUISITES: 'ИП Федоренко Дмитрий Александрович"
+    );
+    expect(example).toContain('LEGAL_REQUISITES=""');
     expect(example).toContain('MAX_ASSISTANT_TOKEN=""');
     expect(example).toContain('MOBILE_ROUTE_ENABLED="false"');
     expect(example).toContain('NEXT_PUBLIC_POSTHOG_KEY=""');

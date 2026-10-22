@@ -82,6 +82,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           facebookPixel={process.env.NEXT_PUBLIC_FACEBOOK_PIXEL!}
           telegramBotName={process.env.TELEGRAM_BOT_NAME!}
           maxBotName={process.env.MAX_BOT_NAME!}
+          legalRequisites={process.env.LEGAL_REQUISITES || ''}
           maxAssistantEnabled={
             !!process.env.MAX_ASSISTANT_TOKEN &&
             !!process.env.MAX_ASSISTANT_BOT_NAME

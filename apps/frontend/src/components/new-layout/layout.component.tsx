@@ -14,6 +14,7 @@ import clsx from 'clsx';
 import dynamic from 'next/dynamic';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
+import { LegalRequisites } from '@gitroom/frontend/components/layout/legal.requisites';
 import { usePathname, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { CheckPayment } from '@gitroom/frontend/components/layout/check.payment';
@@ -206,6 +207,7 @@ export const LayoutComponent = ({
                       <div className="flex flex-1 min-w-0 gap-[1px] mobile:flex-col">
                         {children}
                       </div>
+                      <LegalRequisites className="bg-newBgColorInner px-[20px] py-[4px] text-textItemBlur mobile:px-[12px]" />
                     </div>
                   </div>
                 </>

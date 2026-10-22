@@ -58,6 +58,8 @@ services:
       MAX_ASSISTANT_TOKEN: '${MAX_ASSISTANT_TOKEN:-}'
       # Written to .env by 37-configure-max-assistant.sh from the bot's /me
       MAX_ASSISTANT_BOT_NAME: '${MAX_ASSISTANT_BOT_NAME:-}'
+      # Seller details shown at the bottom of the app; empty hides them
+      LEGAL_REQUISITES: 'ИП Федоренко Дмитрий Александрович · ИНН 772373964340 · ОГРНИП 326774600702237 · г. Москва, ул. Люблинская, д. 129/2 · +7 (926) 580-33-41'
       # Outgoing email (Unisender Go SMTP). Off until 39-configure-email.sh
       # writes EMAIL_PROVIDER and the credentials to .env
       EMAIL_PROVIDER: '${EMAIL_PROVIDER:-}'

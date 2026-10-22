@@ -23,6 +23,7 @@ interface VariableContextInterface {
   telegramBotName: string;
   maxBotName: string;
   maxAssistantEnabled?: boolean;
+  legalRequisites?: string;
   neynarClientId: string;
   appleClientId: string;
   isSecured: boolean;
@@ -61,6 +62,7 @@ const VariableContext = createContext({
   telegramBotName: '',
   maxBotName: '',
   maxAssistantEnabled: false,
+  legalRequisites: '',
   facebookPixel: '',
   neynarClientId: '',
   appleClientId: '',
