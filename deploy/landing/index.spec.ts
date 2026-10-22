@@ -510,7 +510,7 @@ describe('privacy policy', () => {
     expect(document.querySelector('#cookies h2')?.textContent).toBe('Cookies and analytics');
     expect(document.querySelector('#changes h2')?.textContent).toBe('Policy changes');
     expect(document.querySelector('#contacts h2')?.textContent).toBe('Contact');
-    expect(text).toContain('individual registered in Russia under the professional income tax regime');
+    expect(text).toContain('sole proprietor registered in Russia');
     expect(text).toContain('including Pinterest');
     expect(text).toContain('Request access, correction, restriction, or deletion');
     expect(document.querySelector('footer')?.textContent).toContain('Home');

@@ -30,6 +30,15 @@ export default async function AuthLayout({
               <LanguageComponent />
             </div>
             <div className="flex">{children}</div>
+            <div className="text-[12px] leading-[18px] text-white/50">
+              ИП Федоренко Дмитрий Александрович · ИНН 772373964340 · ОГРНИП
+              326774600702237
+              <br />
+              г. Москва, ул. Люблинская, д. 129/2 ·{' '}
+              <a href="tel:+79265803341" className="underline">
+                +7 (926) 580-33-41
+              </a>
+            </div>
           </div>
         </div>
         <div className="text-[36px] flex-1 pt-[88px] hidden lg:flex flex-col items-center">
