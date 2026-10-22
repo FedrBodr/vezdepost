@@ -33,6 +33,10 @@ DEPLOYED=$(cat "$STATE" 2>/dev/null || echo none)
   # links file keeps the previous config and must not block the app deploy
   docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile ||
     echo "$(date -Is) WARN caddy reload failed, short links not applied"
+  # the Caddyfile itself is a single-file mount that keeps the old inode
+  # after git reset; script 29 recreates caddy only when the file changed
+  bash "$REPO_DIR/docs/server-scripts/29-apply-caddyfile.sh" ||
+    echo "$(date -Is) WARN Caddyfile not applied"
   "$READINESS_SCRIPT"
   echo "$REMOTE" > "$STATE"
   echo "$(date -Is) deploy finished"

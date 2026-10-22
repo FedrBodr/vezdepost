@@ -69,4 +69,7 @@ fi
 grep -q 'readiness-exit-1' "$TMP_DIR/failure/autodeploy.log" ||
   fail 'readiness diagnostics were not retained'
 
+grep -q 'docs/server-scripts/29-apply-caddyfile.sh' "$SCRIPT" ||
+  fail 'a changed Caddyfile is not applied on deploy'
+
 echo 'Autodeploy readiness-gate tests passed'
