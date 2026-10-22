@@ -20,6 +20,9 @@ vezdepost.ru, www.vezdepost.ru {
 	import access_log
 	# short links /go/<code> (deploy/links, mounted as a directory)
 	import /etc/caddy/links/*.caddy
+	# Revalidate on every visit (a cheap 304 via ETag) so a deploy shows up
+	# without a hard refresh; with no Cache-Control browsers guess a lifetime
+	header Cache-Control "no-cache"
 	root * /srv/landing
 	file_server
 	encode gzip

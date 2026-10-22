@@ -152,6 +152,14 @@ describe('production configuration', () => {
     expect(override).toContain('caddy-data:/data');
   });
 
+  it('makes browsers revalidate the landing so a deploy shows without a hard refresh', () => {
+    const caddyfile = readRootFile('deploy/Caddyfile');
+
+    expect(caddyfile).toMatch(
+      /vezdepost\.ru, www\.vezdepost\.ru \{[^}]*header Cache-Control "no-cache"[^}]*root \* \/srv\/landing/
+    );
+  });
+
   it('sends the app to the same GA4 stream as the landing', () => {
     const override = readRootFile('docker-compose.override.yaml');
     const landing = readRootFile('deploy/landing/index.html');
