@@ -135,6 +135,35 @@ describe('TelegramProvider media captions', () => {
       expect(result[0].postId).toBe('77');
     });
 
+    it('declares a photo in rich_message.media and references it via tg://photo', async () => {
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+
+      await provider.post(
+        'channel',
+        '-1001',
+        details('<img src="https://cdn.test/photo.jpg"/>\n\n<p>Body</p>', [
+          { id: 'media', type: 'image', path: 'https://cdn.test/photo.jpg' },
+        ])
+      );
+
+      expect(callTelegramApiMock).toHaveBeenCalledTimes(1);
+      const [token, method, payload] = callTelegramApiMock.mock.calls[0];
+      expect(token).toBe('test-token');
+      expect(method).toBe('sendRichMessage');
+      const rich = JSON.parse(payload.rich_message);
+      expect(rich.media).toEqual([
+        {
+          id: 'p0',
+          media: { type: 'photo', media: 'https://cdn.test/photo.jpg' },
+        },
+      ]);
+      expect(rich.html).toContain('tg://photo?id=p0');
+      expect(rich.html).not.toContain('https://cdn.test/photo.jpg');
+      expect(bot.sendPhoto).not.toHaveBeenCalled();
+      expect(bot.sendMessage).not.toHaveBeenCalled();
+    });
+
     it('falls back to the legacy transport when the rich call fails', async () => {
       callTelegramApiMock.mockRejectedValue(new Error('rich rejected'));
       const { bot } = makeBot();

@@ -229,3 +229,43 @@ export const telegramRichMediaEligible = (
   media.every(
     (item) => item.type === 'image' && /^https?:\/\//.test(item.path ?? '')
   );
+
+export type TelegramRichMessageMedia = Readonly<{
+  id: string;
+  media: { type: 'photo'; media: string };
+}>;
+
+export type TelegramRichMessage = {
+  html: string;
+  media?: ReadonlyArray<TelegramRichMessageMedia>;
+};
+
+/**
+ * Builds the sendRichMessage payload: a photo referenced in the HTML must be
+ * declared in the InputRichMessage `media` array and pointed at through a
+ * `tg://photo?id=` link, otherwise Telegram answers
+ * RICH_MESSAGE_PHOTO_NO_MEDIA_FOUND. Text-only posts keep the bare `{ html }`.
+ */
+export const buildTelegramRichMessage = (
+  html: string,
+  media: ReadonlyArray<TelegramRichMedia> = []
+): TelegramRichMessage => {
+  const photos = media.filter(
+    (item) => item.type === 'image' && /^https?:\/\//.test(item.path ?? '')
+  );
+  if (!photos.length) {
+    return { html };
+  }
+  let nextHtml = html;
+  const mediaEntries = photos.map((item, index) => {
+    const id = `p${index}`;
+    const path = item.path!.trim();
+    const renderedImg = `<img src="${escapeRichAttribute(path)}"/>`;
+    const richImg = `<img src="tg://photo?id=${id}"/>`;
+    nextHtml = nextHtml.includes(renderedImg)
+      ? nextHtml.replace(renderedImg, richImg)
+      : `${richImg}\n\n${nextHtml}`;
+    return { id, media: { type: 'photo' as const, media: path } };
+  });
+  return { html: nextHtml, media: mediaEntries };
+};

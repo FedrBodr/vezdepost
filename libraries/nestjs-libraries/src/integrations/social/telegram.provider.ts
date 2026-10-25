@@ -20,7 +20,10 @@ import {
   shouldSendTelegramTextSeparately,
   TELEGRAM_MEDIA_GROUP_MAX_ITEMS,
 } from '@gitroom/helpers/utils/telegram.constraints';
-import { telegramRichMediaEligible } from '@gitroom/helpers/utils/telegram.rich.normalization';
+import {
+  buildTelegramRichMessage,
+  telegramRichMediaEligible,
+} from '@gitroom/helpers/utils/telegram.rich.normalization';
 import { callTelegramApi } from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
 import { TelegramUpdatesHub } from '@gitroom/nestjs-libraries/integrations/social/telegram.updates.hub';
 import {
@@ -411,7 +414,9 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
       'sendRichMessage',
       {
         chat_id: accessToken,
-        rich_message: JSON.stringify({ html }),
+        rich_message: JSON.stringify(
+          buildTelegramRichMessage(html, message.media || [])
+        ),
       }
     );
     return typeof result?.message_id === 'number' ? result.message_id : null;
