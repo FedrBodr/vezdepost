@@ -126,11 +126,15 @@ describe('Telegram Stories rollout gate', () => {
     );
 
     await expectIntegrationNotAvailable(
-      noAuthController.connectSocialMedia('telegram-stories', {
-        state: 'state',
-        code: 'nonce',
-        timezone: '180',
-      } as never)
+      noAuthController.connectSocialMedia(
+        'telegram-stories',
+        {
+          state: 'state',
+          code: 'nonce',
+          timezone: '180',
+        } as never,
+        { cookies: { connect_oauth_state: 'state' } } as never
+      )
     );
     expect(authenticate).not.toHaveBeenCalled();
   });

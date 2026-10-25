@@ -7,8 +7,10 @@ import {
   HttpStatus,
   Param,
   Post,
+  Req,
   UseFilters,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { ConnectIntegrationDto } from '@gitroom/nestjs-libraries/dtos/integrations/connect.integration.dto';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
@@ -48,7 +50,8 @@ export class NoAuthIntegrationsController {
   @UseFilters(new NotEnoughScopesFilter())
   async connectSocialMedia(
     @Param('integration') integration: string,
-    @Body() body: ConnectIntegrationDto
+    @Body() body: ConnectIntegrationDto,
+    @Req() req: Request
   ) {
     if (
       !this._integrationManager
@@ -60,6 +63,24 @@ export class NoAuthIntegrationsController {
 
     const integrationProvider =
       this._integrationManager.getSocialIntegration(integration);
+
+    // CSRF defence for the OAuth connect: the state nonce is echoed back from
+    // the provider and is enough to pick the target org, so a victim could be
+    // lured into finishing an attacker-started flow. Bind the nonce to the
+    // browser that started it via the connect_oauth_state cookie set when the
+    // authorize link was generated (mirrors the login oauth_state cookie).
+    // Custom-field providers enter their own credentials and never round-trip
+    // through a provider, so there is nothing to forge.
+    if (
+      !process.env.NOT_SECURED &&
+      !integrationProvider.customFields &&
+      (!body.state || body.state !== req?.cookies?.connect_oauth_state)
+    ) {
+      throw new HttpException(
+        'This connection link expired or was already used, please connect the channel again',
+        HttpStatus.BAD_REQUEST
+      );
+    }
 
     const getCodeVerifier = integrationProvider.customFields
       ? 'none'

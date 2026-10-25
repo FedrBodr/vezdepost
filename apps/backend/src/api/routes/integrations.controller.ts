@@ -8,7 +8,10 @@ import {
   Post,
   Put,
   Query,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
+import { getCookieUrlFromDomain } from '@gitroom/helpers/subdomain/subdomain.management';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
@@ -245,7 +248,8 @@ export class IntegrationsController {
     @Query('externalUrl') externalUrl: string,
     @Query('redirectUrl') redirectUrl: string,
     @Query('onboarding') onboarding: string,
-    @GetOrgFromRequest() org: Organization
+    @GetOrgFromRequest() org: Organization,
+    @Res({ passthrough: true }) response: Response
   ) {
     if (
       !this._integrationManager.isSocialIntegrationAllowedForOrg(
@@ -293,6 +297,22 @@ export class IntegrationsController {
       if (redirectUrl) {
         await ioRedis.set(`redirect:${state}`, redirectUrl, 'EX', 3600);
       }
+
+      // Bind this OAuth state to the browser that started the flow, so the
+      // connect callback can reject a nonce finished in a different browser
+      // (CSRF). Mirrors the login oauth_state cookie; TTL matches the Redis
+      // keys above (1h).
+      response.cookie('connect_oauth_state', state, {
+        domain: getCookieUrlFromDomain(process.env.FRONTEND_URL!),
+        ...(!process.env.NOT_SECURED
+          ? {
+              secure: true,
+              httpOnly: true,
+              sameSite: 'none',
+            }
+          : {}),
+        expires: new Date(Date.now() + 1000 * 60 * 60),
+      });
 
       await ioRedis.set(`organization:${state}`, org.id, 'EX', 3600);
       await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);

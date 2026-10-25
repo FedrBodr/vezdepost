@@ -138,11 +138,75 @@ describe('NoAuthIntegrationsController two-step page loading', () => {
   });
 
   const connect = () =>
-    controller.connectSocialMedia('vk-group', {
-      state: 'oauth-state',
-      code: 'authorization-code&&&&device-id',
-      timezone: '180',
-    } as never);
+    controller.connectSocialMedia(
+      'vk-group',
+      {
+        state: 'oauth-state',
+        code: 'authorization-code&&&&device-id',
+        timezone: '180',
+      } as never,
+      { cookies: { connect_oauth_state: 'oauth-state' } } as never
+    );
+
+  it('rejects a connect whose state does not match the browser cookie', async () => {
+    let thrown: unknown;
+    try {
+      await controller.connectSocialMedia(
+        'vk-group',
+        {
+          state: 'oauth-state',
+          code: 'authorization-code&&&&device-id',
+          timezone: '180',
+        } as never,
+        { cookies: { connect_oauth_state: 'attacker-different-state' } } as never
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(HttpException);
+    expect((thrown as HttpException).getStatus()).toBe(400);
+    expect(provider.authenticate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a connect that carries no state cookie at all', async () => {
+    let thrown: unknown;
+    try {
+      await controller.connectSocialMedia(
+        'vk-group',
+        {
+          state: 'oauth-state',
+          code: 'authorization-code&&&&device-id',
+          timezone: '180',
+        } as never,
+        { cookies: {} } as never
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(HttpException);
+    expect((thrown as HttpException).getStatus()).toBe(400);
+    expect(provider.authenticate).not.toHaveBeenCalled();
+  });
+
+  it('does not require a state cookie for custom-field providers', async () => {
+    provider.customFields = true as never;
+    provider.pages.mockResolvedValue([]);
+
+    await expect(
+      controller.connectSocialMedia(
+        'vk-group',
+        {
+          state: 'oauth-state',
+          code: 'authorization-code&&&&device-id',
+          timezone: '180',
+        } as never,
+        { cookies: {} } as never
+      )
+    ).resolves.toBeDefined();
+    expect(provider.authenticate).toHaveBeenCalled();
+  });
 
   it('returns a genuine empty managed-community list', async () => {
     provider.pages.mockResolvedValue([]);

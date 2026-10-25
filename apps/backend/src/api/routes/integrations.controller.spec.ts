@@ -1,6 +1,51 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IntegrationsController } from './integrations.controller';
 
+vi.mock('@gitroom/nestjs-libraries/redis/redis.service', () => ({
+  ioRedis: { set: vi.fn(), get: vi.fn(), del: vi.fn() },
+}));
+
+describe('IntegrationsController connect CSRF cookie', () => {
+  it('pins the OAuth state to the browser via the connect_oauth_state cookie', async () => {
+    const provider = {
+      generateAuthUrl: vi.fn().mockResolvedValue({
+        codeVerifier: 'verifier-fixture',
+        state: 'state-fixture',
+        url: 'https://provider.example/oauth?state=state-fixture',
+      }),
+    };
+    const manager = {
+      isSocialIntegrationAllowedForOrg: vi.fn().mockReturnValue(true),
+      getMigrationTarget: vi.fn().mockReturnValue(undefined),
+      getSocialIntegration: vi.fn().mockReturnValue(provider),
+    };
+    const controller = new IntegrationsController(
+      manager as never,
+      {} as never,
+      {} as never,
+      {} as never
+    );
+    const response = { cookie: vi.fn() };
+
+    const result = await controller.getIntegrationUrl(
+      'telegram',
+      '',
+      '',
+      '',
+      '',
+      { id: 'org-1' } as never,
+      response as never
+    );
+
+    expect(result).toEqual({ url: expect.stringContaining('state-fixture') });
+    expect(response.cookie).toHaveBeenCalledWith(
+      'connect_oauth_state',
+      'state-fixture',
+      expect.objectContaining({ expires: expect.any(Date) })
+    );
+  });
+});
+
 describe('IntegrationsController capability metadata', () => {
   it('serializes server-resolved V2 capabilities for each stored integration', async () => {
     const integration = {
