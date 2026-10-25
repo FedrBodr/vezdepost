@@ -26,7 +26,8 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2; // VK has moderate API limits
   refreshCron = true;
   identifier: VkIdentifier = 'vk';
-  name = 'VK';
+  name = 'ВКонтакте\n(личная страница)';
+  toolTip = 'Публикация на вашей личной странице. Для сообщества выберите «ВКонтакте (сообщество)»';
   isBetweenSteps = false;
   scopes = [
     'vkid.personal_info',

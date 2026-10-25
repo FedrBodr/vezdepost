@@ -373,7 +373,7 @@ export const ContinueIntegration: FC<{
       youtube: 'YouTube',
       gmb: 'Google Business',
       tumblr: 'Tumblr',
-      'vk-group': 'VK Group',
+      'vk-group': 'ВКонтакте (сообщество)',
       'tiktok-business': 'TikTok Business',
     };
     return names[provider] || provider;

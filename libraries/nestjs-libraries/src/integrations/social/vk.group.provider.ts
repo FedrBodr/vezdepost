@@ -48,7 +48,8 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 2;
   refreshCron = true;
   identifier: VkIdentifier = 'vk-group';
-  name = 'VK Group';
+  name = 'ВКонтакте\n(сообщество)';
+  toolTip = 'Публикация в сообществе или паблике, где вы администратор';
   isBetweenSteps = true;
   scopes = ['vkid.personal_info', 'wall', 'photos', 'groups'];
   editor = 'normal' as const;

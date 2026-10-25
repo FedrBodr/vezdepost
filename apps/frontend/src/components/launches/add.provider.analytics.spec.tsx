@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  byConnectableFirst,
   getConnectionType,
   isProviderVisibleInPicker,
   isUsableStartUrl,
@@ -68,6 +69,21 @@ describe('provider connection analytics', () => {
         true
       )
     ).toBe(true);
+  });
+
+  it('lists connectable providers before unavailable ones, keeping their order', () => {
+    const providers = [
+      { identifier: 'x', canConnect: false },
+      { identifier: 'vk', canConnect: true },
+      { identifier: 'reddit', canConnect: false },
+      { identifier: 'telegram' },
+      { identifier: 'vk-group', canConnect: true },
+    ];
+
+    expect(
+      [...providers].sort(byConnectableFirst).map((p) => p.identifier)
+    ).toEqual(['vk', 'telegram', 'vk-group', 'x', 'reddit']);
+    expect(source).toMatch(/\.sort\(byConnectableFirst\)/);
   });
 
   it('wires unavailable requests to the provider identifier without connection work', () => {

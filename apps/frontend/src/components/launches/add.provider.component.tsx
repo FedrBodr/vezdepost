@@ -579,6 +579,13 @@ export const isProviderVisibleInPicker = (
     !item.isChromeExtension &&
     !item.customFields);
 
+// Unavailable ("Request") providers go to the end of the picker; the sort is
+// stable, so both groups keep the order the backend returned.
+export const byConnectableFirst = (
+  a: { canConnect?: boolean },
+  b: { canConnect?: boolean }
+) => Number(a.canConnect === false) - Number(b.canConnect === false);
+
 export const AddProviderComponent: FC<{
   social: Array<{
     identifier: string;
@@ -973,6 +980,7 @@ export const AddProviderComponent: FC<{
                   storiesAvailability?.available
                 )
             )
+            .sort(byConnectableFirst)
             .map((item) => (
               <ChannelPickerCard
                 key={item.identifier}
