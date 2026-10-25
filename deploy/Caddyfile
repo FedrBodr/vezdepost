@@ -16,8 +16,23 @@
 	}
 }
 
+# Baseline security headers. The CSP here is intentionally ONLY
+# frame-ancestors (clickjacking defence for OAuth/approve screens); it does
+# not restrict script/style/connect sources, so it cannot break app loading.
+# Caddy serves valid TLS for every host below, so HSTS is safe.
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Frame-Options "SAMEORIGIN"
+		Content-Security-Policy "frame-ancestors 'self'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
+
 vezdepost.ru, www.vezdepost.ru {
 	import access_log
+	import security_headers
 	# short links /go/<code> (deploy/links, mounted as a directory)
 	import /etc/caddy/links/*.caddy
 	# Revalidate on every visit (a cheap 304 via ETag) so a deploy shows up
@@ -30,6 +45,7 @@ vezdepost.ru, www.vezdepost.ru {
 
 app.vezdepost.ru {
 	import access_log
+	import security_headers
 	reverse_proxy postiz:5000
 	encode gzip
 }
