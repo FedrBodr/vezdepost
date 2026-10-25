@@ -21,7 +21,7 @@ describe('VK Group calendar publication errors', () => {
     ],
     [
       'ru',
-      'Переподключите VK Group через авторизацию VK, чтобы публиковать фотографии.',
+      'Переподключите «ВКонтакте (сообщество)» через авторизацию VK, чтобы публиковать фотографии.',
     ],
   ] as const)(
     'extracts and translates serialized error 27 in %s',
@@ -50,7 +50,7 @@ describe('VK Group calendar publication errors', () => {
     ],
     [
       'ru',
-      'Нет доступа к фотографиям VK Group. Переподключите VK Group через авторизацию VK и предоставьте доступ к фотографиям.',
+      'Нет доступа к фотографиям «ВКонтакте (сообщество)». Переподключите «ВКонтакте (сообщество)» через авторизацию VK и предоставьте доступ к фотографиям.',
     ],
   ] as const)(
     'extracts and translates serialized error 15 in %s',

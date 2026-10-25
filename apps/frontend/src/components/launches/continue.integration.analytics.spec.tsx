@@ -135,7 +135,7 @@ describe('continued provider connection analytics', () => {
 
   it.each([
     ['en', 'Reconnect VK Group through VK authorization and try again.'],
-    ['ru', 'Переподключите VK Group через авторизацию VK и попробуйте снова.'],
+    ['ru', 'Переподключите «ВКонтакте (сообщество)» через авторизацию VK и попробуйте снова.'],
   ] as const)(
     'renders selection error 5 through the %s locale',
     (locale, expected) => {
