@@ -148,3 +148,64 @@ describe('IntegrationRepository VK Group finalization', () => {
     });
   });
 });
+
+describe('IntegrationRepository credential-safe writes', () => {
+  const makeRepo = (overrides: {
+    integrationUpdate: ReturnType<typeof vi.fn>;
+    customers?: unknown;
+  }) =>
+    new IntegrationRepository(
+      {
+        model: { integration: { update: overrides.integrationUpdate } },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      (overrides.customers ?? {}) as never,
+      {} as never
+    );
+
+  it('updateIntegrationGroup selects only the id, never the token', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'int-1' });
+    await makeRepo({ integrationUpdate: update }).updateIntegrationGroup(
+      'org-1',
+      'int-1',
+      'group-1'
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { id: true } })
+    );
+  });
+
+  it('updateOnCustomerName selects only the id, never the token', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'int-1' });
+    const customers = {
+      model: {
+        customer: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'cust-1' }),
+          create: vi.fn(),
+        },
+      },
+    };
+    await makeRepo({ integrationUpdate: update, customers }).updateOnCustomerName(
+      'org-1',
+      'int-1',
+      'Acme'
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { id: true } })
+    );
+  });
+
+  it('updateNameAndUrl selects only the id, never the token', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'int-1' });
+    await makeRepo({ integrationUpdate: update }).updateNameAndUrl(
+      'int-1',
+      'New name',
+      'https://cdn.test/pic.jpg'
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { id: true } })
+    );
+  });
+});
