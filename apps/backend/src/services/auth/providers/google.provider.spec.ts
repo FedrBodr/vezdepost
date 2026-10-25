@@ -1,74 +1,76 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { HttpException } from '@nestjs/common';
+
+const tokeninfo = vi.fn();
+const userinfoGet = vi.fn();
+
+vi.mock('googleapis', () => ({
+  google: {
+    auth: {
+      OAuth2: class {
+        setCredentials() {}
+        generateAuthUrl() {
+          return '';
+        }
+        getToken() {
+          return { tokens: {} };
+        }
+      },
+    },
+    oauth2: vi.fn(() => ({
+      tokeninfo,
+      userinfo: { get: userinfoGet },
+    })),
+  },
+}));
+
 import { GoogleProvider } from './google.provider';
 
-const originalEnv = { ...process.env };
-
-describe('GoogleProvider OAuth configuration', () => {
+describe('GoogleProvider token audience', () => {
   beforeEach(() => {
-    process.env = {
-      ...originalEnv,
-      FRONTEND_URL: 'https://app.vezdepost.ru',
-      GOOGLE_CLIENT_ID: 'google-client-id',
-      GOOGLE_CLIENT_SECRET: 'google-client-secret',
-      YOUTUBE_CLIENT_ID: 'youtube-client-id',
-      YOUTUBE_CLIENT_SECRET: 'youtube-client-secret',
-    };
+    vi.clearAllMocks();
+    vi.stubEnv('GOOGLE_CLIENT_ID', 'our-client.apps.googleusercontent.com');
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', 'secret');
+    vi.stubEnv('FRONTEND_URL', 'https://app.example');
+    userinfoGet.mockResolvedValue({
+      data: { id: 'google-user-1', email: 'user@example.com' },
+    });
   });
 
-  afterEach(() => {
-    process.env = { ...originalEnv };
+  it('rejects an access token minted for a different OAuth client', async () => {
+    tokeninfo.mockResolvedValue({
+      data: { audience: 'attacker-app.apps.googleusercontent.com' },
+    });
+
+    let thrown: unknown;
+    try {
+      await new GoogleProvider().getUser('stolen-token');
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(HttpException);
+    expect(userinfoGet).not.toHaveBeenCalled();
   });
 
-  it('prefers dedicated Google credentials and callback', () => {
-    const url = new URL(new GoogleProvider().generateLink());
+  it('accepts an access token minted for our own client', async () => {
+    tokeninfo.mockResolvedValue({
+      data: { audience: 'our-client.apps.googleusercontent.com' },
+    });
 
-    expect(url.searchParams.get('client_id')).toBe('google-client-id');
-    expect(url.searchParams.get('redirect_uri')).toBe(
-      'https://app.vezdepost.ru/auth?provider=GOOGLE'
-    );
-    expect(url.searchParams.get('scope')?.split(' ')).toEqual([
-      'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/userinfo.email',
-    ]);
+    const user = await new GoogleProvider().getUser('legit-token');
+
+    expect(user).toEqual({ id: 'google-user-1', email: 'user@example.com' });
   });
 
-  it('uses an explicitly supplied redirect URI', () => {
-    const url = new URL(
-      new GoogleProvider().generateLink({
-        redirect_uri: 'postiz://auth/callback',
-      })
-    );
+  it('also accepts a token minted for the YouTube client fallback', async () => {
+    vi.stubEnv('YOUTUBE_CLIENT_ID', 'youtube-client.apps.googleusercontent.com');
+    tokeninfo.mockResolvedValue({
+      data: { audience: 'youtube-client.apps.googleusercontent.com' },
+    });
 
-    expect(url.searchParams.get('redirect_uri')).toBe(
-      'postiz://auth/callback'
-    );
-  });
+    const user = await new GoogleProvider().getUser('legit-youtube-token');
 
-  it('falls back atomically to the legacy YouTube credential pair', () => {
-    delete process.env.GOOGLE_CLIENT_ID;
-    delete process.env.GOOGLE_CLIENT_SECRET;
-
-    const url = new URL(new GoogleProvider().generateLink());
-
-    expect(url.searchParams.get('client_id')).toBe('youtube-client-id');
-  });
-
-  it('rejects an incomplete dedicated Google credential pair', () => {
-    delete process.env.GOOGLE_CLIENT_SECRET;
-
-    expect(() => new GoogleProvider().generateLink()).toThrow(
-      'Google OAuth is misconfigured: set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET'
-    );
-  });
-
-  it('fails clearly when no credential pair is configured', () => {
-    delete process.env.GOOGLE_CLIENT_ID;
-    delete process.env.GOOGLE_CLIENT_SECRET;
-    delete process.env.YOUTUBE_CLIENT_ID;
-    delete process.env.YOUTUBE_CLIENT_SECRET;
-
-    expect(() => new GoogleProvider().generateLink()).toThrow(
-      'Google OAuth is not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET'
-    );
+    expect(user).toEqual({ id: 'google-user-1', email: 'user@example.com' });
   });
 });
