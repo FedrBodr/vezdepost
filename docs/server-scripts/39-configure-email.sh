@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Turn on outgoing email for Vezdepost production via Unisender Go SMTP:
-# writes EMAIL_PROVIDER, EMAIL_USER, EMAIL_PASS, EMAIL_FROM_ADDRESS and
-# EMAIL_REPLY_TO to .env. Host, port, sender name and the activation flag are
-# literals in docker-compose.override.yaml; they do nothing until
-# EMAIL_PROVIDER is set here.
+# Turn on outgoing email for Vezdepost production via the Unisender Go HTTP
+# API: writes EMAIL_PROVIDER=unisender-go, EMAIL_USER, EMAIL_PASS,
+# EMAIL_FROM_ADDRESS and EMAIL_REPLY_TO to .env. The prod host cannot reach
+# Unisender's SMTP relays (connections time out on every port), so the app
+# sends over HTTPS; compose passes EMAIL_PASS (the SMTP password, which is the
+# API key) as UNISENDER_GO_API_KEY. Sender name and the activation flag are
+# literals in docker-compose.override.yaml.
 #
-# Idempotent. The SMTP password is read without echo, never printed and never
-# passed on a command line. The app picks the values up on the next deploy
-# (or `docker compose up -d postiz` on the server).
+# Idempotent. Values already in .env are reused, so a re-run only switches the
+# provider. The API key is read without echo, never printed and never passed
+# on a command line. The app picks the values up on the next deploy (or
+# `docker compose up -d postiz` on the server).
 # Run from the operator machine:
 #   scp -q -o BatchMode=yes -o ConnectTimeout=10 docs/server-scripts/39-configure-email.sh vezdepost:/tmp/vezdepost-configure-email.sh
 #   ssh -tt -o BatchMode=yes -o ConnectTimeout=10 vezdepost \
@@ -16,13 +19,18 @@ set -euo pipefail
 
 REPO_DIR=${REPO_DIR:-/root/postiz-app}
 ENV_FILE="$REPO_DIR/.env"
-SMTP_HOST=${SMTP_HOST:-smtp.go1.unisender.ru}
-SMTP_PORT=${SMTP_PORT:-587}
+API_HOST=${API_HOST:-go1.unisender.ru}
+API_PORT=${API_PORT:-443}
 
-smtp_user=${EMAIL_USER:-}
-smtp_pass=${EMAIL_PASS:-}
-from_address=${EMAIL_FROM_ADDRESS:-}
-reply_to=${EMAIL_REPLY_TO:-}
+current() {
+  [[ -f "$ENV_FILE" ]] || return 0
+  grep -E "^$1=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true
+}
+
+smtp_user=${EMAIL_USER:-$(current EMAIL_USER)}
+smtp_pass=${EMAIL_PASS:-$(current EMAIL_PASS)}
+from_address=${EMAIL_FROM_ADDRESS:-$(current EMAIL_FROM_ADDRESS)}
+reply_to=${EMAIL_REPLY_TO:-$(current EMAIL_REPLY_TO)}
 
 ask() {
   local prompt=$1 secret=${2:-} value
@@ -65,10 +73,10 @@ if [[ ! -d "$REPO_DIR" ]]; then
 fi
 
 # Reachability only; credentials are checked by the first real send.
-if timeout 10 bash -c "exec 3<>/dev/tcp/$SMTP_HOST/$SMTP_PORT" 2>/dev/null; then
-  reachable="SMTP $SMTP_HOST:$SMTP_PORT is reachable from this server"
+if timeout 10 bash -c "exec 3<>/dev/tcp/$API_HOST/$API_PORT" 2>/dev/null; then
+  reachable="API $API_HOST:$API_PORT is reachable from this server"
 else
-  reachable="SMTP $SMTP_HOST:$SMTP_PORT is NOT reachable from this server; values stored anyway"
+  reachable="API $API_HOST:$API_PORT is NOT reachable from this server; values stored anyway"
 fi
 
 umask 077
@@ -79,7 +87,7 @@ temp_file=$(mktemp "$REPO_DIR/.env.email.XXXXXX")
 trap 'rm -f "$temp_file"' EXIT
 
 declare -A values=(
-  [EMAIL_PROVIDER]=nodemailer
+  [EMAIL_PROVIDER]=unisender-go
   [EMAIL_USER]=$smtp_user
   [EMAIL_PASS]=$smtp_pass
   [EMAIL_FROM_ADDRESS]=$from_address
