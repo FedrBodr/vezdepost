@@ -19,7 +19,7 @@ services:
     image: postiz-max:local
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile.vezdepost
       args:
         # baked at build time: fetch-gtm.mjs self-hosts the GTM script into public/g.js
         NEXT_PUBLIC_GTM_ID: '${NEXT_PUBLIC_GTM_ID:-}'

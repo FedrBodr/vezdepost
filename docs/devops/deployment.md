@@ -153,8 +153,51 @@ the `pnpm install` cache layer on **any** file change. Mitigations:
 - **Bind-mount** static assets (landing) instead of `COPY` → instant edits.
 - **Pin the base image by digest** (`FROM node:22-bookworm-slim@sha256:…`) to
   avoid Docker Hub 429 re-pulls and for reproducibility.
-- Planned further win: a dedicated build Dockerfile using `pnpm fetch` +
-  lockfile so dependency layers cache independently of source changes.
+- **Dependencies in their own layer** — `Dockerfile.vezdepost` (prod's
+  override points at it; upstream `Dockerfile.dev` stays untouched so syncs
+  don't conflict) copies only the manifests, lockfile, `.npmrc` and the prisma
+  schema before `pnpm install`, then `COPY . /app` and build. Before
+  (2026-10-27, e39045ef, 31 min): `pnpm install` 199 s, build 281 s,
+  `exporting layers` 1002 s + `unpacking` 165 s — the 3.9 GB node_modules
+  layer was reinstalled and re-exported on every code commit. Now a commit
+  without dependency changes reuses that layer and exports only the ~1 GB
+  build layer. `deploy/production-config.spec.ts` fails if a new
+  `apps/*/package.json` is not copied before the install.
+- **Static-only commits skip the image** — `deploy/autodeploy.sh` diffs the
+  last deployed rev against the new one; if only `deploy/landing|blog|links/`,
+  `docs/` or `*.md` changed, it skips `docker compose up --build` (caddy reload,
+  Caddyfile apply and readiness still run). Before this, even a fully cached
+  landing deploy (36 s) recreated `postiz`, because every BuildKit export gets
+  a new image id from its attestation manifest — ~30 s of app restart for a
+  landing edit. Unknown history (first deploy, force-push) always rebuilds.
+- **Rollback image** — the containerd image store deletes the old image when
+  `postiz-max:local` moves, so autodeploy tags the running image
+  `postiz-max:prev` before each build. Roll back without a rebuild:
+  ```sh
+  docker tag postiz-max:prev postiz-max:local
+  docker compose up -d --no-build postiz
+  ```
+  then run the deployment gate above. Leave the revision marker alone; push
+  a revert to `prod` so the next autodeploy matches what is running.
+  Caveat: `:prev` is "the image before the last build", not "last good". If a
+  build passes but readiness fails, cron retries and re-tags the broken image
+  as `:prev` — check `docker inspect -f '{{.Created}}' postiz-max:prev`
+  before rolling back to it.
+- **Disk hygiene** — `docs/server-scripts/41-docker-cleanup.sh` (dry run by
+  default, `APPLY=1` to act) prunes unshared build-cache records by id and
+  dangling images; never touches images used by containers, `postiz-max:*`,
+  or other projects' tags (it only lists unused ones). Cost seen on
+  2026-10-27: the next build (a compose-only commit that is normally a full
+  cache hit) rebuilt from `apt-get` on — expect one full build after a run.
+- **Decision (WOK-655, 2026-10-27).** Chosen: dependency layer + static-only
+  skip + `:prev` tag — cheap, no new infrastructure, verifiable locally.
+  Next candidate: build in GitHub Actions and pull `ghcr.io/…:<sha>` (VPS no
+  longer builds, rollback by tag) — deferred until the layer fix is measured;
+  costs a workflow, a registry token on the box and a GitHub dependency.
+  Rejected: switching Docker off the containerd snapshotter (faster export,
+  but every other project's locally built image on the box would need a
+  rebuild/re-pull); a bigger tariff (fio shows the disk is not the bottleneck,
+  see `timeweb-vps.md` §8).
 - Watch for a **BuildKit hang** at `exporting layers`: the successful revision
   marker and log stop changing, the old container remains active, and the
   compose build is older than ten minutes. Age alone is not proof of a hang.

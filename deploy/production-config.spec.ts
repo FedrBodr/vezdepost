@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -196,5 +196,23 @@ describe('production configuration', () => {
         expect(url.searchParams.get(key) ?? '').toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
       }
     }
+  });
+
+  it('installs dependencies from every workspace manifest before copying the source', () => {
+    const override = readRootFile('docker-compose.override.yaml');
+    const dockerfile = readRootFile('Dockerfile.vezdepost');
+    const apps = readdirSync(join(process.cwd(), 'apps')).filter((app) =>
+      existsSync(join(process.cwd(), 'apps', app, 'package.json'))
+    );
+
+    expect(override).toContain('dockerfile: Dockerfile.vezdepost');
+    expect(apps.length).toBeGreaterThan(0);
+    const install = dockerfile.indexOf('RUN pnpm install');
+    for (const app of apps) {
+      const copy = dockerfile.indexOf(`COPY apps/${app}/package.json `);
+      expect(copy, `apps/${app}/package.json is not copied`).toBeGreaterThan(-1);
+      expect(copy).toBeLessThan(install);
+    }
+    expect(install).toBeLessThan(dockerfile.indexOf('COPY . /app'));
   });
 });

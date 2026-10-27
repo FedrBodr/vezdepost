@@ -10,19 +10,27 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 make_stubs() {
   local case_dir=$1
+  local changed=$2
   mkdir -p "$case_dir/bin" "$case_dir/repo/deploy"
-  cat > "$case_dir/bin/git" <<'STUB'
+  printf '%b' "$changed" > "$case_dir/changed"
+  : > "$case_dir/docker.calls"
+  cat > "$case_dir/bin/git" <<STUB
 #!/usr/bin/env bash
-case "$*" in
+case "\$*" in
   'fetch --no-recurse-submodules origin prod') exit 0 ;;
   'rev-parse origin/prod') echo new-revision ;;
+  'diff --no-renames --name-only old-revision new-revision') cat "$case_dir/changed" ;;
   'reset --hard new-revision') echo 'HEAD is now at new-revision' ;;
-  *) echo "unexpected git command: $*" >&2; exit 2 ;;
+  *) echo "unexpected git command: \$*" >&2; exit 2 ;;
 esac
 STUB
-  cat > "$case_dir/bin/docker" <<'STUB'
+  cat > "$case_dir/bin/docker" <<STUB
 #!/usr/bin/env bash
-[[ "$*" == 'compose up -d --build' ]] || exit 2
+echo "\$*" >> "$case_dir/docker.calls"
+case "\$*" in
+  'compose up -d --build'|'tag postiz-max:local postiz-max:prev') exit 0 ;;
+  *) exit 2 ;;
+esac
 STUB
   cat > "$case_dir/bin/flock" <<'STUB'
 #!/usr/bin/env bash
@@ -34,8 +42,9 @@ STUB
 run_case() {
   local name=$1
   local readiness_exit=$2
+  local changed=${3:-'apps/backend/src/main.ts\n'}
   local case_dir="$TMP_DIR/$name"
-  make_stubs "$case_dir"
+  make_stubs "$case_dir" "$changed"
   printf '%s\n' old-revision > "$case_dir/state"
   cat > "$case_dir/readiness" <<STUB
 #!/usr/bin/env bash
@@ -58,6 +67,10 @@ run_case success 0
   fail 'successful readiness did not advance marker'
 grep -q 'deploy finished' "$TMP_DIR/success/autodeploy.log" ||
   fail 'successful readiness did not finish deploy'
+grep -qx 'compose up -d --build' "$TMP_DIR/success/docker.calls" ||
+  fail 'a code change did not rebuild the image'
+[[ "$(head -1 "$TMP_DIR/success/docker.calls")" == 'tag postiz-max:local postiz-max:prev' ]] ||
+  fail 'the running image was not kept as :prev before the rebuild'
 
 if run_case failure 1; then
   fail 'failed readiness was reported as successful'
@@ -68,6 +81,18 @@ fi
   fail 'failed readiness logged deploy finished'
 grep -q 'readiness-exit-1' "$TMP_DIR/failure/autodeploy.log" ||
   fail 'readiness diagnostics were not retained'
+
+run_case static 0 'deploy/landing/index.html\ndeploy/blog/articles/a.html\ndocs/PROJECT.md\nREADME.md\n'
+! grep -q 'compose' "$TMP_DIR/static/docker.calls" ||
+  fail 'a landing/blog/docs-only change rebuilt the image'
+grep -q 'image rebuild skipped' "$TMP_DIR/static/autodeploy.log" ||
+  fail 'a skipped rebuild was not logged'
+[[ "$(cat "$TMP_DIR/static/state")" == new-revision ]] ||
+  fail 'a static-only deploy did not advance marker'
+
+run_case mixed 0 'deploy/landing/index.html\ndocker-compose.override.yaml\n'
+grep -qx 'compose up -d --build' "$TMP_DIR/mixed/docker.calls" ||
+  fail 'a compose change next to a landing change skipped the rebuild'
 
 grep -q 'docs/server-scripts/29-apply-caddyfile.sh' "$SCRIPT" ||
   fail 'a changed Caddyfile is not applied on deploy'
