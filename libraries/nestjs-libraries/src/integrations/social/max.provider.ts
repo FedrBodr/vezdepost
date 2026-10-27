@@ -1,4 +1,5 @@
 import {
+  AnalyticsData,
   AuthTokenDetails,
   PostDetails,
   PostResponse,
@@ -28,6 +29,8 @@ import {
 // must not throw at import time so other providers keep loading.
 const bot = new Bot(process.env.MAX_TOKEN || '');
 const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5000';
+// The SDK fetch has no timeout; analytics must not hang the caller.
+const ANALYTICS_TIMEOUT_MS = 10000;
 
 export type MaxConnectionStatus =
   | 'waiting'
@@ -299,6 +302,81 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
         status: 'completed',
       },
     ];
+  }
+
+  private async withTimeout<T>(request: Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        request,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('MAX request timed out')),
+            ANALYTICS_TIMEOUT_MS
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // MAX exposes only a current views counter (stat.views, channel posts) —
+  // no history, so a single point dated today is returned.
+  async postAnalytics(
+    integrationId: string,
+    accessToken: string,
+    postId: string,
+    fromDate: number
+  ): Promise<AnalyticsData[]> {
+    const today = dayjs().format('YYYY-MM-DD');
+    try {
+      const message: any = await this.withTimeout(
+        this.botClient.getMessage(postId)
+      );
+      const views = message?.stat?.views;
+      if (typeof views !== 'number') {
+        return [];
+      }
+      return [
+        {
+          label: 'Views',
+          percentageChange: 0,
+          data: [{ total: String(views), date: today }],
+        },
+      ];
+    } catch (err: any) {
+      console.error('Error fetching MAX post analytics:', err?.message || err);
+      return [];
+    }
+  }
+
+  // accessToken stores the channel chat_id (see authenticate).
+  async analytics(
+    id: string,
+    accessToken: string,
+    date: number
+  ): Promise<AnalyticsData[]> {
+    const today = dayjs().format('YYYY-MM-DD');
+    try {
+      const chat: any = await this.withTimeout(
+        this.botClient.getChat(Number(accessToken))
+      );
+      const subscribers = chat?.participants_count;
+      if (typeof subscribers !== 'number') {
+        return [];
+      }
+      return [
+        {
+          label: 'Subscribers',
+          percentageChange: 0,
+          data: [{ total: String(subscribers), date: today }],
+        },
+      ];
+    } catch (err: any) {
+      console.error('Error fetching MAX analytics:', err?.message || err);
+      return [];
+    }
   }
 
   async comment(

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   evaluateMaxPermissions,
   MaxProvider,
@@ -21,6 +21,7 @@ const makeApi = ({
   getUpdates: vi.fn().mockResolvedValue({ updates, marker }),
   getChat: vi.fn().mockResolvedValue({ chat_id: 321, type: 'chat' }),
   getChatMembership: vi.fn().mockResolvedValue(member),
+  getMessage: vi.fn(),
 });
 
 describe('MAX connection command', () => {
@@ -198,5 +199,93 @@ describe('MAX connection discovery', () => {
     await expect(
       new MaxProvider(api as any).getBotId({ word: 'nonce_123' })
     ).resolves.toEqual({ status: 'max_error' });
+  });
+});
+
+describe('MAX analytics', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns post views dated today', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-27T12:00:00Z'));
+    const api = makeApi();
+    api.getMessage.mockResolvedValue({
+      body: { mid: 'mid.1' },
+      stat: { views: 42 },
+    });
+
+    await expect(
+      new MaxProvider(api as any).postAnalytics('321', '321', 'mid.1', 7)
+    ).resolves.toEqual([
+      {
+        label: 'Views',
+        percentageChange: 0,
+        data: [{ total: '42', date: '2026-10-27' }],
+      },
+    ]);
+    expect(api.getMessage).toHaveBeenCalledWith('mid.1');
+  });
+
+  it('returns no post analytics without view stats', async () => {
+    const api = makeApi();
+    api.getMessage.mockResolvedValue({ body: { mid: 'mid.1' } });
+
+    await expect(
+      new MaxProvider(api as any).postAnalytics('321', '321', 'mid.1', 7)
+    ).resolves.toEqual([]);
+  });
+
+  it('returns no post analytics when MAX fails', async () => {
+    const api = makeApi();
+    api.getMessage.mockRejectedValue(new Error('MAX unavailable'));
+
+    await expect(
+      new MaxProvider(api as any).postAnalytics('321', '321', 'mid.1', 7)
+    ).resolves.toEqual([]);
+  });
+
+  it('returns no post analytics when MAX does not answer', async () => {
+    vi.useFakeTimers();
+    const api = makeApi();
+    api.getMessage.mockReturnValue(new Promise(() => undefined));
+
+    const result = new MaxProvider(api as any).postAnalytics(
+      '321',
+      '321',
+      'mid.1',
+      7
+    );
+    await vi.advanceTimersByTimeAsync(10000);
+
+    await expect(result).resolves.toEqual([]);
+  });
+
+  it('returns channel subscribers from the stored chat id', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-27T12:00:00Z'));
+    const api = makeApi();
+    api.getChat.mockResolvedValue({ chat_id: 321, participants_count: 1500 });
+
+    await expect(
+      new MaxProvider(api as any).analytics('321', '321', 7)
+    ).resolves.toEqual([
+      {
+        label: 'Subscribers',
+        percentageChange: 0,
+        data: [{ total: '1500', date: '2026-10-27' }],
+      },
+    ]);
+    expect(api.getChat).toHaveBeenCalledWith(321);
+  });
+
+  it('returns no channel analytics when MAX fails', async () => {
+    const api = makeApi();
+    api.getChat.mockRejectedValue(new Error('chat.not.found'));
+
+    await expect(
+      new MaxProvider(api as any).analytics('321', '321', 7)
+    ).resolves.toEqual([]);
   });
 });
