@@ -21,6 +21,7 @@ import {
   authenticateVkUser,
   generateVkAuthUrl,
   refreshVkUser,
+  vkRefreshErrorMessage,
 } from './vk.oauth';
 import type { VkIdentifier } from './vk.oauth';
 import { withMediaSourceStream } from '@gitroom/helpers/utils/media.source';
@@ -90,6 +91,10 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       identifier: this.identifier,
       scopes: this.scopes,
     });
+  }
+
+  refreshErrorMessage(err: unknown): string | undefined {
+    return vkRefreshErrorMessage(err);
   }
 
   async refreshToken(refresh: string): Promise<AuthTokenDetails> {

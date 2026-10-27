@@ -35,8 +35,10 @@ export type VkUserOAuthResult = {
 // access token is still valid and a temporary VK ID failure can be retried.
 const REFRESH_AHEAD_SECONDS = 600;
 
-// A failed refresh is retried after these delays before it is reported as
-// transient; VK ID rejections (invalid_grant and friends) are never retried.
+// A failed refresh is retried after these delays. VK ID rejections are retried
+// too: a rejected request doesn't spend the refresh token, and VK ID has
+// rejected tokens it accepted again later. Only a rejection that outlasts the
+// retries is definitive; anything else is reported as transient.
 const REFRESH_RETRY_DELAYS_MS = [2000, 10000, 30000];
 
 const DEFINITIVE_OAUTH_ERRORS =
@@ -264,16 +266,30 @@ const isDefinitiveRefreshFailure = (error: unknown) => {
   if (!(error instanceof BadBody)) {
     return false;
   }
-  // VK ID answered, but with an error or a malformed token payload.
-  if (error.message.startsWith('VK oauth2/auth ')) {
-    return true;
-  }
-  // Raised by the HTTP layer: definitive only when the body is an OAuth
-  // rejection, otherwise (5xx pages, gateway errors) it is worth a retry.
-  const json = (error.details?.[0] as { json?: unknown } | undefined)?.json;
+  // Definitive only when VK ID rejected the token or the client. Other VK ID
+  // errors (temporarily_unavailable, server_error, ...) and HTTP-layer
+  // failures (5xx pages, gateway errors) leave the refresh token usable.
   return DEFINITIVE_OAUTH_ERRORS.test(
-    `${error.message} ${typeof json === 'string' ? json : ''}`
+    `${error.message} ${vkOAuthErrorJson(error)}`
   );
+};
+
+const vkOAuthErrorJson = (error: BadBody) => {
+  const json = (error.details?.[0] as { json?: unknown } | undefined)?.json;
+  return typeof json === 'string' ? json : '';
+};
+
+// Names the VK ID error code in the refresh failure notification, so a
+// disconnect can be diagnosed after the container logs are gone
+export const vkRefreshErrorMessage = (error: unknown): string | undefined => {
+  const text =
+    error instanceof BadBody
+      ? `${error.message} ${vkOAuthErrorJson(error)}`
+      : error instanceof VkTransientRefreshError
+      ? error.message
+      : '';
+  const code = /\b(?:failed with |"error":")([a-z_]{1,64})\b/.exec(text)?.[1];
+  return code ? `(VK ID: ${code})` : undefined;
 };
 
 const describeFailure = (error: unknown) =>
@@ -341,10 +357,19 @@ export const refreshVkUser = async (input: {
         fetcher: input.fetcher,
       });
     } catch (error) {
-      if (isDefinitiveRefreshFailure(error)) {
+      // An expired-token API error, or a success payload without usable
+      // tokens: VK ID accepted the request, so the old token is spent
+      if (
+        error instanceof RefreshToken ||
+        (error instanceof BadBody &&
+          error.message.startsWith('VK oauth2/auth returned '))
+      ) {
         throw error;
       }
       if (attempt >= REFRESH_RETRY_DELAYS_MS.length) {
+        if (isDefinitiveRefreshFailure(error)) {
+          throw error;
+        }
         throw new VkTransientRefreshError(describeFailure(error));
       }
       await sleep(REFRESH_RETRY_DELAYS_MS[attempt]);

@@ -6,6 +6,7 @@ import {
   buildVkRedirectUri,
   generateVkAuthUrl,
   refreshVkUser,
+  vkRefreshErrorMessage,
   VkTransientRefreshError,
 } from './vk.oauth';
 
@@ -252,7 +253,9 @@ describe('VK ID OAuth helpers', () => {
       expect(fetcher).toHaveBeenCalledTimes(4);
     });
 
-    it('does not retry a refresh token that VK ID rejected', async () => {
+    // A rejected request doesn't spend the refresh token, so a rejection is
+    // retried: VK ID has rejected tokens it accepted again later
+    it('reports a refresh token VK ID keeps rejecting as definitive', async () => {
       const fetcher = vi.fn().mockResolvedValue(
         response({
           error: 'invalid_grant',
@@ -265,7 +268,42 @@ describe('VK ID OAuth helpers', () => {
       expect(error).toBeInstanceOf(BadBody);
       expect(error).not.toBeInstanceOf(VkTransientRefreshError);
       expect(error.message).toContain('invalid_grant');
-      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledTimes(4);
+    });
+
+    it('keeps the token when VK ID rejects it once and then accepts it', async () => {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValueOnce(response({ error: 'invalid_grant' }))
+        .mockResolvedValueOnce(tokens)
+        .mockResolvedValueOnce(user);
+
+      await expect(refresh(fetcher)).resolves.toMatchObject({
+        accessToken: 'new-access-secret',
+      });
+    });
+
+    it('reports other VK ID errors as transient', async () => {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(response({ error: 'temporarily_unavailable' }));
+
+      const error = await refresh(fetcher).catch((e) => e);
+
+      expect(error).toBeInstanceOf(VkTransientRefreshError);
+      expect(error.message).toContain('temporarily_unavailable');
+      expect(fetcher).toHaveBeenCalledTimes(4);
+    });
+
+    it('names the VK ID error in the refresh failure message', async () => {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(response({ error: 'invalid_grant' }));
+
+      const error = await refresh(fetcher).catch((e) => e);
+
+      expect(vkRefreshErrorMessage(error)).toBe('(VK ID: invalid_grant)');
+      expect(vkRefreshErrorMessage(new Error('boom'))).toBeUndefined();
     });
 
     it('retries a gateway error raised by the HTTP layer', async () => {
@@ -288,7 +326,7 @@ describe('VK ID OAuth helpers', () => {
       expect(fetcher).toHaveBeenCalledTimes(3);
     });
 
-    it('does not retry an OAuth rejection raised by the HTTP layer', async () => {
+    it('reports an OAuth rejection raised by the HTTP layer as definitive', async () => {
       const fetcher = vi
         .fn()
         .mockRejectedValue(
@@ -303,7 +341,7 @@ describe('VK ID OAuth helpers', () => {
       await expect(refresh(fetcher)).rejects.not.toBeInstanceOf(
         VkTransientRefreshError
       );
-      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledTimes(4);
     });
 
     it('does not retry an expired-token API error', async () => {

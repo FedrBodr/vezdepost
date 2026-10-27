@@ -29,6 +29,7 @@ import {
   authenticateVkUser,
   generateVkAuthUrl,
   refreshVkUser,
+  vkRefreshErrorMessage,
 } from './vk.oauth';
 import type { VkIdentifier } from './vk.oauth';
 
@@ -110,6 +111,10 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
       ),
       hash: value.hash,
     };
+  }
+
+  refreshErrorMessage(err: unknown): string | undefined {
+    return vkRefreshErrorMessage(err);
   }
 
   async refreshToken(refresh: string): Promise<AuthTokenDetails> {
