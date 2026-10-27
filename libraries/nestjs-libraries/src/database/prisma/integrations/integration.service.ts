@@ -395,13 +395,21 @@ export class IntegrationService {
 
   // Refreshes the token with the stored refresh token, without a new OAuth
   // consent: a channel marked refreshNeeded whose refresh token still works
-  // is connected again, and its scheduled refresh is restarted.
+  // is connected again, and its scheduled refresh is restarted. Healthy
+  // channels are left to the scheduled refresh: an extra manual refresh could
+  // race it for a single-use refresh token, and some platforms refuse to
+  // refresh a token that is too new.
   async refreshChannelToken(org: string, id: string) {
     const integration = await this._integrationRepository.getIntegrationById(
       org,
       id
     );
-    if (!integration || integration.deletedAt || integration.inBetweenSteps) {
+    if (
+      !integration ||
+      integration.deletedAt ||
+      integration.inBetweenSteps ||
+      !integration.refreshNeeded
+    ) {
       return { success: false };
     }
 
@@ -417,11 +425,16 @@ export class IntegrationService {
       return { success: false };
     }
 
-    await this._refreshIntegrationService.startRefreshWorkflow(
-      org,
-      id,
-      provider
-    );
+    // The new tokens are already saved; a Temporal hiccup must not report the
+    // refresh as failed
+    await this._refreshIntegrationService
+      .startRefreshWorkflow(org, id, provider)
+      .catch((err) =>
+        console.error(
+          `Could not restart the refresh workflow for ${id}`,
+          err?.message || err
+        )
+      );
     return { success: true };
   }
 

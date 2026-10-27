@@ -552,6 +552,16 @@ describe('IntegrationService refreshChannelToken', () => {
     );
   });
 
+  it('reports success when the refresh workflow cannot be restarted', async () => {
+    refreshIntegrationService.startRefreshWorkflow.mockRejectedValue(
+      new Error('Temporal client is unavailable')
+    );
+
+    await expect(
+      service.refreshChannelToken(organizationId, channel.id)
+    ).resolves.toEqual({ success: true });
+  });
+
   it('reports a failed refresh without restarting the scheduled refresh', async () => {
     refreshIntegrationService.refresh.mockResolvedValue(false);
 
@@ -572,11 +582,12 @@ describe('IntegrationService refreshChannelToken', () => {
     expect(refreshIntegrationService.refresh).not.toHaveBeenCalled();
   });
 
-  it('does not refresh a missing, deleted or unfinished channel', async () => {
+  it('does not refresh a missing, deleted, unfinished or healthy channel', async () => {
     for (const found of [
       null,
       { ...channel, deletedAt: new Date() },
       { ...channel, inBetweenSteps: true },
+      { ...channel, refreshNeeded: false },
     ]) {
       repository.getIntegrationById.mockResolvedValueOnce(found);
       await expect(

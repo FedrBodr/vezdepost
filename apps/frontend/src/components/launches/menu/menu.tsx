@@ -230,15 +230,25 @@ export const Menu: FC<{
     onChange(false);
   }, [t]);
 
+  // One request at a time: a second one would spend the same single-use
+  // refresh token and disconnect the channel again
+  const refreshingToken = useRef(false);
   const refreshToken = useCallback(async () => {
-    const { success } = await (
-      await fetch('/integrations/refresh-token', {
-        method: 'POST',
-        body: JSON.stringify({
-          id,
-        }),
-      })
-    ).json();
+    if (refreshingToken.current) {
+      return;
+    }
+    refreshingToken.current = true;
+    setShow(false);
+    const success = await fetch('/integrations/refresh-token', {
+      method: 'POST',
+      body: JSON.stringify({
+        id,
+      }),
+    })
+      .then((response) => response.json())
+      .then((response) => !!response?.success)
+      .catch(() => false);
+    refreshingToken.current = false;
     toast.show(
       success
         ? t('channel_token_refreshed', 'Channel token refreshed')
@@ -248,7 +258,6 @@ export const Menu: FC<{
           ),
       success ? 'success' : 'warning'
     );
-    setShow(false);
     onChange(false);
   }, [t, id]);
 
@@ -537,7 +546,9 @@ export const Menu: FC<{
                 </div>
               </div>
             )}
-          {canDisable && findIntegration?.canRefreshToken && (
+          {canDisable &&
+            findIntegration?.refreshNeeded &&
+            findIntegration?.canRefreshToken && (
               <div
                 className="flex gap-[12px] items-center py-[8px] px-[10px]"
                 onClick={refreshToken}
