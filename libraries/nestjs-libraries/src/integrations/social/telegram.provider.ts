@@ -1,4 +1,5 @@
 import {
+  AnalyticsData,
   AuthTokenDetails,
   PostDetails,
   PostResponse,
@@ -54,7 +55,59 @@ type TelegramBotClient = Pick<
   | 'sendDocument'
   | 'sendMediaGroup'
   | 'getChatMember'
+  | 'getChatMemberCount'
 >;
+
+// The Bot API exposes no view counts, so post statistics come from the public
+// post widget (t.me/<username>/<id>?embed=1). Only public channels have one.
+const TELEGRAM_WIDGET_TIMEOUT_MS = 10_000;
+const TELEGRAM_USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{3,31}$/;
+const TELEGRAM_COUNT_MULTIPLIERS: Record<string, number> = {
+  '': 1,
+  K: 1_000,
+  M: 1_000_000,
+  B: 1_000_000_000,
+};
+
+/** Parses widget counters such as "987", "1.2K", "4.45M" into numbers. */
+export const parseTelegramCount = (value: string): number | null => {
+  const match = value
+    .replace(/[\s,]/g, '')
+    .match(/^(\d+(?:\.\d+)?)([KMB]?)$/i);
+  if (!match) {
+    return null;
+  }
+  return Math.round(
+    parseFloat(match[1]) * TELEGRAM_COUNT_MULTIPLIERS[match[2].toUpperCase()]
+  );
+};
+
+export const parseTelegramPostWidget = (
+  html: string
+): { views: number | null; reactions: number | null } => {
+  const viewsMatch = html.match(
+    /class="tgme_widget_message_views"[^>]*>([^<]*)</
+  );
+  const views = viewsMatch ? parseTelegramCount(viewsMatch[1]) : null;
+
+  // Each reaction is <span class="tgme_reaction">emoji markup + count</span>,
+  // the emoji itself may be text (<b>👍</b>), so the count is the trailing
+  // token. Paid (Stars) reactions count stars, not people, so they are skipped.
+  const reactionCounts = [
+    ...html.matchAll(/<span class="(tgme_reaction[^"]*)">(.*?)<\/span>/g),
+  ]
+    .filter(([, className]) => !className.includes('tgme_reaction_paid'))
+    .map(([, , inner]) => {
+      const count = inner.match(/>\s*([\d.,]+[KMB]?)\s*$/i);
+      return count ? parseTelegramCount(count[1]) : null;
+    })
+    .filter((count): count is number => count !== null);
+  const reactions = reactionCounts.length
+    ? reactionCounts.reduce((sum, count) => sum + count, 0)
+    : null;
+
+  return { views, reactions };
+};
 
 export type TelegramConnectionStatus =
   | 'waiting'
@@ -518,4 +571,102 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     return result;
   }
 
+  /**
+   * Current public username of the channel: getChat sees renames, the stored
+   * internalId (username at connect time, numeric id for private chats) is
+   * the fallback when the Bot API call fails.
+   */
+  private async resolvePublicUsername(
+    integrationId: string,
+    chatId: string
+  ): Promise<string | null> {
+    try {
+      const chat = await this.botClient.getChat(chatId);
+      return chat?.username || null;
+    } catch (error: any) {
+      console.warn(
+        '[telegram] getChat failed while loading analytics:',
+        error?.message || error
+      );
+    }
+    return TELEGRAM_USERNAME_PATTERN.test(integrationId) ? integrationId : null;
+  }
+
+  async analytics(
+    id: string,
+    accessToken: string,
+    date: number
+  ): Promise<AnalyticsData[]> {
+    try {
+      const subscribers = await this.botClient.getChatMemberCount(accessToken);
+      return [
+        {
+          label: 'Subscribers',
+          percentageChange: 0,
+          data: [
+            { total: String(subscribers), date: dayjs().format('YYYY-MM-DD') },
+          ],
+        },
+      ];
+    } catch (error: any) {
+      console.warn(
+        '[telegram] getChatMemberCount failed:',
+        error?.message || error
+      );
+      return [];
+    }
+  }
+
+  async postAnalytics(
+    integrationId: string,
+    accessToken: string,
+    postId: string,
+    fromDate: number
+  ): Promise<AnalyticsData[]> {
+    if (!/^\d+$/.test(postId)) {
+      return [];
+    }
+
+    const username = await this.resolvePublicUsername(
+      integrationId,
+      accessToken
+    );
+    if (!username) {
+      return [];
+    }
+
+    try {
+      const response = await fetch(
+        `https://t.me/${username}/${postId}?embed=1`,
+        { signal: AbortSignal.timeout(TELEGRAM_WIDGET_TIMEOUT_MS) }
+      );
+      if (!response.ok) {
+        return [];
+      }
+
+      const { views, reactions } = parseTelegramPostWidget(
+        await response.text()
+      );
+      const today = dayjs().format('YYYY-MM-DD');
+      return [
+        { label: 'Views', value: views },
+        { label: 'Reactions', value: reactions },
+      ]
+        .filter(
+          (metric): metric is { label: string; value: number } =>
+            metric.value !== null
+        )
+        .map(({ label, value }) => ({
+          label,
+          percentageChange: 0,
+          data: [{ total: String(value), date: today }],
+        }));
+    } catch (error: any) {
+      console.warn(
+        '[telegram] post widget request failed:',
+        error?.message || error
+      );
+      return [];
+    }
+  }
 }

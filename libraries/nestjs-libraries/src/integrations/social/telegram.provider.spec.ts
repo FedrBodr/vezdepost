@@ -41,6 +41,8 @@ vi.mock(
 import {
   evaluateTelegramPermissions,
   parseTelegramConnectionMessage,
+  parseTelegramCount,
+  parseTelegramPostWidget,
   TelegramProvider,
 } from './telegram.provider';
 import { MemoryKeyValueStore } from './telegram.kv.store';
@@ -805,5 +807,180 @@ describe('Telegram connection discovery', () => {
     await expect(provider.getBotId({ word: 'nonce_123' })).resolves.toEqual({
       status: 'telegram_error',
     });
+  });
+});
+
+describe('Telegram analytics', () => {
+  const widgetHtml = `
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction tgme_reaction_paid"><i class="icon icon-telegram-stars"></i>6.56K</span><span class="tgme_reaction"><tg-emoji emoji-id="1"></tg-emoji>1.5K</span><span class="tgme_reaction"><i class="emoji"><b>👍</b></i>43</span></div>
+<div class="tgme_widget_message_info js-message_info">
+  <span class="tgme_widget_message_views">1.2K</span><span class="copyonly"> views</span>
+</div>`;
+
+  const makeAnalyticsBot = () => ({
+    getChat: vi.fn(
+      async (): Promise<any> => ({ id: -1001, username: 'vezdepost' })
+    ),
+    getChatMemberCount: vi.fn(async () => 1234),
+  });
+  const providerFor = (bot: any) => new TelegramProvider(bot, {} as any);
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => widgetHtml,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  it.each([
+    ['987', 987],
+    ['1.2K', 1200],
+    ['4.45M', 4450000],
+    ['3M', 3000000],
+    ['2k', 2000],
+    ['1,234', 1234],
+    ['', null],
+    ['views', null],
+  ])('parses the widget counter %s', (value, expected) => {
+    expect(parseTelegramCount(value)).toBe(expected);
+  });
+
+  it('parses views and sums free reactions from the widget', () => {
+    expect(parseTelegramPostWidget(widgetHtml)).toEqual({
+      views: 1200,
+      reactions: 1543,
+    });
+  });
+
+  it('returns nulls for a widget without counters', () => {
+    expect(
+      parseTelegramPostWidget(
+        '<div class="tgme_widget_message_error">Post not found</div>'
+      )
+    ).toEqual({ views: null, reactions: null });
+  });
+
+  it('returns views and reactions for a public channel post', async () => {
+    const result = await providerFor(makeAnalyticsBot()).postAnalytics(
+      'vezdepost',
+      '-1001',
+      '42',
+      7
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://t.me/vezdepost/42?embed=1',
+      expect.objectContaining({ signal: expect.anything() })
+    );
+    expect(result.map(({ label, data }) => [label, data[0].total])).toEqual([
+      ['Views', '1200'],
+      ['Reactions', '1543'],
+    ]);
+    expect(result[0].percentageChange).toBe(0);
+  });
+
+  it('uses the current username when the channel was renamed', async () => {
+    const bot = makeAnalyticsBot();
+    bot.getChat.mockResolvedValueOnce({ id: -1001, username: 'renamed' });
+
+    await providerFor(bot).postAnalytics('vezdepost', '-1001', '42', 7);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://t.me/renamed/42?embed=1',
+      expect.anything()
+    );
+  });
+
+  it('returns no post statistics for a private channel', async () => {
+    const bot = makeAnalyticsBot();
+    bot.getChat.mockResolvedValueOnce({ id: -1001 });
+
+    await expect(
+      providerFor(bot).postAnalytics('-1001', '-1001', '42', 7)
+    ).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the stored username when getChat fails', async () => {
+    const bot = makeAnalyticsBot();
+    bot.getChat.mockRejectedValueOnce(new Error('Telegram unavailable'));
+
+    await providerFor(bot).postAnalytics('vezdepost', '-1001', '42', 7);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://t.me/vezdepost/42?embed=1',
+      expect.anything()
+    );
+  });
+
+  it('skips a private channel when getChat fails', async () => {
+    const bot = makeAnalyticsBot();
+    bot.getChat.mockRejectedValueOnce(new Error('Telegram unavailable'));
+
+    await expect(
+      providerFor(bot).postAnalytics('-1001', '-1001', '42', 7)
+    ).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no post statistics when the widget request fails', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('timeout'));
+
+    await expect(
+      providerFor(makeAnalyticsBot()).postAnalytics(
+        'vezdepost',
+        '-1001',
+        '42',
+        7
+      )
+    ).resolves.toEqual([]);
+  });
+
+  it('returns no post statistics for a non-200 widget response', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, text: async () => '' });
+
+    await expect(
+      providerFor(makeAnalyticsBot()).postAnalytics(
+        'vezdepost',
+        '-1001',
+        '42',
+        7
+      )
+    ).resolves.toEqual([]);
+  });
+
+  it('ignores a non-numeric release id', async () => {
+    const bot = makeAnalyticsBot();
+
+    await expect(
+      providerFor(bot).postAnalytics('vezdepost', '-1001', 'missing', 7)
+    ).resolves.toEqual([]);
+    expect(bot.getChat).not.toHaveBeenCalled();
+  });
+
+  it('reports channel subscribers as a single data point', async () => {
+    const bot = makeAnalyticsBot();
+
+    const result = await providerFor(bot).analytics('vezdepost', '-1001', 7);
+
+    expect(bot.getChatMemberCount).toHaveBeenCalledWith('-1001');
+    expect(result).toHaveLength(1);
+    expect(result[0].label).toBe('Subscribers');
+    expect(result[0].data).toEqual([
+      { total: '1234', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
+    ]);
+  });
+
+  it('returns no channel statistics when Telegram fails', async () => {
+    const bot = makeAnalyticsBot();
+    bot.getChatMemberCount.mockRejectedValueOnce(new Error('Forbidden'));
+
+    await expect(
+      providerFor(bot).analytics('vezdepost', '-1001', 7)
+    ).resolves.toEqual([]);
   });
 });
