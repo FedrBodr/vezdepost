@@ -1,4 +1,5 @@
 import {
+  AnalyticsData,
   AuthTokenDetails,
   FetchPageInformationResult,
   PostDetails,
@@ -13,6 +14,7 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { Integration } from '@prisma/client';
 import axios from 'axios';
+import dayjs from 'dayjs';
 import FormDataNew from 'form-data';
 import mime from 'mime-types';
 import {
@@ -27,6 +29,12 @@ import {
   VK_GROUP_PHOTO_ACCESS_MISSING,
   VK_GROUP_SELECTED_COMMUNITY_NOT_MANAGED,
 } from './vk.group.errors';
+import {
+  collectVkWallPosts,
+  vkPostAnalytics,
+  vkWallAnalytics,
+  vkWallItems,
+} from './vk.response';
 
 const TOO_MANY_PHOTOS = 'VK Group supports up to 10 photographs per post.';
 const UNSUPPORTED_MEDIA =
@@ -618,5 +626,81 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         status: 'completed',
       },
     ];
+  }
+
+  // `id` is the signed wall owner ID (-<group id>) stored at selection
+  async analytics(
+    id: string,
+    accessToken: string,
+    date: number
+  ): Promise<AnalyticsData[]> {
+    try {
+      const since = dayjs()
+        .subtract(date - 1, 'day')
+        .startOf('day')
+        .unix();
+      const [groups, posts] = await Promise.all([
+        this.callGroupVk<unknown>('groups.getById', accessToken, {
+          group_id: id.replace(/^-/, ''),
+          fields: 'members_count',
+        }),
+        collectVkWallPosts(
+          (offset) =>
+            this.callGroupVk<unknown>('wall.get', accessToken, {
+              owner_id: id,
+              count: '100',
+              offset: String(offset),
+            }),
+          since
+        ),
+      ]);
+      // groups.getById answers with `{ groups }` (older versions: a bare array)
+      const list = Array.isArray(groups)
+        ? groups
+        : (groups as { groups?: unknown } | undefined)?.groups;
+      const members = Number(
+        (Array.isArray(list) ? list[0] : undefined)?.members_count
+      );
+
+      return vkWallAnalytics(
+        posts,
+        date,
+        Number.isFinite(members)
+          ? { label: 'Members', total: members }
+          : undefined
+      );
+    } catch (err) {
+      if (err instanceof RefreshToken) throw err;
+      console.error(
+        'Error fetching VK Group analytics:',
+        (err as Error)?.message || err
+      );
+      return [];
+    }
+  }
+
+  // post() stores the bare wall post ID; the owner is the community wall
+  async postAnalytics(
+    integrationId: string,
+    accessToken: string,
+    postId: string,
+    fromDate: number
+  ): Promise<AnalyticsData[]> {
+    try {
+      const posts = postId.includes('_')
+        ? postId
+        : `${integrationId}_${postId}`;
+      const [post] = vkWallItems(
+        await this.callGroupVk<unknown>('wall.getById', accessToken, { posts })
+      );
+      return vkPostAnalytics(post);
+    } catch (err) {
+      if (err instanceof RefreshToken) throw err;
+      console.error(
+        'Error fetching VK Group post analytics:',
+        (err as Error)?.message || err
+      );
+      return [];
+    }
   }
 }

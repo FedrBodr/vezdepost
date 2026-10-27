@@ -1,6 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BadBody, RefreshToken } from '../social.abstract';
-import { unwrapVkResponse } from './vk.response';
+import { collectVkWallPosts, unwrapVkResponse } from './vk.response';
+
+describe('collectVkWallPosts', () => {
+  it('pages through the wall until posts are older than the window', async () => {
+    const page = (dates: number[]) => ({
+      items: dates.map((date) => ({ date })),
+    });
+    const loadPage = vi
+      .fn()
+      .mockResolvedValueOnce(page([300, 200]))
+      .mockResolvedValueOnce(page([150, 50]));
+
+    const posts = await collectVkWallPosts(loadPage, 100, 2);
+
+    expect(posts.map(({ date }) => date)).toEqual([300, 200, 150]);
+    expect(loadPage.mock.calls).toEqual([[0], [2]]);
+  });
+});
 
 describe('unwrapVkResponse', () => {
   it('returns a valid VK response', () => {

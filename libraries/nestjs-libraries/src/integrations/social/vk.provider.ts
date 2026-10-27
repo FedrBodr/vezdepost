@@ -1,4 +1,5 @@
 import {
+  AnalyticsData,
   AuthTokenDetails,
   PostDetails,
   PostResponse,
@@ -6,15 +7,24 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import {
   BadBody,
+  RefreshToken,
   SocialAbstract,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import dayjs from 'dayjs';
 import axios from 'axios';
 import FormDataNew from 'form-data';
 import mime from 'mime-types';
 import { Integration } from '@prisma/client';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import { withMediaSourceStream } from '@gitroom/helpers/utils/media.source';
-import { parseVkPositiveIntegerId, unwrapVkResponse } from './vk.response';
+import {
+  collectVkWallPosts,
+  parseVkPositiveIntegerId,
+  unwrapVkResponse,
+  vkPostAnalytics,
+  vkWallAnalytics,
+  vkWallItems,
+} from './vk.response';
 import {
   authenticateVkUser,
   generateVkAuthUrl,
@@ -27,7 +37,8 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
   refreshCron = true;
   identifier: VkIdentifier = 'vk';
   name = 'ВКонтакте\n(личная страница)';
-  toolTip = 'Публикация на вашей личной странице. Для сообщества выберите «ВКонтакте (сообщество)»';
+  toolTip =
+    'Публикация на вашей личной странице. Для сообщества выберите «ВКонтакте (сообщество)»';
   isBetweenSteps = false;
   scopes = [
     'vkid.personal_info',
@@ -371,5 +382,93 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
         status: 'completed',
       },
     ];
+  }
+
+  private async callAnalyticsVk(
+    method: string,
+    accessToken: string,
+    params: Record<string, string>
+  ) {
+    const query = new URLSearchParams({
+      ...params,
+      access_token: accessToken,
+      v: '5.251',
+    });
+    return unwrapVkResponse<unknown>(
+      await (
+        await this.fetch(`https://api.vk.com/method/${method}?${query}`)
+      ).json(),
+      method
+    );
+  }
+
+  async analytics(
+    id: string,
+    accessToken: string,
+    date: number
+  ): Promise<AnalyticsData[]> {
+    try {
+      const since = dayjs()
+        .subtract(date - 1, 'day')
+        .startOf('day')
+        .unix();
+      const [users, posts] = await Promise.all([
+        this.callAnalyticsVk('users.get', accessToken, {
+          fields: 'followers_count',
+        }),
+        collectVkWallPosts(
+          (offset) =>
+            this.callAnalyticsVk('wall.get', accessToken, {
+              owner_id: id,
+              count: '100',
+              offset: String(offset),
+            }),
+          since
+        ),
+      ]);
+      const followers = Number(
+        (Array.isArray(users) ? users[0] : undefined)?.followers_count
+      );
+
+      return vkWallAnalytics(
+        posts,
+        date,
+        Number.isFinite(followers)
+          ? { label: 'Followers', total: followers }
+          : undefined
+      );
+    } catch (err) {
+      if (err instanceof RefreshToken) throw err;
+      console.error(
+        'Error fetching VK analytics:',
+        (err as Error)?.message || err
+      );
+      return [];
+    }
+  }
+
+  // post() stores the bare wall post ID; the wall owner is the user itself
+  async postAnalytics(
+    integrationId: string,
+    accessToken: string,
+    postId: string,
+    fromDate: number
+  ): Promise<AnalyticsData[]> {
+    try {
+      const posts = postId.includes('_')
+        ? postId
+        : `${integrationId}_${postId}`;
+      const [post] = vkWallItems(
+        await this.callAnalyticsVk('wall.getById', accessToken, { posts })
+      );
+      return vkPostAnalytics(post);
+    } catch (err) {
+      if (err instanceof RefreshToken) throw err;
+      console.error(
+        'Error fetching VK post analytics:',
+        (err as Error)?.message || err
+      );
+      return [];
+    }
   }
 }

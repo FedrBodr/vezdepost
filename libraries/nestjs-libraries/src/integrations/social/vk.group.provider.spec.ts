@@ -1889,3 +1889,110 @@ describe('VkGroupProvider photo publishing', () => {
     ).rejects.toBeInstanceOf(BadBody);
   });
 });
+
+describe('VkGroupProvider analytics', () => {
+  let provider: VkGroupProvider;
+  const now = Math.floor(Date.now() / 1000);
+  const wallPost = (date: number, views: number) => ({
+    id: 3,
+    owner_id: -77,
+    date,
+    views: { count: views },
+    likes: { count: 4 },
+    reposts: { count: 0 },
+    comments: { count: 1 },
+  });
+  const formOf = (init?: RequestInit) => init?.body as FormData;
+
+  beforeEach(() => {
+    provider = new VkGroupProvider();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  it('reads post counters from wall.getById on the community wall', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementation(() =>
+        response({ response: { items: [wallPost(now, 40)] } })
+      );
+
+    const result = await provider.postAnalytics('-77', token, '3', 7);
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://api.vk.com/method/wall.getById'
+    );
+    expect(formOf(fetchMock.mock.calls[0][1]).get('posts')).toBe('-77_3');
+    expect(result.map(({ label, data }) => [label, data[0].total])).toEqual([
+      ['Views', '40'],
+      ['Likes', '4'],
+      ['Reposts', '0'],
+      ['Comments', '1'],
+    ]);
+  });
+
+  it('returns no post analytics when VK answers with an error', async () => {
+    vi.spyOn(provider, 'fetch').mockImplementation(() =>
+      response({ error: { error_code: 15, error_msg: upstreamPayload } })
+    );
+
+    await expect(provider.postAnalytics('-77', token, '3', 7)).resolves.toEqual(
+      []
+    );
+  });
+
+  it('asks for a token refresh when the token expired (error 5)', async () => {
+    vi.spyOn(provider, 'fetch').mockImplementation(() =>
+      response({ error: { error_code: 5, error_msg: 'expired' } })
+    );
+
+    await expect(
+      provider.postAnalytics('-77', token, '3', 7)
+    ).rejects.toBeInstanceOf(RefreshToken);
+    await expect(provider.analytics('-77', token, 7)).rejects.toBeInstanceOf(
+      RefreshToken
+    );
+  });
+
+  it('builds channel analytics from members and recent wall posts', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementation((url: string) =>
+        url.endsWith('/method/groups.getById')
+          ? response({
+              response: { groups: [{ id: 77, members_count: 1500 }] },
+            })
+          : response({
+              response: {
+                items: [wallPost(now, 10), wallPost(now - 86400, 20)],
+              },
+            })
+      );
+
+    const result = await provider.analytics('-77', token, 30);
+
+    const groupCall = fetchMock.mock.calls.find(([url]) =>
+      url.endsWith('/method/groups.getById')
+    )!;
+    expect(formOf(groupCall[1]).get('group_id')).toBe('77');
+    const wallCall = fetchMock.mock.calls.find(([url]) =>
+      url.endsWith('/method/wall.get')
+    )!;
+    expect(formOf(wallCall[1]).get('owner_id')).toBe('-77');
+    const byLabel = Object.fromEntries(
+      result.map((item) => [item.label, item])
+    );
+    expect(byLabel.Members.data[0].total).toBe('1500');
+    expect(byLabel.Views.data).toHaveLength(30);
+    expect(
+      byLabel.Views.data.reduce((acc, { total }) => acc + Number(total), 0)
+    ).toBe(30);
+  });
+
+  it('returns no channel analytics when VK answers with an error', async () => {
+    vi.spyOn(provider, 'fetch').mockImplementation(() =>
+      response({ error: { error_code: 15, error_msg: upstreamPayload } })
+    );
+
+    await expect(provider.analytics('-77', token, 7)).resolves.toEqual([]);
+  });
+});

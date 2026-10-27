@@ -578,3 +578,115 @@ describe('VkProvider OAuth response validation', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('VkProvider analytics', () => {
+  let provider: VkProvider;
+  const now = Math.floor(Date.now() / 1000);
+  const wallPost = (date: number, views: number, likes: number) => ({
+    id: 1,
+    date,
+    views: { count: views },
+    likes: { count: likes },
+    reposts: { count: 1 },
+    comments: { count: 2 },
+  });
+
+  beforeEach(() => {
+    provider = new VkProvider();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+
+  it('reads post counters from wall.getById on the user wall', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockResolvedValue(
+        response({ response: { items: [wallPost(now, 120, 7)] } })
+      );
+
+    const result = await provider.postAnalytics('42', accessToken, '15', 7);
+
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(url.pathname).toBe('/method/wall.getById');
+    expect(url.searchParams.get('posts')).toBe('42_15');
+    expect(result.map(({ label, data }) => [label, data[0].total])).toEqual([
+      ['Views', '120'],
+      ['Likes', '7'],
+      ['Reposts', '1'],
+      ['Comments', '2'],
+    ]);
+  });
+
+  it('returns no post analytics when VK answers with an error', async () => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ error: { error_code: 15, error_msg: 'Access denied' } })
+    );
+
+    await expect(
+      provider.postAnalytics('42', accessToken, '15', 7)
+    ).resolves.toEqual([]);
+  });
+
+  it('asks for a token refresh when the token expired (error 5)', async () => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ error: { error_code: 5, error_msg: 'expired' } })
+    );
+
+    await expect(
+      provider.postAnalytics('42', accessToken, '15', 7)
+    ).rejects.toBeInstanceOf(RefreshToken);
+    await expect(
+      provider.analytics('42', accessToken, 7)
+    ).rejects.toBeInstanceOf(RefreshToken);
+  });
+
+  it('builds channel analytics from followers and recent wall posts', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementation(async (url: string) =>
+        url.includes('/method/users.get')
+          ? response({ response: [{ id: 42, followers_count: 300 }] })
+          : response({
+              response: {
+                items: [
+                  wallPost(now, 100, 5),
+                  wallPost(now - 60, 50, 1),
+                  wallPost(now - 40 * 86400, 999, 999),
+                ],
+              },
+            })
+      );
+
+    const result = await provider.analytics('42', accessToken, 7);
+
+    const wallUrl = new URL(
+      fetchMock.mock.calls.find(([url]) => url.includes('wall.get'))![0]
+    );
+    expect(wallUrl.searchParams.get('owner_id')).toBe('42');
+    const byLabel = Object.fromEntries(
+      result.map((item) => [item.label, item])
+    );
+    expect(Object.keys(byLabel)).toEqual([
+      'Followers',
+      'Posts',
+      'Views',
+      'Likes',
+      'Reposts',
+      'Comments',
+    ]);
+    expect(byLabel.Followers.data[0].total).toBe('300');
+    expect(byLabel.Views.data).toHaveLength(7);
+    const sum = (label: string) =>
+      byLabel[label].data.reduce((acc, { total }) => acc + Number(total), 0);
+    expect(sum('Posts')).toBe(2);
+    expect(sum('Views')).toBe(150);
+    expect(sum('Likes')).toBe(6);
+  });
+
+  it('returns no channel analytics when VK answers with an error', async () => {
+    vi.spyOn(provider, 'fetch').mockResolvedValue(
+      response({ error: { error_code: 15, error_msg: 'Access denied' } })
+    );
+
+    await expect(provider.analytics('42', accessToken, 7)).resolves.toEqual([]);
+  });
+});
