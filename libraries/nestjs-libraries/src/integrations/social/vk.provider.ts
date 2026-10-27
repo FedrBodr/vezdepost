@@ -434,7 +434,7 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
         posts,
         date,
         Number.isFinite(followers)
-          ? { label: 'Followers', total: followers }
+          ? { label: 'Subscribers', total: followers }
           : undefined
       );
     } catch (err) {
@@ -443,7 +443,8 @@ export class VkProvider extends SocialAbstract implements SocialProvider {
         'Error fetching VK analytics:',
         (err as Error)?.message || err
       );
-      return [];
+      // Throw so checkAnalytics doesn't cache the empty result for an hour.
+      throw err;
     }
   }
 

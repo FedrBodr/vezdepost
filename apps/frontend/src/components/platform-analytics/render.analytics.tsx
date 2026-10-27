@@ -219,7 +219,7 @@ export const RenderAnalytics: FC<{
   const totals = useMemo(() => {
     return data?.map((p: AnalyticsDataItem) => {
       const value =
-        (p?.data.reduce((acc: number, curr: { total: number }) => acc + curr.total, 0) || 0) /
+        (p?.data.reduce((acc: number, curr: { total: number | string }) => acc + Number(curr.total), 0) || 0) /
         (p.average ? p.data.length : 1);
       if (p.average) {
         return value.toFixed(2) + '%';

@@ -666,7 +666,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         posts,
         date,
         Number.isFinite(members)
-          ? { label: 'Members', total: members }
+          ? { label: 'Subscribers', total: members }
           : undefined
       );
     } catch (err) {
@@ -675,7 +675,8 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         'Error fetching VK Group analytics:',
         (err as Error)?.message || err
       );
-      return [];
+      // Throw so checkAnalytics doesn't cache the empty result for an hour.
+      throw err;
     }
   }
 

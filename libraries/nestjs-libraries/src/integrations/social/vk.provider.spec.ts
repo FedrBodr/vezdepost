@@ -666,14 +666,14 @@ describe('VkProvider analytics', () => {
       result.map((item) => [item.label, item])
     );
     expect(Object.keys(byLabel)).toEqual([
-      'Followers',
+      'Subscribers',
       'Posts',
       'Views',
       'Likes',
       'Reposts',
       'Comments',
     ]);
-    expect(byLabel.Followers.data[0].total).toBe('300');
+    expect(byLabel.Subscribers.data[0].total).toBe('300');
     expect(byLabel.Views.data).toHaveLength(7);
     const sum = (label: string) =>
       byLabel[label].data.reduce((acc, { total }) => acc + Number(total), 0);
@@ -682,11 +682,11 @@ describe('VkProvider analytics', () => {
     expect(sum('Likes')).toBe(6);
   });
 
-  it('returns no channel analytics when VK answers with an error', async () => {
+  it('throws when VK answers with an error so the empty result is not cached', async () => {
     vi.spyOn(provider, 'fetch').mockResolvedValue(
       response({ error: { error_code: 15, error_msg: 'Access denied' } })
     );
 
-    await expect(provider.analytics('42', accessToken, 7)).resolves.toEqual([]);
+    await expect(provider.analytics('42', accessToken, 7)).rejects.toThrow();
   });
 });

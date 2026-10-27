@@ -71,9 +71,7 @@ const TELEGRAM_COUNT_MULTIPLIERS: Record<string, number> = {
 
 /** Parses widget counters such as "987", "1.2K", "4.45M" into numbers. */
 export const parseTelegramCount = (value: string): number | null => {
-  const match = value
-    .replace(/[\s,]/g, '')
-    .match(/^(\d+(?:\.\d+)?)([KMB]?)$/i);
+  const match = value.replace(/[\s,]/g, '').match(/^(\d+(?:\.\d+)?)([KMB]?)$/i);
   if (!match) {
     return null;
   }
@@ -239,7 +237,12 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
       status === 'ready'
         ? { status, chatId }
         : { status, candidateChatId: chatId };
-    await rememberChatConnection(this.connectionStore, 'telegram', nonce, result);
+    await rememberChatConnection(
+      this.connectionStore,
+      'telegram',
+      nonce,
+      result
+    );
     return result;
   }
 
@@ -613,7 +616,8 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
         '[telegram] getChatMemberCount failed:',
         error?.message || error
       );
-      return [];
+      // Throw so checkAnalytics doesn't cache the empty result for an hour.
+      throw error;
     }
   }
 

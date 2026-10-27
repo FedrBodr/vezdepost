@@ -375,7 +375,8 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
       ];
     } catch (err: any) {
       console.error('Error fetching MAX analytics:', err?.message || err);
-      return [];
+      // Throw so checkAnalytics doesn't cache the empty result for an hour.
+      throw err;
     }
   }
 

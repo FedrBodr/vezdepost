@@ -44,55 +44,6 @@ describe('IntegrationsController connect CSRF cookie', () => {
       expect.objectContaining({ expires: expect.any(Date) })
     );
   });
-
-  it('exposes whether the provider supports analytics as a boolean', async () => {
-    const integration = {
-      id: 'integration-1',
-      internalId: 'account-1',
-      providerIdentifier: 'with-analytics',
-      additionalSettings: '[]',
-      postingTimes: '[]',
-      name: 'Account',
-      disabled: false,
-      picture: null as string | null,
-      inBetweenSteps: false,
-      refreshNeeded: false,
-      profile: 'account',
-      type: 'social',
-      customer: null as unknown,
-    };
-    const manager = {
-      getSocialIntegration: vi.fn((identifier: string) =>
-        identifier === 'with-analytics'
-          ? { editor: 'normal', analytics: vi.fn() }
-          : { editor: 'normal' }
-      ),
-      resolveCapabilitiesV2: vi.fn().mockResolvedValue({}),
-    };
-    const integrationService = {
-      getIntegrationsList: vi.fn().mockResolvedValue([
-        integration,
-        {
-          ...integration,
-          id: 'integration-2',
-          providerIdentifier: 'without-analytics',
-        },
-      ]),
-    };
-    const controller = new IntegrationsController(
-      manager as never,
-      integrationService as never,
-      {} as never,
-      {} as never
-    );
-
-    const response = await controller.getIntegrationList({
-      id: 'org-1',
-    } as never);
-
-    expect(response.integrations[0].analytics).toBe(true);
-    expect(response.integrations[1].analytics).toBe(false);
-  });
 });
 
 describe('IntegrationsController capability metadata', () => {

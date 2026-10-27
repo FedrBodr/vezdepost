@@ -280,12 +280,12 @@ describe('MAX analytics', () => {
     expect(api.getChat).toHaveBeenCalledWith(321);
   });
 
-  it('returns no channel analytics when MAX fails', async () => {
+  it('throws when MAX fails so the empty result is not cached', async () => {
     const api = makeApi();
     api.getChat.mockRejectedValue(new Error('chat.not.found'));
 
     await expect(
       new MaxProvider(api as any).analytics('321', '321', 7)
-    ).resolves.toEqual([]);
+    ).rejects.toThrow('chat.not.found');
   });
 });

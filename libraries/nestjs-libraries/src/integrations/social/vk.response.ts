@@ -130,7 +130,8 @@ export async function collectVkWallPosts(
 }
 
 // Channel analytics: audience size today plus per-day totals of the posts
-// published in the last `days` days
+// published in the last `days` days. A day's Views/Likes are the current
+// counters of posts published that day, not activity that happened that day
 export function vkWallAnalytics(
   posts: VkWallPost[],
   days: number,

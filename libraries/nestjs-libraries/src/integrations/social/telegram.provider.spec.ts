@@ -975,12 +975,12 @@ describe('Telegram analytics', () => {
     ]);
   });
 
-  it('returns no channel statistics when Telegram fails', async () => {
+  it('throws when Telegram fails so the empty result is not cached', async () => {
     const bot = makeAnalyticsBot();
     bot.getChatMemberCount.mockRejectedValueOnce(new Error('Forbidden'));
 
     await expect(
       providerFor(bot).analytics('vezdepost', '-1001', 7)
-    ).resolves.toEqual([]);
+    ).rejects.toThrow('Forbidden');
   });
 });

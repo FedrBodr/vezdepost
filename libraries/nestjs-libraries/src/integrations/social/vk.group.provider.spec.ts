@@ -1981,18 +1981,18 @@ describe('VkGroupProvider analytics', () => {
     const byLabel = Object.fromEntries(
       result.map((item) => [item.label, item])
     );
-    expect(byLabel.Members.data[0].total).toBe('1500');
+    expect(byLabel.Subscribers.data[0].total).toBe('1500');
     expect(byLabel.Views.data).toHaveLength(30);
     expect(
       byLabel.Views.data.reduce((acc, { total }) => acc + Number(total), 0)
     ).toBe(30);
   });
 
-  it('returns no channel analytics when VK answers with an error', async () => {
+  it('throws when VK answers with an error so the empty result is not cached', async () => {
     vi.spyOn(provider, 'fetch').mockImplementation(() =>
       response({ error: { error_code: 15, error_msg: upstreamPayload } })
     );
 
-    await expect(provider.analytics('-77', token, 7)).resolves.toEqual([]);
+    await expect(provider.analytics('-77', token, 7)).rejects.toThrow();
   });
 });
