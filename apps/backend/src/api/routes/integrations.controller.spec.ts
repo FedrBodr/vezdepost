@@ -113,7 +113,7 @@ describe('IntegrationsController capability metadata', () => {
     });
   });
 
-  it('exposes whether the provider supports analytics as a boolean', async () => {
+  it('exposes analytics and token refresh support as booleans', async () => {
     const integration = {
       id: 'integration-1',
       internalId: 'account-1',
@@ -132,7 +132,7 @@ describe('IntegrationsController capability metadata', () => {
     const manager = {
       getSocialIntegration: vi.fn((identifier: string) =>
         identifier === 'with-analytics'
-          ? { editor: 'normal', analytics: vi.fn() }
+          ? { editor: 'normal', analytics: vi.fn(), refreshCron: true }
           : { editor: 'normal' }
       ),
       resolveCapabilitiesV2: vi.fn().mockResolvedValue({}),
@@ -160,5 +160,7 @@ describe('IntegrationsController capability metadata', () => {
 
     expect(response.integrations[0].analytics).toBe(true);
     expect(response.integrations[1].analytics).toBe(false);
+    expect(response.integrations[0].canRefreshToken).toBe(true);
+    expect(response.integrations[1].canRefreshToken).toBe(false);
   });
 });

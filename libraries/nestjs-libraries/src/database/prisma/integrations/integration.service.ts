@@ -393,6 +393,38 @@ export class IntegrationService {
     return this._integrationRepository.disableChannel(org, id);
   }
 
+  // Refreshes the token with the stored refresh token, without a new OAuth
+  // consent: a channel marked refreshNeeded whose refresh token still works
+  // is connected again, and its scheduled refresh is restarted.
+  async refreshChannelToken(org: string, id: string) {
+    const integration = await this._integrationRepository.getIntegrationById(
+      org,
+      id
+    );
+    if (!integration || integration.deletedAt || integration.inBetweenSteps) {
+      return { success: false };
+    }
+
+    const provider = this._integrationManager.getSocialIntegration(
+      integration.providerIdentifier
+    );
+    if (!provider?.refreshCron) {
+      return { success: false };
+    }
+
+    const refresh = await this._refreshIntegrationService.refresh(integration);
+    if (!refresh || !refresh.accessToken) {
+      return { success: false };
+    }
+
+    await this._refreshIntegrationService.startRefreshWorkflow(
+      org,
+      id,
+      provider
+    );
+    return { success: true };
+  }
+
   async enableChannel(org: string, totalChannels: number, id: string) {
     const integrations = (
       await this._integrationRepository.getIntegrationsList(org)

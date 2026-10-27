@@ -166,6 +166,7 @@ export class IntegrationsController {
             changeProfilePicture: !!findIntegration?.changeProfilePicture,
             changeNickName: !!findIntegration?.changeNickname,
             analytics: !!findIntegration?.analytics,
+            canRefreshToken: !!findIntegration?.refreshCron,
             customer: p.customer,
             additionalSettings: p.additionalSettings || '[]',
           };
@@ -471,6 +472,14 @@ export class IntegrationsController {
     @Body('id') id: string
   ) {
     return this._integrationService.disableChannel(org.id, id);
+  }
+
+  @Post('/refresh-token')
+  refreshChannelToken(
+    @GetOrgFromRequest() org: Organization,
+    @Body('id') id: string
+  ) {
+    return this._integrationService.refreshChannelToken(org.id, id);
   }
 
   @Post('/enable')

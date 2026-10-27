@@ -495,3 +495,94 @@ describe('IntegrationService VK Group persistence', () => {
     ).not.toHaveBeenCalled();
   });
 });
+
+describe('IntegrationService refreshChannelToken', () => {
+  const channel = {
+    id: 'channel-fixture',
+    organizationId,
+    providerIdentifier: 'vk-group',
+    refreshToken: userRefreshToken,
+    refreshNeeded: true,
+    inBetweenSteps: false,
+    deletedAt: null as Date | null,
+  };
+  let repository: { getIntegrationById: ReturnType<typeof vi.fn> };
+  let provider: { refreshCron?: boolean };
+  let refreshIntegrationService: {
+    refresh: ReturnType<typeof vi.fn>;
+    startRefreshWorkflow: ReturnType<typeof vi.fn>;
+  };
+  let service: IntegrationService;
+
+  beforeEach(() => {
+    repository = {
+      getIntegrationById: vi.fn().mockResolvedValue({ ...channel }),
+    };
+    provider = { refreshCron: true };
+    refreshIntegrationService = {
+      refresh: vi.fn().mockResolvedValue({ accessToken: 'new-access' }),
+      startRefreshWorkflow: vi.fn().mockResolvedValue(undefined),
+    };
+    service = new IntegrationService(
+      repository as never,
+      {} as never,
+      { getSocialIntegration: vi.fn().mockReturnValue(provider) } as never,
+      {} as never,
+      refreshIntegrationService as never,
+      {} as never
+    );
+  });
+
+  it('refreshes with the stored refresh token and restarts the scheduled refresh', async () => {
+    await expect(
+      service.refreshChannelToken(organizationId, channel.id)
+    ).resolves.toEqual({ success: true });
+
+    expect(repository.getIntegrationById).toHaveBeenCalledWith(
+      organizationId,
+      channel.id
+    );
+    expect(refreshIntegrationService.refresh).toHaveBeenCalledWith(
+      expect.objectContaining({ id: channel.id })
+    );
+    expect(refreshIntegrationService.startRefreshWorkflow).toHaveBeenCalledWith(
+      organizationId,
+      channel.id,
+      provider
+    );
+  });
+
+  it('reports a failed refresh without restarting the scheduled refresh', async () => {
+    refreshIntegrationService.refresh.mockResolvedValue(false);
+
+    await expect(
+      service.refreshChannelToken(organizationId, channel.id)
+    ).resolves.toEqual({ success: false });
+    expect(
+      refreshIntegrationService.startRefreshWorkflow
+    ).not.toHaveBeenCalled();
+  });
+
+  it('does not refresh providers without refresh tokens', async () => {
+    provider.refreshCron = undefined;
+
+    await expect(
+      service.refreshChannelToken(organizationId, channel.id)
+    ).resolves.toEqual({ success: false });
+    expect(refreshIntegrationService.refresh).not.toHaveBeenCalled();
+  });
+
+  it('does not refresh a missing, deleted or unfinished channel', async () => {
+    for (const found of [
+      null,
+      { ...channel, deletedAt: new Date() },
+      { ...channel, inBetweenSteps: true },
+    ]) {
+      repository.getIntegrationById.mockResolvedValueOnce(found);
+      await expect(
+        service.refreshChannelToken(organizationId, channel.id)
+      ).resolves.toEqual({ success: false });
+    }
+    expect(refreshIntegrationService.refresh).not.toHaveBeenCalled();
+  });
+});
