@@ -12,7 +12,7 @@
 set -u
 
 REPO_DIR="${REPO_DIR:-/root/postiz-app}"
-STATE_DIR="/var/lib/vezdepost-alerts"
+STATE_DIR="${STATE_DIR:-/var/lib/vezdepost-alerts}"
 mkdir -p "$STATE_DIR"
 
 # --- tuning -----------------------------------------------------------------
@@ -21,6 +21,11 @@ UPLOADS_GB=5
 UPLOADS_REQUESTS_PER_DAY=50000
 RICH_FALLBACK_MAX_PER_WINDOW=10
 COOLDOWN_MINUTES=180
+# how long prod may lag origin/prod before it counts as a stuck deploy (a build
+# takes ~10m, so the grace window must comfortably exceed one deploy)
+DRIFT_GRACE_MINUTES="${DRIFT_GRACE_MINUTES:-30}"
+AUTODEPLOY_CRON="${AUTODEPLOY_CRON:-/etc/cron.d/vezdepost-autodeploy}"
+AUTODEPLOY_STATE="${AUTODEPLOY_STATE:-/var/lib/vezdepost-deployed-rev}"
 
 # --- alert transport --------------------------------------------------------
 if [ -f "$REPO_DIR/.env" ]; then
@@ -94,6 +99,36 @@ media_requests=$(docker logs caddy --since 24h 2>&1 | grep -c 'GET /uploads/' ||
 if [ "${media_requests:-0}" -ge "$UPLOADS_REQUESTS_PER_DAY" ]; then
   in_cooldown media_traffic && exit 0
   send_alert "/uploads served ${media_requests}x in 24h (threshold ${UPLOADS_REQUESTS_PER_DAY}) — consider moving media off the app origin"
+fi
+
+# --- 6. autodeploy poller installed ------------------------------------------
+# The cron file vanished after a host snapshot restore (2026-10-24) and prod
+# silently stopped updating for two days. Catch that directly.
+if [ ! -f "$AUTODEPLOY_CRON" ]; then
+  in_cooldown autodeploy_missing && exit 0
+  send_alert "autodeploy poller is NOT installed ($AUTODEPLOY_CRON missing) — prod will not update; run docs/server-scripts/40-install-autodeploy-cron.sh"
+fi
+
+# --- 7. prod drifted from origin/prod ----------------------------------------
+# A stuck or failing deploy shows up here too: the marker only advances on a
+# successful deploy, so repeated failures keep prod behind origin/prod.
+drift_marker="$STATE_DIR/deploy_drift.since"
+if [ -d "$REPO_DIR/.git" ]; then
+  git -C "$REPO_DIR" fetch --no-recurse-submodules -q origin prod 2>/dev/null || true
+  remote=$(git -C "$REPO_DIR" rev-parse origin/prod 2>/dev/null || echo '')
+  deployed=$(cat "$AUTODEPLOY_STATE" 2>/dev/null || echo '')
+  if [ -n "$remote" ] && [ "$remote" != "$deployed" ]; then
+    now=$(date +%s)
+    since=$(cat "$drift_marker" 2>/dev/null || echo '')
+    [ -n "$since" ] || { since=$now; printf '%s' "$now" > "$drift_marker"; }
+    if [ $(((now - since) / 60)) -ge "$DRIFT_GRACE_MINUTES" ]; then
+      in_cooldown deploy_drift && exit 0
+      short_deployed=${deployed:0:7}; short_deployed=${short_deployed:-none}
+      send_alert "prod is behind origin/prod for >=${DRIFT_GRACE_MINUTES}m (deployed ${short_deployed}, origin ${remote:0:7}) — autodeploy may be stuck"
+    fi
+  else
+    rm -f "$drift_marker"
+  fi
 fi
 
 exit 0

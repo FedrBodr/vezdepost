@@ -1,0 +1,55 @@
+# Off-box uptime watchdog for Vezdepost prod.
+#
+# Why off-box: the on-box alerts (deploy/check-alerts.sh) cannot report that the
+# host itself is down or unreachable — if the box dies, they die with it. This
+# runs on GitHub, independent of the VPS, and pings Telegram when production is
+# unreachable or erroring. Freshness/drift (prod behind origin/prod) is covered
+# on-box by check-alerts.sh, which survived the 2026-10-24 snapshot restore.
+#
+# Setup (one-time, by the owner):
+#   1. This file must be on the default branch (main) for the schedule to fire.
+#   2. Repo Settings > Secrets and variables > Actions, add:
+#        TELEGRAM_BOT_TOKEN       (a bot token; the alert bot is fine)
+#        TELEGRAM_ALERT_CHAT_ID   (chat id to notify)
+#   3. Settings > Actions: ensure Actions are enabled for this fork.
+# Without the secrets the job still runs and fails loudly (visible in the
+# Actions tab) but sends no Telegram message.
+name: Vezdepost uptime watchdog
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # every ~10 min (GitHub may delay under load)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production endpoints
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+        run: |
+          set -u
+          alert() {
+            echo "ALERT: $1"
+            if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+              curl -s -m 10 -o /dev/null \
+                "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TG_CHAT}" \
+                --data-urlencode "text=[vezdepost][off-box] $1" || true
+            fi
+          }
+          fail=0
+          for url in https://app.vezdepost.ru/ https://vezdepost.ru/; do
+            code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' -L "$url" || echo 000)
+            echo "$url -> $code"
+            if [ "$code" -lt 200 ] || [ "$code" -ge 500 ]; then
+              alert "$url returned HTTP $code (host may be down or unreachable)"
+              fail=1
+            fi
+          done
+          exit $fail
