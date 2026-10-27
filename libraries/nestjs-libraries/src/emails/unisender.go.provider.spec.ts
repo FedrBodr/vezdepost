@@ -15,7 +15,7 @@ describe('UnisenderGoProvider', () => {
     vi.unstubAllEnvs();
   });
 
-  it('sends the message with the API key and reply-to', async () => {
+  it('returns the API result and defaults to the go1 cluster', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -32,10 +32,49 @@ describe('UnisenderGoProvider', () => {
     );
 
     expect(result).toEqual({ status: 'success', job_id: 'job-1' });
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(
+    expect(fetchMock.mock.calls[0][0]).toBe(
       'https://go1.unisender.ru/ru/transactional/api/v1/email/send.json'
     );
+  });
+
+  it('uses the account cluster host when it is set', async () => {
+    vi.stubEnv('UNISENDER_GO_HOST', 'go2.unisender.ru');
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'success' }),
+    });
+
+    await new UnisenderGoProvider().sendEmail(
+      'user@example.com',
+      'Subject',
+      '<p>hi</p>',
+      'Name',
+      'hello@vezdepost.ru',
+      'owner@example.com'
+    );
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://go2.unisender.ru/ru/transactional/api/v1/email/send.json'
+    );
+  });
+
+  it('sends the payload with the API key', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'success' }),
+    });
+
+    await new UnisenderGoProvider().sendEmail(
+      'user@example.com',
+      'Привет',
+      '<p>hi</p>',
+      'Дмитрий из Vezdepost',
+      'hello@vezdepost.ru',
+      'owner@example.com'
+    );
+    const init = fetchMock.mock.calls[0][1];
     expect(init.headers['X-API-KEY']).toBe('test-key');
     expect(JSON.parse(init.body)).toEqual({
       message: {

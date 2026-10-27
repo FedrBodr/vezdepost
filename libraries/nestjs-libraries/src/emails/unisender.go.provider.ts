@@ -12,8 +12,10 @@ export class UnisenderGoProvider implements EmailInterface {
     emailFromAddress: string,
     replyTo?: string
   ) {
+    // Each account lives on one cluster (go1, go2...), keys only work there
+    const host = process.env.UNISENDER_GO_HOST || 'go1.unisender.ru';
     const response = await fetch(
-      'https://go1.unisender.ru/ru/transactional/api/v1/email/send.json',
+      `https://${host}/ru/transactional/api/v1/email/send.json`,
       {
         method: 'POST',
         headers: {

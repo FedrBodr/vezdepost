@@ -66,6 +66,8 @@ services:
       # (EMAIL_PROVIDER=unisender-go); the SMTP password is that API key.
       EMAIL_PROVIDER: '${EMAIL_PROVIDER:-}'
       UNISENDER_GO_API_KEY: '${EMAIL_PASS:-}'
+      # The account is on the go2 cluster; go1 rejects its key
+      UNISENDER_GO_HOST: 'go2.unisender.ru'
       EMAIL_HOST: 'smtp.go1.unisender.ru'
       EMAIL_PORT: '587'
       EMAIL_SECURE: 'false'

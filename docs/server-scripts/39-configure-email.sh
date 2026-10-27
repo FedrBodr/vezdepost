@@ -19,7 +19,7 @@ set -euo pipefail
 
 REPO_DIR=${REPO_DIR:-/root/postiz-app}
 ENV_FILE="$REPO_DIR/.env"
-API_HOST=${API_HOST:-go1.unisender.ru}
+API_HOST=${API_HOST:-go2.unisender.ru}
 API_PORT=${API_PORT:-443}
 
 current() {
