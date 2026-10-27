@@ -12,7 +12,7 @@ Server: 201.51.7.50 (`~/postiz-app`, branch `prod`).
 The hosted Vezdepost connection allowlist is tracked in
 `docker-compose.override.yaml` as:
 
-`telegram,telegram-stories,max,vk,vk-group,linkedin,tumblr,bluesky,wordpress,devto,hashnode,lemmy,nostr,listmonk`
+`telegram,telegram-stories,max,vk,vk-group,linkedin,tumblr,bluesky,wordpress,devto,hashnode,lemmy,nostr,listmonk,discord`
 
 The application still shows other registered adapters as request-only. X remains
 request-only until production OAuth credentials and API credits are configured.
