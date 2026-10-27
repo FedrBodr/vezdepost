@@ -433,6 +433,16 @@ export class IntegrationRepository {
     return upsert;
   }
 
+  // One row per (provider, organization) pair with a connected channel
+  providersConnectedByOrganizations() {
+    return this._integration.model.integration.groupBy({
+      by: ['providerIdentifier', 'organizationId'],
+      where: {
+        deletedAt: null,
+      },
+    });
+  }
+
   needsToBeRefreshed() {
     return this._integration.model.integration.findMany({
       where: {

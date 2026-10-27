@@ -389,6 +389,31 @@ export class IntegrationService {
     }
   }
 
+  // Providers most organizations connected come first; ties keep the order of
+  // the provider list. Only the order is returned, never the counts.
+  async getAllIntegrationsByPopularity() {
+    const [integrations, connected] = await Promise.all([
+      this._integrationManager.getAllIntegrations(),
+      this._integrationRepository.providersConnectedByOrganizations(),
+    ]);
+    const organizations = connected.reduce(
+      (all, { providerIdentifier }) => ({
+        ...all,
+        [providerIdentifier]: (all[providerIdentifier] || 0) + 1,
+      }),
+      {} as Record<string, number>
+    );
+
+    return {
+      ...integrations,
+      social: [...integrations.social].sort(
+        (a, b) =>
+          (organizations[b.identifier] || 0) -
+          (organizations[a.identifier] || 0)
+      ),
+    };
+  }
+
   async disableChannel(org: string, id: string) {
     return this._integrationRepository.disableChannel(org, id);
   }

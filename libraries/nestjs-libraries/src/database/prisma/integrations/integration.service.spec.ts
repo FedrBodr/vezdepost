@@ -597,3 +597,43 @@ describe('IntegrationService refreshChannelToken', () => {
     expect(refreshIntegrationService.refresh).not.toHaveBeenCalled();
   });
 });
+
+describe('IntegrationService getAllIntegrationsByPopularity', () => {
+  it('lists providers connected by the most organizations first', async () => {
+    const social = ['x', 'telegram', 'vk', 'vk-group', 'max'].map(
+      (identifier) => ({ identifier })
+    );
+    const service = new IntegrationService(
+      {
+        providersConnectedByOrganizations: vi.fn().mockResolvedValue([
+          // one organization with many channels counts once per provider
+          { providerIdentifier: 'vk-group', organizationId: 'org-1' },
+          { providerIdentifier: 'telegram', organizationId: 'org-1' },
+          { providerIdentifier: 'telegram', organizationId: 'org-2' },
+          { providerIdentifier: 'vk', organizationId: 'org-2' },
+          { providerIdentifier: 'vk', organizationId: 'org-3' },
+          { providerIdentifier: 'telegram', organizationId: 'org-3' },
+        ]),
+      } as never,
+      {} as never,
+      {
+        getAllIntegrations: vi.fn().mockResolvedValue({ social, article: [] }),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never
+    );
+
+    const result = await service.getAllIntegrationsByPopularity();
+
+    expect(result.social.map((p) => p.identifier)).toEqual([
+      'telegram',
+      'vk',
+      'vk-group',
+      'x',
+      'max',
+    ]);
+    expect(result.article).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain('org-');
+  });
+});

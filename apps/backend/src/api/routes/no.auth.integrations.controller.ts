@@ -42,7 +42,7 @@ export class NoAuthIntegrationsController {
 
   @Get('/')
   getIntegrations() {
-    return this._integrationManager.getAllIntegrations();
+    return this._integrationService.getAllIntegrationsByPopularity();
   }
 
   @Post('/social-connect/:integration')
