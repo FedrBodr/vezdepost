@@ -2,7 +2,7 @@
 
 import useSWR from 'swr';
 import { useCallback, useMemo, useState } from 'react';
-import { capitalize, orderBy } from 'lodash';
+import { orderBy } from 'lodash';
 import clsx from 'clsx';
 import ImageWithFallback from '@gitroom/react/helpers/image.with.fallback';
 import SafeImage from '@gitroom/react/helpers/safe.image';
@@ -17,18 +17,16 @@ import { useVariables } from '@gitroom/react/helpers/variable.context';
 import useCookie from 'react-use-cookie';
 import { SVGLine } from '@gitroom/frontend/components/launches/launches.component';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
-const allowedIntegrations = [
+// Providers whose analytics API can return a 90 days range. The list of
+// analytics-capable channels comes from the backend `analytics` flag; this only
+// narrows the extra 90 days option so existing providers keep their behaviour.
+const ninetyDaysAnalytics = [
   'facebook',
-  'instagram',
-  'instagram-standalone',
   'linkedin-page',
-  'tiktok',
-  'tiktok-business',
-  'youtube',
-  'gmb',
   'pinterest',
-  'threads',
+  'youtube',
   'x',
+  'gmb',
 ];
 export const PlatformAnalytics = () => {
   const fetch = useFetch();
@@ -42,15 +40,14 @@ export const PlatformAnalytics = () => {
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
   const toaster = useToaster();
   const load = useCallback(async () => {
-    const int = (
+    return (
       await (await fetch('/integrations/list')).json()
     ).integrations.filter((f: any) => {
       if (f.identifier === 'x' && disableXAnalytics) {
         return false;
       }
-      return true;
+      return !!f.analytics;
     });
-    return int.filter((f: any) => allowedIntegrations.includes(f.identifier));
   }, []);
   const { data, isLoading } = useSWR('analytics-list', load, {
     revalidateOnFocus: false,
@@ -75,52 +72,17 @@ export const PlatformAnalytics = () => {
     if (!currentIntegration) {
       return [];
     }
-    const arr = [];
-    if (
-      [
-        'facebook',
-        'instagram',
-        'instagram-standalone',
-        'linkedin-page',
-        'pinterest',
-        'youtube',
-        'threads',
-        'gmb',
-        'x',
-        'tiktok',
-        'tiktok-business',
-      ].indexOf(currentIntegration.identifier) !== -1
-    ) {
-      arr.push({
+    const arr = [
+      {
         key: 7,
         value: t('7_days', '7 Days'),
-      });
-    }
-    if (
-      [
-        'facebook',
-        'instagram',
-        'instagram-standalone',
-        'linkedin-page',
-        'pinterest',
-        'youtube',
-        'threads',
-        'gmb',
-        'x',
-        'tiktok',
-        'tiktok-business',
-      ].indexOf(currentIntegration.identifier) !== -1
-    ) {
-      arr.push({
+      },
+      {
         key: 30,
         value: t('30_days', '30 Days'),
-      });
-    }
-    if (
-      ['facebook', 'linkedin-page', 'pinterest', 'youtube', 'x', 'gmb'].indexOf(
-        currentIntegration.identifier
-      ) !== -1
-    ) {
+      },
+    ];
+    if (ninetyDaysAnalytics.includes(currentIntegration.identifier)) {
       arr.push({
         key: 90,
         value: t('90_days', '90 Days'),
@@ -159,10 +121,6 @@ export const PlatformAnalytics = () => {
             'you_have_to_add_social_media_channels',
             'You have to add Social Media channels'
           )}
-        </div>
-        <div className="text-[20px]">
-          {t('supported', 'Supported:')}
-          {allowedIntegrations.map((p) => capitalize(p)).join(', ')}
         </div>
         <Button onClick={() => router.push('/launches')}>
           {t(
