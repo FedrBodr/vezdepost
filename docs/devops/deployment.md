@@ -162,7 +162,14 @@ the `pnpm install` cache layer on **any** file change. Mitigations:
   layer was reinstalled and re-exported on every code commit. Now a commit
   without dependency changes reuses that layer and exports only the ~1 GB
   build layer. `deploy/production-config.spec.ts` fails if a new
-  `apps/*/package.json` is not copied before the install.
+  `apps/*/package.json` is not copied before the install. First build of the
+  new Dockerfile (36a9df37, 36 min, no install cache yet): `pnpm install`
+  137 s, `COPY . /app` 30 s, build 291 s, `exporting layers` 1045 s +
+  `unpacking` 146 s — the same as before, as expected. Next code-only commits
+  (WOK-657, 0db09a5f and 60d03f51): **6 min 40 s and 6 min 15 s** end to end —
+  `pnpm install` CACHED, build 254 s, `exporting layers` 34 s, `unpacking`
+  10 s. A static-only commit (46784645, links) finished in 2 s without
+  recreating `postiz`.
 - **Static-only commits skip the image** — `deploy/autodeploy.sh` diffs the
   last deployed rev against the new one; if only `deploy/landing|blog|links/`,
   `docs/` or `*.md` changed, it skips `docker compose up --build` (caddy reload,
@@ -182,7 +189,9 @@ the `pnpm install` cache layer on **any** file change. Mitigations:
   Caveat: `:prev` is "the image before the last build", not "last good". If a
   build passes but readiness fails, cron retries and re-tags the broken image
   as `:prev` — check `docker inspect -f '{{.Created}}' postiz-max:prev`
-  before rolling back to it.
+  before rolling back to it. A deploy that changes `autodeploy.sh` itself
+  runs with the old logic (the cron process started from the old file), so
+  the 36a9df37 deploy left no `:prev`; tagging starts with the next deploy.
 - **Disk hygiene** — `docs/server-scripts/41-docker-cleanup.sh` (dry run by
   default, `APPLY=1` to act) prunes unshared build-cache records by id and
   dangling images; never touches images used by containers, `postiz-max:*`,
@@ -192,8 +201,10 @@ the `pnpm install` cache layer on **any** file change. Mitigations:
 - **Decision (WOK-655, 2026-10-27).** Chosen: dependency layer + static-only
   skip + `:prev` tag — cheap, no new infrastructure, verifiable locally.
   Next candidate: build in GitHub Actions and pull `ghcr.io/…:<sha>` (VPS no
-  longer builds, rollback by tag) — deferred until the layer fix is measured;
-  costs a workflow, a registry token on the box and a GitHub dependency.
+  longer builds, rollback by tag) — deferred: after the layer fix a code
+  deploy takes ~6.5 min, of which ~4 min is the app build itself; GHCR would
+  add a workflow, a registry token on the box and a GitHub dependency for a
+  few minutes at most.
   Rejected: switching Docker off the containerd snapshotter (faster export,
   but every other project's locally built image on the box would need a
   rebuild/re-pull); a bigger tariff (fio shows the disk is not the bottleneck,
