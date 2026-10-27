@@ -146,6 +146,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
       'wall',
       'photos',
       'groups',
+      'stats',
     ]);
     expect('customFields' in provider).toBe(false);
     expect('customFieldsInstructions' in provider).toBe(false);
@@ -157,7 +158,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
       'https://app.example/integrations/social/vk-group'
     );
     expect(url.searchParams.get('scope')).toBe(
-      'vkid.personal_info wall photos groups'
+      'vkid.personal_info wall photos groups stats'
     );
   });
 
@@ -239,7 +240,9 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
     const body = fetchMock.mock.calls[0][1]?.body as FormData;
     expect(body.get('refresh_token')).toBe('refresh-secret');
     expect(body.get('device_id')).toBe('device-42');
-    expect(body.get('scope')).toBe('vkid.personal_info wall photos groups');
+    expect(body.get('scope')).toBe(
+      'vkid.personal_info wall photos groups stats'
+    );
   });
 
   it('lists only administrator communities with stable selection fields', async () => {
@@ -1986,6 +1989,67 @@ describe('VkGroupProvider analytics', () => {
     expect(
       byLabel.Views.data.reduce((acc, { total }) => acc + Number(total), 0)
     ).toBe(30);
+  });
+
+  it('adds daily community statistics from stats.get', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementation((url: string) =>
+        url.endsWith('/method/stats.get')
+          ? response({
+              response: [
+                {
+                  period_from: now,
+                  reach: { reach: 120 },
+                  visitors: { visitors: 40 },
+                  activity: { subscribed: 3, unsubscribed: 1 },
+                },
+                { period_from: now - 86400, reach: { reach: 80 } },
+              ],
+            })
+          : url.endsWith('/method/groups.getById')
+          ? response({
+              response: { groups: [{ id: 77, members_count: 1500 }] },
+            })
+          : response({ response: { items: [] } })
+      );
+
+    const result = await provider.analytics('-77', token, 7);
+
+    const statsCall = fetchMock.mock.calls.find(([url]) =>
+      url.endsWith('/method/stats.get')
+    )!;
+    expect(formOf(statsCall[1]).get('group_id')).toBe('77');
+    expect(formOf(statsCall[1]).get('interval')).toBe('day');
+    expect(formOf(statsCall[1]).get('intervals_count')).toBe('7');
+    const byLabel = Object.fromEntries(
+      result.map((item) => [item.label, item])
+    );
+    expect(byLabel.Reach.data).toHaveLength(7);
+    expect(byLabel.Reach.data.at(-1)!.total).toBe('120');
+    expect(byLabel.Reach.data.at(-2)!.total).toBe('80');
+    expect(byLabel.Visitors.data.at(-1)!.total).toBe('40');
+    expect(byLabel['New subscribers'].data.at(-1)!.total).toBe('3');
+    expect(byLabel.Unsubscribed.data.at(-1)!.total).toBe('1');
+  });
+
+  it('keeps wall analytics when the token has no stats scope', async () => {
+    vi.spyOn(provider, 'fetch').mockImplementation((url: string) =>
+      url.endsWith('/method/stats.get')
+        ? response({ error: { error_code: 15, error_msg: 'Access denied' } })
+        : url.endsWith('/method/groups.getById')
+        ? response({
+            response: { groups: [{ id: 77, members_count: 1500 }] },
+          })
+        : response({ response: { items: [wallPost(now, 10)] } })
+    );
+
+    const result = await provider.analytics('-77', token, 7);
+
+    const labels = result.map((item) => item.label);
+    expect(labels).toContain('Subscribers');
+    expect(labels).toContain('Views');
+    expect(labels).not.toContain('Reach');
   });
 
   it('throws when VK answers with an error so the empty result is not cached', async () => {

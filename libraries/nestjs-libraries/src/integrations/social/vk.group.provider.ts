@@ -31,6 +31,7 @@ import {
 } from './vk.group.errors';
 import {
   collectVkWallPosts,
+  vkGroupStatsAnalytics,
   vkPostAnalytics,
   vkWallAnalytics,
   vkWallItems,
@@ -59,7 +60,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   name = 'ВКонтакте\n(сообщество)';
   toolTip = 'Публикация в сообществе или паблике, где вы администратор';
   isBetweenSteps = true;
-  scopes = ['vkid.personal_info', 'wall', 'photos', 'groups'];
+  scopes = ['vkid.personal_info', 'wall', 'photos', 'groups', 'stats'];
   editor = 'normal' as const;
   maxLength() {
     return 16384;
@@ -639,10 +640,21 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         .subtract(date - 1, 'day')
         .startOf('day')
         .unix();
-      const [groups, posts] = await Promise.all([
+      const groupId = id.replace(/^-/, '');
+      const [groups, stats, posts] = await Promise.all([
         this.callGroupVk<unknown>('groups.getById', accessToken, {
-          group_id: id.replace(/^-/, ''),
+          group_id: groupId,
           fields: 'members_count',
+        }),
+        // Tokens granted before the `stats` scope was requested can't read
+        // community statistics; the wall-based series still work for them
+        this.callGroupVk<unknown>('stats.get', accessToken, {
+          group_id: groupId,
+          interval: 'day',
+          intervals_count: String(date),
+        }).catch((err) => {
+          if (err instanceof RefreshToken) throw err;
+          return undefined;
         }),
         collectVkWallPosts(
           (offset) =>
@@ -662,13 +674,16 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         (Array.isArray(list) ? list[0] : undefined)?.members_count
       );
 
-      return vkWallAnalytics(
-        posts,
-        date,
-        Number.isFinite(members)
-          ? { label: 'Subscribers', total: members }
-          : undefined
-      );
+      return [
+        ...vkWallAnalytics(
+          posts,
+          date,
+          Number.isFinite(members)
+            ? { label: 'Subscribers', total: members }
+            : undefined
+        ),
+        ...vkGroupStatsAnalytics(stats, date),
+      ];
     } catch (err) {
       if (err instanceof RefreshToken) throw err;
       console.error(

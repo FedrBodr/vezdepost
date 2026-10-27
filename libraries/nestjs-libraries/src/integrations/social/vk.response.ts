@@ -174,3 +174,61 @@ export function vkWallAnalytics(
     })),
   ];
 }
+
+const VK_GROUP_STATS = [
+  ['Reach', (period: VkGroupStatsPeriod) => period.reach?.reach],
+  ['Visitors', (period: VkGroupStatsPeriod) => period.visitors?.visitors],
+  [
+    'New subscribers',
+    (period: VkGroupStatsPeriod) => period.activity?.subscribed,
+  ],
+  [
+    'Unsubscribed',
+    (period: VkGroupStatsPeriod) => period.activity?.unsubscribed,
+  ],
+] as const;
+
+type VkGroupStatsPeriod = {
+  period_from?: number | string;
+  reach?: { reach?: number };
+  visitors?: { visitors?: number };
+  activity?: { subscribed?: number; unsubscribed?: number };
+};
+
+// Community statistics from stats.get (needs the `stats` scope): one value per
+// day, so unlike vkWallAnalytics this is activity that happened that day
+export function vkGroupStatsAnalytics(
+  response: unknown,
+  days: number
+): AnalyticsData[] {
+  const periods = (Array.isArray(response) ? response : []).filter(
+    (period): period is VkGroupStatsPeriod =>
+      !!period && typeof period === 'object'
+  );
+  const dates = Array.from({ length: days }, (_, index) =>
+    dayjs()
+      .subtract(days - 1 - index, 'day')
+      .format('YYYY-MM-DD')
+  );
+
+  return VK_GROUP_STATS.flatMap(([label, value]) => {
+    const totals = new Map<string, number>();
+    for (const period of periods) {
+      const total = Number(value(period));
+      if (!Number.isFinite(total) || total < 0) continue;
+      const date = dayjs.unix(Number(period.period_from)).format('YYYY-MM-DD');
+      totals.set(date, (totals.get(date) || 0) + total);
+    }
+    if (!totals.size) return [];
+    return [
+      {
+        label,
+        percentageChange: 0,
+        data: dates.map((date) => ({
+          date,
+          total: String(totals.get(date) || 0),
+        })),
+      },
+    ];
+  });
+}
