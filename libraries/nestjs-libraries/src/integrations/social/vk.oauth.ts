@@ -357,8 +357,8 @@ export const refreshVkUser = async (input: {
         fetcher: input.fetcher,
       });
     } catch (error) {
-      // An expired-token API error, or a success payload without usable
-      // tokens: VK ID accepted the request, so the old token is spent
+      // An HTTP 401 from VK ID, or a success payload without usable tokens
+      // (VK ID accepted the request, so the old token is spent): not retried
       if (
         error instanceof RefreshToken ||
         (error instanceof BadBody &&
