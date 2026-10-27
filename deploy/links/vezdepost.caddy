@@ -15,3 +15,6 @@ redir /go/narod-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=social&u
 redir /go/narod-max https://vezdepost.ru/?utm_source=max&utm_medium=social&utm_campaign=vezdepost-narod-1021 302
 redir /go/narod-vk https://vezdepost.ru/?utm_source=vk&utm_medium=social&utm_campaign=vezdepost-narod-1021 302
 redir /go/narod-li https://vezdepost.ru/?utm_source=linkedin&utm_medium=social&utm_campaign=vezdepost-narod-1021 302
+
+# vezdepost-fb-1027: пост о подключении Facebook к Вездепосту
+redir /go/vezdepost-fb-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=social&utm_campaign=vezdepost-fb-1027 302
