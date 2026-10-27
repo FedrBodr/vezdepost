@@ -217,14 +217,6 @@ export class DribbbleProvider extends SocialAbstract implements SocialProvider {
     });
   }
 
-  analytics(
-    id: string,
-    accessToken: string,
-    date: number
-  ): Promise<AnalyticsData[]> {
-    return Promise.resolve([]);
-  }
-
   async postAnalytics(
     integrationId: string,
     accessToken: string,
