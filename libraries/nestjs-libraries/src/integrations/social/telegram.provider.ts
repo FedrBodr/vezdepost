@@ -25,7 +25,13 @@ import {
   buildTelegramRichMessage,
   telegramRichMediaEligible,
 } from '@gitroom/helpers/utils/telegram.rich.normalization';
-import { callTelegramApi } from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
+import {
+  callTelegramApi,
+  callTelegramApiMultipart,
+  TelegramUploadFile,
+} from '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api';
+import { resolveAppOwnedLocalUploadFilePath } from '@gitroom/helpers/utils/local.upload.path';
+import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
 import { TelegramUpdatesHub } from '@gitroom/nestjs-libraries/integrations/social/telegram.updates.hub';
 import {
   KeyValueStore,
@@ -462,19 +468,54 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     if (!token) {
       return null;
     }
+    const richMessage = buildTelegramRichMessage(html, message.media || []);
+    // Telegram often cannot reach our own server to download a photo by URL
+    // ("failed to get HTTP URL content"), so photos stored in our uploads are
+    // sent as attach:// files, like the legacy transport does.
+    const prepared = await Promise.all(
+      (richMessage.media || []).map(async (item) => {
+        const localPath = resolveAppOwnedLocalUploadFilePath(item.media.media);
+        if (!localPath) {
+          return { item };
+        }
+        const upload: TelegramUploadFile = {
+          field: item.id,
+          filename: localPath.split('/').pop() || item.id,
+          contentType: mime.getType(localPath) || 'application/octet-stream',
+          data: await readOrFetch(item.media.media),
+        };
+        return {
+          item: {
+            ...item,
+            media: { ...item.media, media: `attach://${item.id}` },
+          },
+          upload,
+        };
+      })
+    );
+    const media = prepared.map(({ item }) => item);
+    const uploads = prepared.flatMap(({ upload }) => (upload ? [upload] : []));
+    const fields = {
+      chat_id: accessToken,
+      rich_message: JSON.stringify(
+        richMessage.media ? { ...richMessage, media } : richMessage
+      ),
+    };
     // sendRichMessage landed in Bot API 10.1, after the pinned
     // node-telegram-bot-api release; call the API directly on the same
     // classic https stack the library itself uses.
-    const result = await callTelegramApi<{ message_id?: number }>(
-      token,
-      'sendRichMessage',
-      {
-        chat_id: accessToken,
-        rich_message: JSON.stringify(
-          buildTelegramRichMessage(html, message.media || [])
-        ),
-      }
-    );
+    const result = uploads.length
+      ? await callTelegramApiMultipart<{ message_id?: number }>(
+          token,
+          'sendRichMessage',
+          fields,
+          uploads
+        )
+      : await callTelegramApi<{ message_id?: number }>(
+          token,
+          'sendRichMessage',
+          fields
+        );
     return typeof result?.message_id === 'number' ? result.message_id : null;
   }
 

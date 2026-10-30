@@ -110,7 +110,7 @@ export const callTelegramApi = <T = unknown>(
 
 export const buildTelegramMultipartBody = (
   fields: Record<string, string>,
-  file: TelegramUploadFile,
+  file: TelegramUploadFile | ReadonlyArray<TelegramUploadFile>,
   boundary: string
 ): Buffer => {
   const parts: Buffer[] = [];
@@ -122,23 +122,26 @@ export const buildTelegramMultipartBody = (
       )
     );
   }
-  parts.push(
-    Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="${file.field}"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`,
-      'utf8'
-    ),
-    file.data,
-    Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8')
-  );
+  for (const item of ([] as TelegramUploadFile[]).concat(file)) {
+    parts.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${item.field}"; filename="${item.filename}"\r\nContent-Type: ${item.contentType}\r\n\r\n`,
+        'utf8'
+      ),
+      item.data,
+      Buffer.from('\r\n', 'utf8')
+    );
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
   return Buffer.concat(parts);
 };
 
-/** Uploads one file (attach://<field>) together with plain form fields. */
+/** Uploads files (attach://<field>) together with plain form fields. */
 export const callTelegramApiMultipart = <T = unknown>(
   token: string,
   method: string,
   fields: Record<string, string>,
-  file: TelegramUploadFile
+  file: TelegramUploadFile | ReadonlyArray<TelegramUploadFile>
 ): Promise<T> => {
   const boundary = `----vezdepost${randomBytes(12).toString('hex')}`;
   return sendTelegramRequest<T>(

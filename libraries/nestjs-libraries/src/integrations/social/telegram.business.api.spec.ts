@@ -35,6 +35,33 @@ describe('buildTelegramMultipartBody', () => {
   });
 });
 
+describe('buildTelegramMultipartBody with several files', () => {
+  it('encodes every file part before the closing boundary', () => {
+    const body = buildTelegramMultipartBody(
+      { chat_id: '1' },
+      [
+        {
+          field: 'p0',
+          filename: 'a.png',
+          contentType: 'image/png',
+          data: Buffer.from('A'),
+        },
+        {
+          field: 'p1',
+          filename: 'b.jpg',
+          contentType: 'image/jpeg',
+          data: Buffer.from('B'),
+        },
+      ],
+      'BOUNDARY'
+    ).toString('utf8');
+
+    expect(body).toContain(
+      '--BOUNDARY\r\nContent-Disposition: form-data; name="p0"; filename="a.png"\r\nContent-Type: image/png\r\n\r\nA\r\n--BOUNDARY\r\nContent-Disposition: form-data; name="p1"; filename="b.jpg"\r\nContent-Type: image/jpeg\r\n\r\nB\r\n--BOUNDARY--\r\n'
+    );
+  });
+});
+
 describe('TelegramBusinessApi', () => {
   beforeEach(() => vi.clearAllMocks());
 

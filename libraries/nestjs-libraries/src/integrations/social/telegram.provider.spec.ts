@@ -27,12 +27,18 @@ vi.mock('@gitroom/nestjs-libraries/integrations/social.abstract', () => ({
   SocialAbstract: class {},
 }));
 const callTelegramApiMock = vi.hoisted(() => vi.fn());
+const callTelegramApiMultipartMock = vi.hoisted(() => vi.fn());
 vi.mock(
   '@gitroom/nestjs-libraries/integrations/social/telegram.rich.api',
   () => ({
     callTelegramApi: callTelegramApiMock,
+    callTelegramApiMultipart: callTelegramApiMultipartMock,
   })
 );
+const readOrFetchMock = vi.hoisted(() => vi.fn());
+vi.mock('@gitroom/helpers/utils/read.or.fetch', () => ({
+  readOrFetch: readOrFetchMock,
+}));
 vi.mock(
   '@gitroom/helpers/utils/telegram.constraints',
   () => import('../../../../helpers/src/utils/telegram.constraints')
@@ -164,6 +170,51 @@ describe('TelegramProvider media captions', () => {
       expect(rich.html).not.toContain('https://cdn.test/photo.jpg');
       expect(bot.sendPhoto).not.toHaveBeenCalled();
       expect(bot.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('uploads photos stored in our uploads instead of letting Telegram fetch them', async () => {
+      vi.stubEnv('STORAGE_PROVIDER', 'local');
+      vi.stubEnv('FRONTEND_URL', 'https://app.test');
+      vi.stubEnv('UPLOAD_DIRECTORY', '/uploads');
+      readOrFetchMock.mockResolvedValue(Buffer.from('PNG'));
+      callTelegramApiMultipartMock.mockResolvedValue({ message_id: 78 });
+      const { bot } = makeBot();
+      const provider = new TelegramProvider(bot as any);
+      const ownPhoto = 'https://app.test/uploads/2026/10/30/photo.png';
+
+      const result = await provider.post(
+        'channel',
+        '-1001',
+        details('<p>Body</p>', [
+          { id: 'own', type: 'image', path: ownPhoto },
+          { id: 'cdn', type: 'image', path: 'https://cdn.test/photo.jpg' },
+        ])
+      );
+
+      expect(callTelegramApiMock).not.toHaveBeenCalled();
+      expect(readOrFetchMock).toHaveBeenCalledWith(ownPhoto);
+      const [token, method, fields, files] =
+        callTelegramApiMultipartMock.mock.calls[0];
+      expect(token).toBe('test-token');
+      expect(method).toBe('sendRichMessage');
+      expect(fields.chat_id).toBe('-1001');
+      expect(JSON.parse(fields.rich_message).media).toEqual([
+        { id: 'p0', media: { type: 'photo', media: 'attach://p0' } },
+        {
+          id: 'p1',
+          media: { type: 'photo', media: 'https://cdn.test/photo.jpg' },
+        },
+      ]);
+      expect(files).toEqual([
+        {
+          field: 'p0',
+          filename: 'photo.png',
+          contentType: 'image/png',
+          data: Buffer.from('PNG'),
+        },
+      ]);
+      expect(bot.sendPhoto).not.toHaveBeenCalled();
+      expect(result[0].postId).toBe('78');
     });
 
     it('falls back to the legacy transport when the rich call fails', async () => {
