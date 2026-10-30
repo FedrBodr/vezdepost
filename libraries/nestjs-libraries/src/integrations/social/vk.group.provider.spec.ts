@@ -1125,6 +1125,36 @@ describe('VkGroupProvider photo publishing', () => {
     );
   });
 
+  it('names the upload server error code when photo upload fields are invalid', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({ response: { upload_url: uploadUrl } })
+      );
+    vi.mocked(axios.get).mockResolvedValue({
+      data: Readable.from(['image-data']),
+    });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { error: 'ERR_UPLOAD_BAD_IMAGE_SIZE', hash: uploadHash },
+    });
+
+    await expectSanitizedPhotoFailure(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Photo',
+          settings: {},
+          media: [{ type: 'image', path: mediaUrl }],
+        },
+      ]),
+      fetchMock,
+      {
+        message:
+          'VK Group photo upload returned invalid fields (ERR_UPLOAD_BAD_IMAGE_SIZE)',
+      }
+    );
+  });
+
   it('redacts a multipart photo upload failure', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
@@ -1246,6 +1276,8 @@ describe('VkGroupProvider photo publishing', () => {
     ],
     [{ photo: uploadedPhoto, server: 321 }, 'missing hash'],
     [{ photo: uploadedPhoto, server: 321, hash: '' }, 'empty hash'],
+    [{ photo: '[]', server: 321, hash: uploadHash }, 'empty photo list'],
+    [{ error: upstreamPayload }, 'free-form upload error'],
   ])(
     'rejects malformed multipart photo upload fields (%s: %s)',
     async (data) => {

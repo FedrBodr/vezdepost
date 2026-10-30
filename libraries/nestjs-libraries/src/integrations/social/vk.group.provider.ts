@@ -281,16 +281,17 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     hash: string;
   } {
     if (!payload || typeof payload !== 'object') {
-      this.badGroupResponse('VK Group photo upload returned invalid fields');
+      this.badPhotoUploadFields(payload);
     }
     const value = payload as Record<string, unknown>;
     if (
       typeof value.photo !== 'string' ||
       !value.photo.trim() ||
+      value.photo.trim() === '[]' ||
       typeof value.hash !== 'string' ||
       !value.hash.trim()
     ) {
-      this.badGroupResponse('VK Group photo upload returned invalid fields');
+      this.badPhotoUploadFields(payload);
     }
 
     let server: string;
@@ -304,6 +305,37 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       this.badGroupResponse('VK Group photo upload returned invalid fields');
     }
     return { photo: value.photo, server, hash: value.hash };
+  }
+
+  // The upload server answers with its own error codes (ERR_UPLOAD_...) and
+  // an empty photo list instead of an API error envelope. Surface only that
+  // code and the field shape: photo, hash and server values stay private.
+  private badPhotoUploadFields(payload: unknown): never {
+    const value =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : {};
+    console.warn(
+      '[vk-group] photo upload returned invalid fields:',
+      payload && typeof payload === 'object'
+        ? Object.entries(value)
+            .map(([key, field]) =>
+              key === 'photo' && field === '[]'
+                ? 'photo:empty-list'
+                : `${key}:${typeof field}`
+            )
+            .join(',')
+        : typeof payload
+    );
+    const code =
+      typeof value.error === 'string' && /^[A-Z0-9_]{1,64}$/.test(value.error)
+        ? value.error
+        : undefined;
+    this.badGroupResponse(
+      code
+        ? `VK Group photo upload returned invalid fields (${code})`
+        : 'VK Group photo upload returned invalid fields'
+    );
   }
 
   private async uploadPhoto(
