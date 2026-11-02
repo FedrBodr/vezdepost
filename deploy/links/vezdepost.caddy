@@ -18,3 +18,7 @@ redir /go/narod-li https://vezdepost.ru/?utm_source=linkedin&utm_medium=social&u
 
 # vezdepost-fb-1027: пост о подключении Facebook к Вездепосту
 redir /go/vezdepost-fb-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=social&utm_campaign=vezdepost-fb-1027 302
+
+# virt-office-1102: созвон о виртуальном офисе — ссылка другу в личку и стикер в сторис
+redir /go/virt-office-dm-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=messenger&utm_campaign=virt-office-1102 302
+redir /go/virt-office-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=social&utm_campaign=virt-office-1102 302
