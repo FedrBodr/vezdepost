@@ -11,6 +11,10 @@ vi.mock('axios', () => ({
   },
 }));
 
+vi.mock('@gitroom/helpers/utils/timer', () => ({
+  timer: vi.fn(async () => undefined),
+}));
+
 vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => ({
   ...(await importOriginal()),
   withMediaSourceStream: vi.fn(
@@ -310,7 +314,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
           },
         })
       )
-      .mockImplementationOnce(() =>
+      .mockImplementation(() =>
         response({ response: { upload_url: uploadUrl } })
       );
 
@@ -369,7 +373,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
           },
         })
       )
-      .mockImplementationOnce(() =>
+      .mockImplementation(() =>
         response({ response: { upload_url: uploadUrl } })
       );
 
@@ -1102,7 +1106,7 @@ describe('VkGroupProvider photo publishing', () => {
   it('redacts a photo media download failure', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
-      .mockImplementationOnce(() =>
+      .mockImplementation(() =>
         response({ response: { upload_url: uploadUrl } })
       );
     vi.mocked(axios.get).mockRejectedValue(
@@ -1128,7 +1132,7 @@ describe('VkGroupProvider photo publishing', () => {
   it('names the upload server error code when photo upload fields are invalid', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
-      .mockImplementationOnce(() =>
+      .mockImplementation(() =>
         response({ response: { upload_url: uploadUrl } })
       );
     vi.mocked(axios.get).mockResolvedValue({
@@ -1158,7 +1162,7 @@ describe('VkGroupProvider photo publishing', () => {
   it('redacts a multipart photo upload failure', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
-      .mockImplementationOnce(() =>
+      .mockImplementation(() =>
         response({ response: { upload_url: uploadUrl } })
       );
     vi.mocked(axios.get).mockResolvedValue({
@@ -1188,7 +1192,7 @@ describe('VkGroupProvider photo publishing', () => {
     const privateRedirect = 'http://private-upload.example/token-bearing-path';
     const fetchMock = vi
       .spyOn(provider, 'fetch')
-      .mockImplementationOnce(() =>
+      .mockImplementation(() =>
         response({ response: { upload_url: uploadUrl } })
       );
     vi.mocked(axios.get).mockResolvedValue({
@@ -1227,7 +1231,10 @@ describe('VkGroupProvider photo publishing', () => {
     expect(vi.mocked(axios.post).mock.calls[0][2]).toEqual(
       expect.objectContaining({ maxRedirects: 0 })
     );
+    // Every attempt asks VK for a fresh upload server.
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.vk.com/method/photos.getWallUploadServer',
+      'https://api.vk.com/method/photos.getWallUploadServer',
       'https://api.vk.com/method/photos.getWallUploadServer',
     ]);
   });
@@ -1235,7 +1242,7 @@ describe('VkGroupProvider photo publishing', () => {
   it('redacts a multipart form construction failure', async () => {
     const fetchMock = vi
       .spyOn(provider, 'fetch')
-      .mockImplementationOnce(() =>
+      .mockImplementation(() =>
         response({ response: { upload_url: uploadUrl } })
       );
     vi.mocked(axios.get).mockResolvedValue({
@@ -1283,7 +1290,7 @@ describe('VkGroupProvider photo publishing', () => {
     async (data) => {
       const fetchMock = vi
         .spyOn(provider, 'fetch')
-        .mockImplementationOnce(() =>
+        .mockImplementation(() =>
           response({ response: { upload_url: uploadUrl } })
         );
       vi.mocked(axios.get).mockResolvedValue({
@@ -1593,16 +1600,94 @@ describe('VkGroupProvider photo publishing', () => {
           'https://media.example/partial-1.jpg',
           'https://upload.example/partial-0',
           'https://upload.example/partial-1',
+          'https://upload.example/partial-2',
         ],
       }
     );
+    // The first photograph is retried with a fresh upload server; the
+    // sibling is never downloaded.
     expect(events).toEqual([
       'download',
       'get-upload-server:0',
       'multipart-upload',
+      'download',
+      'get-upload-server:1',
+      'multipart-upload',
+      'download',
+      'get-upload-server:2',
+      'multipart-upload',
     ]);
-    expect(axios.get).toHaveBeenCalledOnce();
-    expect(axios.post).toHaveBeenCalledOnce();
+    expect(axios.get).toHaveBeenCalledTimes(3);
+    expect(axios.post).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries a transient photo upload failure with a fresh upload server', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({ response: { upload_url: uploadUrl } })
+      )
+      .mockImplementationOnce(() =>
+        response({ response: { upload_url: uploadUrl } })
+      )
+      .mockImplementationOnce(() =>
+        response({ response: [{ owner_id: -123, id: 456 }] })
+      )
+      .mockImplementationOnce(() => response({ response: { post_id: 789 } }));
+    vi.mocked(axios.get).mockImplementation(async () => ({
+      data: Readable.from(['image-data']),
+    }));
+    vi.mocked(axios.post)
+      .mockRejectedValueOnce(new Error('405 Not Allowed'))
+      .mockResolvedValueOnce({
+        data: { photo: uploadedPhoto, server: 321, hash: uploadHash },
+      });
+
+    const [published] = await provider.post('-123', token, [
+      {
+        id: 'postiz-post',
+        message: 'Photo',
+        settings: {},
+        media: [{ type: 'image', path: mediaUrl }],
+      },
+    ]);
+
+    expect(published.postId).toBe('789');
+    expect(
+      fetchMock.mock.calls.map(([url]) => url.split('/method/')[1])
+    ).toEqual([
+      'photos.getWallUploadServer',
+      'photos.getWallUploadServer',
+      'photos.saveWallPhoto',
+      'wall.post',
+    ]);
+  });
+
+  it('does not retry an upload server error code', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementation(() =>
+        response({ response: { upload_url: uploadUrl } })
+      );
+    vi.mocked(axios.get).mockResolvedValue({
+      data: Readable.from(['image-data']),
+    });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { error: 'ERR_UPLOAD_BAD_IMAGE_SIZE', hash: uploadHash },
+    });
+
+    await expectSanitizedPhotoFailure(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Photo',
+          settings: {},
+          media: [{ type: 'image', path: mediaUrl }],
+        },
+      ]),
+      fetchMock
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it.each([

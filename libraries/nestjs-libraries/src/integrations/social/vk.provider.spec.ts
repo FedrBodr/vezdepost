@@ -10,6 +10,10 @@ vi.mock('axios', () => ({
   },
 }));
 
+vi.mock('@gitroom/helpers/utils/timer', () => ({
+  timer: vi.fn(async () => undefined),
+}));
+
 vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => ({
   ...(await importOriginal()),
   withMediaSourceStream: vi.fn(
@@ -188,21 +192,80 @@ describe('VkProvider verified publishing', () => {
     [{ photo: 'photo', server: 1, hash: false }, 'hash type'],
   ])(
     'rejects a photo upload response with invalid %s (%s)',
-    async (uploadResponse, _field) => {
+    async (uploadResponse, field) => {
       const fetchMock = vi
         .spyOn(provider, 'fetch')
-        .mockResolvedValueOnce(
-          response({ response: { upload_url: uploadUrl } })
-        );
+        .mockResolvedValue(response({ response: { upload_url: uploadUrl } }));
       vi.mocked(axios.get).mockResolvedValue({ data: 'image-data' });
       vi.mocked(axios.post).mockResolvedValue({ data: uploadResponse });
 
       const request = provider.upload('1', accessToken, imagePost);
       await expect(request).rejects.toBeInstanceOf(BadBody);
       await expectSanitizedFailure(request, [accessToken, mediaUrl, uploadUrl]);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // Empty or mistyped photo/hash is retried with a fresh upload server;
+      // a bad server ID is not. Nothing is saved either way.
+      expect(fetchMock).toHaveBeenCalledTimes(
+        field.startsWith('server') ? 1 : 3
+      );
     }
   );
+
+  it('retries a transient photo upload failure with a fresh upload server', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockResolvedValueOnce(response({ response: { upload_url: uploadUrl } }))
+      .mockResolvedValueOnce(response({ response: { upload_url: uploadUrl } }))
+      .mockResolvedValueOnce(
+        response({ response: [{ id: 456, owner_id: 1 }] })
+      );
+    vi.mocked(axios.get).mockResolvedValue({ data: 'image-data' });
+    vi.mocked(axios.post)
+      .mockResolvedValueOnce({ data: { photo: '', server: 1, hash: '' } })
+      .mockResolvedValueOnce({
+        data: { photo: 'photo', server: 1, hash: 'hash' },
+      });
+
+    await expect(provider.upload('1', accessToken, imagePost)).resolves.toEqual(
+      [{ id: '456', type: 'photo' }]
+    );
+    expect(
+      fetchMock.mock.calls.map(([url]) => url.split('?')[0].split('/').at(-1))
+    ).toEqual([
+      'photos.getWallUploadServer',
+      'photos.getWallUploadServer',
+      'photos.saveWallPhoto',
+    ]);
+  });
+
+  it('does not retry an upload server error code', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockResolvedValue(response({ response: { upload_url: uploadUrl } }));
+    vi.mocked(axios.get).mockResolvedValue({ data: 'image-data' });
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { error: 'ERR_UPLOAD_BAD_IMAGE_SIZE', hash: 'hash' },
+    });
+
+    await expect(provider.upload('1', accessToken, imagePost)).rejects.toThrow(
+      'VK photos.getWallUploadServer returned invalid upload fields (ERR_UPLOAD_BAD_IMAGE_SIZE)'
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a video upload failure', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockResolvedValue(
+        response({ response: { upload_url: uploadUrl, video_id: 7 } })
+      );
+    vi.mocked(axios.get).mockResolvedValue({ data: 'video-data' });
+    vi.mocked(axios.post).mockRejectedValue(new Error('upload failed'));
+
+    await expect(
+      provider.upload('1', accessToken, videoPost)
+    ).rejects.toBeInstanceOf(BadBody);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
   it('rejects a saved photo response without an ID', async () => {
     vi.spyOn(provider, 'fetch')

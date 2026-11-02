@@ -25,6 +25,7 @@ import {
 } from './vk.oauth';
 import type { VkIdentifier } from './vk.oauth';
 import { withMediaSourceStream } from '@gitroom/helpers/utils/media.source';
+import { timer } from '@gitroom/helpers/utils/timer';
 import {
   VK_GROUP_LEGACY_TOKEN_RECONNECT,
   VK_GROUP_PHOTO_ACCESS_MISSING,
@@ -41,6 +42,16 @@ import {
 const TOO_MANY_PHOTOS = 'VK Group supports up to 10 photographs per post.';
 const UNSUPPORTED_MEDIA =
   'VK Group supports photographs only. Remove videos and other attachments.';
+// VK upload servers intermittently answer 405 or return empty photo fields;
+// a fresh upload server usually accepts the same file on the next attempt.
+const PHOTO_UPLOAD_RETRY_DELAYS_MS = [1000, 3000];
+const PHOTO_UPLOAD_FAILED = 'VK Group photo upload failed';
+const PHOTO_UPLOAD_INVALID_FIELDS =
+  'VK Group photo upload returned invalid fields';
+const isTransientPhotoUploadFailure = (error: unknown) =>
+  error instanceof BadBody &&
+  (error.message === PHOTO_UPLOAD_FAILED ||
+    error.message === PHOTO_UPLOAD_INVALID_FIELDS);
 const isUnsupportedAttachmentPath = (path: string) =>
   /\.(?:mp4|mov|avi|mkv|webm|m4v|pdf|docx?|xlsx?|pptx?|txt|rtf|csv|zip|rar|7z|tar|gz)(?:[?#].*)?$/i.test(
     path || ''
@@ -302,7 +313,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         'upload server ID'
       );
     } catch {
-      this.badGroupResponse('VK Group photo upload returned invalid fields');
+      this.badGroupResponse(PHOTO_UPLOAD_INVALID_FIELDS);
     }
     return { photo: value.photo, server, hash: value.hash };
   }
@@ -322,6 +333,8 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
             .map(([key, field]) =>
               key === 'photo' && field === '[]'
                 ? 'photo:empty-list'
+                : typeof field === 'string'
+                ? `${key}:string(${field.length})`
                 : `${key}:${typeof field}`
             )
             .join(',')
@@ -333,16 +346,16 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         : undefined;
     this.badGroupResponse(
       code
-        ? `VK Group photo upload returned invalid fields (${code})`
-        : 'VK Group photo upload returned invalid fields'
+        ? `${PHOTO_UPLOAD_INVALID_FIELDS} (${code})`
+        : PHOTO_UPLOAD_INVALID_FIELDS
     );
   }
 
-  private async uploadPhoto(
+  private async uploadPhotoToServer(
     positiveGroupId: string,
     accessToken: string,
     media: NonNullable<PostDetails['media']>[number]
-  ): Promise<{ ownerId: string; id: string }> {
+  ): Promise<{ photo: string; server: string; hash: string }> {
     let uploadPayload: unknown;
     let sourceOpened = false;
     try {
@@ -384,7 +397,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
               })
             ).data;
           } catch {
-            this.badGroupResponse('VK Group photo upload failed');
+            this.badGroupResponse(PHOTO_UPLOAD_FAILED);
           }
         }
       );
@@ -392,13 +405,40 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       if (error instanceof BadBody || error instanceof RefreshToken)
         throw error;
       this.badGroupResponse(
-        sourceOpened
-          ? 'VK Group photo upload failed'
-          : 'VK Group media download failed'
+        sourceOpened ? PHOTO_UPLOAD_FAILED : 'VK Group media download failed'
       );
     }
 
-    const uploaded = this.parsePhotoUploadFields(uploadPayload);
+    return this.parsePhotoUploadFields(uploadPayload);
+  }
+
+  private async uploadPhoto(
+    positiveGroupId: string,
+    accessToken: string,
+    media: NonNullable<PostDetails['media']>[number]
+  ): Promise<{ ownerId: string; id: string }> {
+    let uploaded: { photo: string; server: string; hash: string } | undefined;
+    for (let attempt = 0; !uploaded; attempt++) {
+      try {
+        uploaded = await this.uploadPhotoToServer(
+          positiveGroupId,
+          accessToken,
+          media
+        );
+      } catch (error) {
+        if (
+          !isTransientPhotoUploadFailure(error) ||
+          attempt >= PHOTO_UPLOAD_RETRY_DELAYS_MS.length
+        ) {
+          throw error;
+        }
+        console.warn(
+          `[vk-group] photo upload attempt ${attempt + 1} failed, retrying`
+        );
+        await timer(PHOTO_UPLOAD_RETRY_DELAYS_MS[attempt]);
+      }
+    }
+
     const saved = await this.callPhotoVk<unknown>(
       'photos.saveWallPhoto',
       accessToken,
