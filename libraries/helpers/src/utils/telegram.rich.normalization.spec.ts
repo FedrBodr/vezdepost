@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { buildTelegramRichMessage } from './telegram.rich.normalization';
+import {
+  buildTelegramRichMessage,
+  renderTelegramRichHtml,
+} from './telegram.rich.normalization';
+
+describe('renderTelegramRichHtml', () => {
+  it('keeps line breaks inside a paragraph as <br/>', () => {
+    expect(
+      renderTelegramRichHtml('<p>List:<br>— one<br>— two</p><p>Next</p>')
+    ).toBe('<p>List:<br/>— one<br/>— two</p>\n\n<p>Next</p>');
+  });
+});
 
 describe('buildTelegramRichMessage', () => {
   it('leaves a text-only post as bare html with no media array', () => {

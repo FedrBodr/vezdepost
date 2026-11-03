@@ -95,8 +95,10 @@ const renderNode = (
     );
   }
 
+  // Rich HTML collapses literal newlines into spaces like a browser does, so
+  // a line break inside a paragraph must stay an explicit <br/>.
   if (tagName === 'br') {
-    return '\n';
+    return '<br/>';
   }
   if (tagName === 'hr') {
     return '<hr/>';
