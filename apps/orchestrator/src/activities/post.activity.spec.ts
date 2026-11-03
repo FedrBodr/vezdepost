@@ -282,18 +282,21 @@ describe('PostActivity VK Group OAuth publishing', () => {
     expect(wallBody.get('attachments')).toBe('photo-123_456,photo-123_457');
   });
 
-  it('does not call wall.post for a stored invalid media type', async () => {
+  it('does not call wall.post when stored media breaks the variant rule', async () => {
     const media = {
       id: 'stored-video',
       path: 'https://media.example/stored-video.mp4',
       type: 'video',
     };
+    const second = { ...media, id: 'stored-video-2' };
     const { activity, fetchMock } = createHarness({
-      storedMedia: { [media.id]: media },
+      storedMedia: { [media.id]: media, [second.id]: second },
     });
 
     await expectNoWallPost(
-      activity.postSocial(integration, [storedPost('post-1', [media.id])]),
+      activity.postSocial(integration, [
+        storedPost('post-1', [media.id, second.id]),
+      ]),
       fetchMock,
       'Attached media does not match the post variant requirements.'
     );

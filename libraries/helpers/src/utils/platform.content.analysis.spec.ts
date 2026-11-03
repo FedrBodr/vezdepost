@@ -130,7 +130,7 @@ describe('analyzePlatformContentV2', () => {
   });
 
   it('emits a complete unsupported-media diagnostic', () => {
-    const media = [{ type: 'video' as const }];
+    const media = [{ type: 'video' as const }, { type: 'video' as const }];
     const result = analyze({
       canonicalHtml: '<p>Post</p>',
       media,

@@ -387,6 +387,8 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       post: simpleVariant('post', 4_000, 'html', maxFormatting, {
         type: 'optional',
         images: { min: 1, max: 10 },
+        videos: { min: 1, max: 1 },
+        mixed: true,
       }),
     },
   },
@@ -516,6 +518,8 @@ const profiles: Record<string, PlatformCapabilityProfileV2> = {
       post: simpleVariant('post', 16_384, 'plain', plainFormatting, {
         type: 'optional',
         images: { min: 1, max: 10 },
+        videos: { min: 1, max: 1 },
+        mixed: true,
       }),
     },
   },
