@@ -106,7 +106,7 @@ it('keeps detailed media rules in providers', async () => {
     await new MaxProvider().checkValidity([
       [{ path: 'clip.mp4', type: 'video' }],
     ])
-  ).toBe('Video posting to MAX is not supported yet.');
+  ).toBe(true);
 
   expect(
     await new TumblrProvider().checkValidity([

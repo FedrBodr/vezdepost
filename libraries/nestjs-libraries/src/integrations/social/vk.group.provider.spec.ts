@@ -149,6 +149,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
       'vkid.personal_info',
       'wall',
       'photos',
+      'video',
       'groups',
       'stats',
     ]);
@@ -162,7 +163,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
       'https://app.example/integrations/social/vk-group'
     );
     expect(url.searchParams.get('scope')).toBe(
-      'vkid.personal_info wall photos groups stats'
+      'vkid.personal_info wall photos video groups stats'
     );
   });
 
@@ -245,7 +246,7 @@ describe('VkGroupProvider OAuth and managed-community selection', () => {
     expect(body.get('refresh_token')).toBe('refresh-secret');
     expect(body.get('device_id')).toBe('device-42');
     expect(body.get('scope')).toBe(
-      'vkid.personal_info wall photos groups stats'
+      'vkid.personal_info wall photos video groups stats'
     );
   });
 
@@ -475,7 +476,7 @@ describe('VkGroupProvider photo publishing', () => {
   it('enforces the complete validity boundary', async () => {
     const tooMany = 'VK Group supports up to 10 photographs per post.';
     const unsupported =
-      'VK Group supports photographs only. Remove videos and other attachments.';
+      'VK Group supports photographs and MP4 videos only. Remove other attachments.';
     const images = (count: number) =>
       Array.from({ length: count }, (_, index) => ({
         path: `photo-${index}.jpg`,
@@ -497,6 +498,19 @@ describe('VkGroupProvider photo publishing', () => {
     );
     await expect(
       provider.checkValidity([[{ path: 'clip.mp4', type: 'video' }]], {}, [])
+    ).resolves.toBe(true);
+    await expect(
+      provider.checkValidity(
+        [[{ path: 'clip.mp4', type: 'video' }, ...images(9)]],
+        {},
+        []
+      )
+    ).resolves.toBe(true);
+    await expect(
+      provider.checkValidity([[{ path: 'clip.mov', type: 'video' }]], {}, [])
+    ).resolves.toBe(unsupported);
+    await expect(
+      provider.checkValidity([[{ path: 'clip.jpg', type: 'video' }]], {}, [])
     ).resolves.toBe(unsupported);
     await expect(
       provider.checkValidity([[{ path: 'file.pdf', type: 'document' }]], {}, [])
@@ -529,8 +543,8 @@ describe('VkGroupProvider photo publishing', () => {
       'VK Group supports up to 10 photographs per post.',
     ],
     [
-      [{ type: 'video' as const, path: 'clip.mp4' }],
-      'VK Group supports photographs only. Remove videos and other attachments.',
+      [{ type: 'video' as const, path: 'clip.mov' }],
+      'VK Group supports photographs and MP4 videos only. Remove other attachments.',
     ],
   ])(
     'rejects forbidden media before making a network request',
@@ -560,7 +574,7 @@ describe('VkGroupProvider photo publishing', () => {
         },
       ])
     ).rejects.toThrow(
-      'VK Group supports photographs only. Remove videos and other attachments.'
+      'VK Group supports photographs and MP4 videos only. Remove other attachments.'
     );
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -588,7 +602,7 @@ describe('VkGroupProvider photo publishing', () => {
         },
       ])
     ).rejects.toThrow(
-      'VK Group supports photographs only. Remove videos and other attachments.'
+      'VK Group supports photographs and MP4 videos only. Remove other attachments.'
     );
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -706,6 +720,161 @@ describe('VkGroupProvider photo publishing', () => {
     expect(multipartBody).toContain('name="photo"');
     expect(multipartBody).toContain('filename="private-photo.jpg"');
     expect(multipartBody).toContain('image-data');
+  });
+
+  it('publishes an MP4 as a community video attached to the wall post', async () => {
+    const videoUploadUrl = 'https://upload.example/private-video-upload';
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({
+          response: {
+            upload_url: videoUploadUrl,
+            video_id: 456789,
+            owner_id: -123,
+          },
+        })
+      )
+      .mockImplementationOnce(() => response({ response: { post_id: 789 } }));
+    vi.mocked(axios.get).mockResolvedValue({
+      data: Readable.from(['video-data']),
+    });
+    let multipartBody = '';
+    vi.mocked(axios.post).mockImplementation(async (_url, formData) => {
+      multipartBody = await readMultipartBody(
+        formData as NodeJS.ReadableStream
+      );
+      return { data: { video_id: 456789, owner_id: -123, size: 10 } };
+    });
+
+    await expect(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Hello VK',
+          settings: {},
+          media: [{ type: 'video', path: 'https://media.example/clip.mp4' }],
+        },
+      ])
+    ).resolves.toEqual([
+      {
+        id: 'postiz-post',
+        postId: '789',
+        releaseURL: 'https://vk.com/wall-123_789',
+        status: 'completed',
+      },
+    ]);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://api.vk.com/method/video.save',
+      'https://api.vk.com/method/wall.post',
+    ]);
+    for (const [url, options] of fetchMock.mock.calls) {
+      expect(url).not.toContain(token);
+      expect((options?.body as FormData).get('access_token')).toBe(token);
+    }
+    const saveBody = fetchMock.mock.calls[0][1]?.body as FormData;
+    const wallBody = fetchMock.mock.calls[1][1]?.body as FormData;
+    expect(saveBody.get('group_id')).toBe('123');
+    expect(saveBody.get('wallpost')).toBe('0');
+    expect(wallBody.get('owner_id')).toBe('-123');
+    expect(wallBody.get('from_group')).toBe('1');
+    expect(wallBody.get('attachments')).toBe('video-123_456789');
+    expect(vi.mocked(axios.post).mock.calls[0][0]).toBe(videoUploadUrl);
+    expect(vi.mocked(axios.post).mock.calls[0][2]?.maxRedirects).toBe(0);
+    expect(multipartBody).toContain('name="video_file"');
+    expect(multipartBody).toContain('filename="clip.mp4"');
+    expect(multipartBody).toContain('video-data');
+  });
+
+  it('attaches photos and videos in original media order', async () => {
+    const fetchMock = vi.spyOn(provider, 'fetch').mockImplementation((url) => {
+      if (url.endsWith('/method/photos.getWallUploadServer')) {
+        return response({ response: { upload_url: uploadUrl } });
+      }
+      if (url.endsWith('/method/photos.saveWallPhoto')) {
+        return response({ response: [{ owner_id: -123, id: 456 }] });
+      }
+      if (url.endsWith('/method/video.save')) {
+        return response({
+          response: { upload_url: uploadUrl, video_id: 999 },
+        });
+      }
+      return response({ response: { post_id: 789 } });
+    });
+    vi.mocked(axios.get).mockImplementation(async () => ({
+      data: Readable.from(['media-data']),
+    }));
+    vi.mocked(axios.post).mockImplementation(async (_url, formData) => {
+      const body = await readMultipartBody(formData as NodeJS.ReadableStream);
+      return body.includes('name="video_file"')
+        ? { data: { video_id: 999 } }
+        : { data: { photo: uploadedPhoto, server: 321, hash: uploadHash } };
+    });
+
+    await provider.post('-123', token, [
+      {
+        id: 'postiz-post',
+        message: 'Hello VK',
+        settings: {},
+        media: [
+          { type: 'video', path: 'https://media.example/clip.mp4' },
+          { type: 'image', path: mediaUrl },
+        ],
+      },
+    ]);
+
+    const wallBody = fetchMock.mock.calls.at(-1)?.[1]?.body as FormData;
+    expect(wallBody.get('attachments')).toBe('video-123_999,photo-123_456');
+  });
+
+  it('asks to reconnect with video access when video.save is denied', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementationOnce(() =>
+        response({ error: { error_code: 15, error_msg: upstreamPayload } })
+      );
+
+    await expectSanitizedPhotoFailure(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Hello VK',
+          settings: {},
+          media: [{ type: 'video', path: 'https://media.example/clip.mp4' }],
+        },
+      ]),
+      fetchMock,
+      {
+        message:
+          'VK Group video access is missing. Reconnect VK Group through VK authorization and grant video access.',
+      }
+    );
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a failed video upload', async () => {
+    const fetchMock = vi
+      .spyOn(provider, 'fetch')
+      .mockImplementation(() =>
+        response({ response: { upload_url: uploadUrl, video_id: 999 } })
+      );
+    vi.mocked(axios.post).mockRejectedValue(new Error('axios-private-message'));
+
+    await expectSanitizedPhotoFailure(
+      provider.post('-123', token, [
+        {
+          id: 'postiz-post',
+          message: 'Hello VK',
+          settings: {},
+          media: [{ type: 'video', path: 'https://media.example/clip.mp4' }],
+        },
+      ]),
+      fetchMock,
+      { message: 'VK Group video upload failed' }
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(axios.post).toHaveBeenCalledTimes(1);
   });
 
   it('uploads and saves photographs serially in original media order', async () => {

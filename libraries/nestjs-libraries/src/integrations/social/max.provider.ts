@@ -7,14 +7,12 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import dayjs from 'dayjs';
-import {
-  SocialAbstract,
-  ValidityMedia,
-} from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { Integration } from '@prisma/client';
 import striptags from 'striptags';
-import { Bot } from '@maxhub/max-bot-api';
+import { Bot, MaxError } from '@maxhub/max-bot-api';
 import { readMediaSourceBuffer } from '@gitroom/helpers/utils/media.source';
+import { timer } from '@gitroom/helpers/utils/timer';
 import {
   KeyValueStore,
   redisKeyValueStore,
@@ -31,6 +29,12 @@ const bot = new Bot(process.env.MAX_TOKEN || '');
 const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5000';
 // The SDK fetch has no timeout; analytics must not hang the caller.
 const ANALYTICS_TIMEOUT_MS = 10000;
+// MAX processes uploaded video asynchronously: sending before it is ready
+// fails with "attachment.not.ready". Back off for ~75 s in total, then give up.
+const ATTACHMENT_NOT_READY = 'attachment.not.ready';
+const ATTACHMENT_RETRY_DELAYS_MS = [
+  1000, 2000, 4000, 8000, 15000, 15000, 15000, 15000,
+];
 
 export type MaxConnectionStatus =
   | 'waiting'
@@ -95,23 +99,6 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
 
   maxLength() {
     return 4000;
-  }
-
-  // Video publishing is not enabled yet: MAX processes uploaded video
-  // asynchronously and sending right after upload can fail with
-  // "attachment.not.ready" — needs a readiness retry that is not
-  // implemented/tested yet. Reject early with a clear message.
-  override async checkValidity(
-    posts: Array<ValidityMedia[]>
-  ): Promise<string | true> {
-    if (
-      posts?.some((p) =>
-        p?.some((a) => /\.(mp4|mov|mkv|webm|m4v)(\?|$)/i.test(a?.path || ''))
-      )
-    ) {
-      return 'Video posting to MAX is not supported yet.';
-    }
-    return true;
   }
 
   // Token is permanent — no refresh, mirrors TelegramProvider.
@@ -272,10 +259,10 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
   ) {
     const attachments = await this.buildAttachments(post.media);
 
-    const message: any = await this.botClient.sendMessageToChat(
+    const { message }: any = await this.sendWhenAttachmentsReady(
       Number(accessToken),
-      this.normalizeText(post.message),
       {
+        text: this.normalizeText(post.message),
         format: 'html',
         ...(replyMid ? { link: { type: 'reply', mid: replyMid } } : {}),
         ...(attachments.length ? { attachments } : {}),
@@ -283,6 +270,29 @@ export class MaxProvider extends SocialAbstract implements SocialProvider {
     );
 
     return message?.body?.mid ?? message?.mid;
+  }
+
+  // sendMessageToChat retries "attachment.not.ready" every second without
+  // a limit, so a video MAX never finishes processing would hang the job.
+  // The raw endpoint surfaces the error and the retry is bounded here.
+  private async sendWhenAttachmentsReady(chatId: number, body: any) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.botClient.raw.post('messages', {
+          query: { chat_id: chatId },
+          body,
+        } as any);
+      } catch (error) {
+        if (
+          !(error instanceof MaxError) ||
+          error.code !== ATTACHMENT_NOT_READY ||
+          attempt >= ATTACHMENT_RETRY_DELAYS_MS.length
+        ) {
+          throw error;
+        }
+        await timer(ATTACHMENT_RETRY_DELAYS_MS[attempt]);
+      }
+    }
   }
 
   async post(

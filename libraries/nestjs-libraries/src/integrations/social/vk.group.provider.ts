@@ -30,6 +30,7 @@ import {
   VK_GROUP_LEGACY_TOKEN_RECONNECT,
   VK_GROUP_PHOTO_ACCESS_MISSING,
   VK_GROUP_SELECTED_COMMUNITY_NOT_MANAGED,
+  VK_GROUP_VIDEO_ACCESS_MISSING,
 } from './vk.group.errors';
 import {
   collectVkWallPosts,
@@ -41,10 +42,12 @@ import {
 
 const TOO_MANY_PHOTOS = 'VK Group supports up to 10 photographs per post.';
 const UNSUPPORTED_MEDIA =
-  'VK Group supports photographs only. Remove videos and other attachments.';
+  'VK Group supports photographs and MP4 videos only. Remove other attachments.';
 // VK upload servers intermittently answer 405 or return empty photo fields;
 // a fresh upload server usually accepts the same file on the next attempt.
+// Videos are not retried: every video.save creates a new video entry.
 const PHOTO_UPLOAD_RETRY_DELAYS_MS = [1000, 3000];
+const VIDEO_UPLOAD_FAILED = 'VK Group video upload failed';
 const PHOTO_UPLOAD_FAILED = 'VK Group photo upload failed';
 const PHOTO_UPLOAD_INVALID_FIELDS =
   'VK Group photo upload returned invalid fields';
@@ -53,9 +56,16 @@ const isTransientPhotoUploadFailure = (error: unknown) =>
   (error.message === PHOTO_UPLOAD_FAILED ||
     error.message === PHOTO_UPLOAD_INVALID_FIELDS);
 const isUnsupportedAttachmentPath = (path: string) =>
-  /\.(?:mp4|mov|avi|mkv|webm|m4v|pdf|docx?|xlsx?|pptx?|txt|rtf|csv|zip|rar|7z|tar|gz)(?:[?#].*)?$/i.test(
+  /\.(?:mov|avi|mkv|webm|m4v|pdf|docx?|xlsx?|pptx?|txt|rtf|csv|zip|rar|7z|tar|gz)(?:[?#].*)?$/i.test(
     path || ''
   );
+const isVideoPath = (path: string) => /\.mp4(?:[?#].*)?$/i.test(path || '');
+// Only MP4 is published as video, matching the personal page provider; the
+// normalized type and the path extension must agree.
+const isUnsupportedMedia = (media: { path: string; type?: string }) =>
+  isUnsupportedAttachmentPath(media.path) ||
+  isVideoPath(media.path) !== (media.type === 'video') ||
+  (!!media.type && media.type !== 'image' && media.type !== 'video');
 
 export type VkManagedCommunity = {
   id: string;
@@ -72,7 +82,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
   name = 'ВКонтакте\n(сообщество)';
   toolTip = 'Публикация в сообществе или паблике, где вы администратор';
   isBetweenSteps = true;
-  scopes = ['vkid.personal_info', 'wall', 'photos', 'groups', 'stats'];
+  scopes = ['vkid.personal_info', 'wall', 'photos', 'video', 'groups', 'stats'];
   editor = 'normal' as const;
   maxLength() {
     return 16384;
@@ -85,10 +95,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     if (comments.some((comment) => comment.length > 0)) {
       return UNSUPPORTED_MEDIA;
     }
-    if (mainPost.some((media) => media.type && media.type !== 'image')) {
-      return UNSUPPORTED_MEDIA;
-    }
-    if (mainPost.some((media) => isUnsupportedAttachmentPath(media.path))) {
+    if (mainPost.some(isUnsupportedMedia)) {
       return UNSUPPORTED_MEDIA;
     }
     if (mainPost.length > 10) {
@@ -188,6 +195,9 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       if (code === 15 && method.startsWith('photos.')) {
         this.badGroupResponse(VK_GROUP_PHOTO_ACCESS_MISSING, code);
       }
+      if (code === 15 && method.startsWith('video.')) {
+        this.badGroupResponse(VK_GROUP_VIDEO_ACCESS_MISSING, code);
+      }
       this.badGroupResponse(message, code);
     }
 
@@ -241,25 +251,23 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     this.badGroupResponse(`VK ${method} returned invalid ${field}`);
   }
 
-  private parseHttpsUploadUrl(value: unknown): string {
+  private parseHttpsUploadUrl(
+    value: unknown,
+    method = 'photos.getWallUploadServer'
+  ): string {
+    const invalid = `VK ${method} returned an invalid HTTPS upload URL`;
     if (typeof value !== 'string' || !value.trim()) {
-      this.badGroupResponse(
-        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
-      );
+      this.badGroupResponse(invalid);
     }
 
     let url: URL;
     try {
       url = new URL(value);
     } catch {
-      this.badGroupResponse(
-        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
-      );
+      this.badGroupResponse(invalid);
     }
     if (url.protocol !== 'https:' || url.username || url.password) {
-      this.badGroupResponse(
-        'VK photos.getWallUploadServer returned an invalid HTTPS upload URL'
-      );
+      this.badGroupResponse(invalid);
     }
     return value;
   }
@@ -476,6 +484,80 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
+  // video.save with group_id creates the entry in the community's videos;
+  // the file is then streamed to the returned upload URL.
+  private async uploadVideo(
+    positiveGroupId: string,
+    accessToken: string,
+    media: NonNullable<PostDetails['media']>[number]
+  ): Promise<{ ownerId: string; id: string }> {
+    let videoId: string | undefined;
+    let sourceOpened = false;
+    try {
+      const pathTail = media.path.split('/').at(-1) || 'video.mp4';
+      const filename = pathTail.split(/[?#]/)[0] || 'video.mp4';
+      await withMediaSourceStream(media.path, {}, async ({ stream, size }) => {
+        sourceOpened = true;
+        const saved = await this.callGroupVk<unknown>(
+          'video.save',
+          accessToken,
+          { group_id: positiveGroupId, wallpost: '0' }
+        );
+        if (!saved || typeof saved !== 'object') {
+          this.badGroupResponse('VK video.save returned an invalid response');
+        }
+        const savedVideo = saved as Record<string, unknown>;
+        const uploadUrl = this.parseHttpsUploadUrl(
+          savedVideo.upload_url,
+          'video.save'
+        );
+        videoId = this.parsePositiveId(
+          savedVideo.video_id,
+          'video.save',
+          'video ID'
+        );
+        const formData = new FormDataNew();
+        formData.append('video_file', stream, {
+          filename,
+          contentType: mime.lookup(filename) || 'video/mp4',
+          knownLength: size,
+        });
+        let uploadPayload: unknown;
+        try {
+          const headers = formData.getHeaders();
+          if (size !== undefined) {
+            headers['Content-Length'] = String(formData.getLengthSync());
+          }
+          uploadPayload = (
+            await axios.post(uploadUrl, formData, {
+              headers,
+              maxRedirects: 0,
+              maxBodyLength: Infinity,
+              maxContentLength: Infinity,
+            })
+          ).data;
+        } catch {
+          this.badGroupResponse(VIDEO_UPLOAD_FAILED);
+        }
+        if (
+          uploadPayload &&
+          typeof uploadPayload === 'object' &&
+          'error' in uploadPayload
+        ) {
+          this.badGroupResponse(VIDEO_UPLOAD_FAILED);
+        }
+      });
+    } catch (error) {
+      if (error instanceof BadBody || error instanceof RefreshToken)
+        throw error;
+      this.badGroupResponse(
+        sourceOpened ? VIDEO_UPLOAD_FAILED : 'VK Group media download failed'
+      );
+    }
+
+    return { ownerId: `-${positiveGroupId}`, id: videoId! };
+  }
+
   async authenticate(params: {
     code: string;
     codeVerifier: string;
@@ -610,7 +692,8 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
     if (
       mainMedia.some(
         (item) =>
-          item.type !== 'image' || isUnsupportedAttachmentPath(item.path)
+          (item.type !== 'image' && item.type !== 'video') ||
+          isUnsupportedMedia(item)
       )
     ) {
       throw new Error(UNSUPPORTED_MEDIA);
@@ -628,9 +711,19 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
       'wall.post',
       'community ID'
     );
-    const photos: Array<{ ownerId: string; id: string }> = [];
+    const attachments: string[] = [];
     for (const media of mainMedia) {
-      photos.push(await this.uploadPhoto(positiveGroupId, accessToken, media));
+      if (media.type === 'video') {
+        const video = await this.uploadVideo(
+          positiveGroupId,
+          accessToken,
+          media
+        );
+        attachments.push(`video${video.ownerId}_${video.id}`);
+        continue;
+      }
+      const photo = await this.uploadPhoto(positiveGroupId, accessToken, media);
+      attachments.push(`photo${photo.ownerId}_${photo.id}`);
     }
 
     let wallPostPayload: unknown;
@@ -639,16 +732,7 @@ export class VkGroupProvider extends SocialAbstract implements SocialProvider {
         owner_id: ownerId,
         from_group: '1',
         message: firstPost.message,
-        ...(photos.length
-          ? {
-              attachments: photos
-                .map(
-                  ({ ownerId: photoOwnerId, id }) =>
-                    `photo${photoOwnerId}_${id}`
-                )
-                .join(','),
-            }
-          : {}),
+        ...(attachments.length ? { attachments: attachments.join(',') } : {}),
       });
     } catch {
       this.badGroupResponse('VK wall.post request failed');

@@ -1,6 +1,7 @@
 const VK_GROUP_SAFE_PUBLICATION_MESSAGES = new Set([
   'Reconnect VK Group through VK authorization to publish photographs.',
   'VK Group photo access is missing. Reconnect VK Group through VK authorization and grant photo access.',
+  'VK Group video access is missing. Reconnect VK Group through VK authorization and grant video access.',
 ]);
 
 const GENERIC_PUBLICATION_ERROR =

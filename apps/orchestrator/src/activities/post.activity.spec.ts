@@ -315,7 +315,7 @@ describe('PostActivity VK Group OAuth publishing', () => {
         storedPost('comment-1', [media.id]),
       ]),
       fetchMock,
-      'VK Group supports photographs only'
+      'VK Group supports photographs and MP4 videos only'
     );
   });
 

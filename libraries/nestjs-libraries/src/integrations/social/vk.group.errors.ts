@@ -7,6 +7,9 @@ export const VK_GROUP_SELECTION_ERROR =
 export const VK_GROUP_PHOTO_ACCESS_MISSING =
   'VK Group photo access is missing. Reconnect VK Group through VK authorization and grant photo access.';
 
+export const VK_GROUP_VIDEO_ACCESS_MISSING =
+  'VK Group video access is missing. Reconnect VK Group through VK authorization and grant video access.';
+
 export const VK_GROUP_LEGACY_TOKEN_RECONNECT =
   'Reconnect VK Group through VK authorization to publish photographs.';
 export const VK_GROUP_SELECTION_RECONNECT =

@@ -5,6 +5,17 @@ import {
   parseMaxConnectionMessage,
 } from './max.provider';
 import { MemoryKeyValueStore } from './telegram.kv.store';
+import { MaxError } from '@maxhub/max-bot-api';
+import { timer } from '@gitroom/helpers/utils/timer';
+
+vi.mock('@gitroom/helpers/utils/timer', () => ({
+  timer: vi.fn(async () => undefined),
+}));
+
+vi.mock('@gitroom/helpers/utils/media.source', async (importOriginal) => ({
+  ...(await importOriginal()),
+  readMediaSourceBuffer: vi.fn(async () => Buffer.from('video-data')),
+}));
 
 const makeApi = ({
   updates = [],
@@ -22,6 +33,11 @@ const makeApi = ({
   getChat: vi.fn().mockResolvedValue({ chat_id: 321, type: 'chat' }),
   getChatMembership: vi.fn().mockResolvedValue(member),
   getMessage: vi.fn(),
+  uploadVideo: vi.fn().mockResolvedValue({
+    toJson: () => ({ type: 'video', payload: { token: 'video-token' } }),
+  }),
+  uploadImage: vi.fn(),
+  raw: { post: vi.fn() },
 });
 
 describe('MAX connection command', () => {
@@ -287,5 +303,105 @@ describe('MAX analytics', () => {
     await expect(
       new MaxProvider(api as any).analytics('321', '321', 7)
     ).rejects.toThrow('chat.not.found');
+  });
+});
+
+describe('MAX video publishing', () => {
+  const notReady = () =>
+    new MaxError(400, {
+      code: 'attachment.not.ready',
+      message: 'Key: errors.process.attachment.video.not.processed',
+    });
+  const videoPost = [
+    {
+      id: 'postiz-post',
+      message: '<p>Hello MAX</p>',
+      settings: {},
+      media: [{ type: 'video', path: 'https://media.example/clip.mp4' }],
+    },
+  ] as any;
+
+  afterEach(() => {
+    vi.mocked(timer).mockClear();
+  });
+
+  it('accepts video media', async () => {
+    await expect(
+      new MaxProvider(makeApi() as any).checkValidity([
+        [{ path: 'clip.mp4', type: 'video' }],
+      ])
+    ).resolves.toBe(true);
+  });
+
+  it('retries the send while the uploaded video is processing', async () => {
+    const api = makeApi();
+    api.raw.post
+      .mockRejectedValueOnce(notReady())
+      .mockRejectedValueOnce(notReady())
+      .mockResolvedValueOnce({ message: { body: { mid: 'mid.42' } } });
+
+    await expect(
+      new MaxProvider(api as any).post('chat-link', '321', videoPost)
+    ).resolves.toEqual([
+      {
+        id: 'postiz-post',
+        postId: 'mid.42',
+        releaseURL: 'https://max.ru/chat-link',
+        status: 'completed',
+      },
+    ]);
+    expect(api.uploadVideo).toHaveBeenCalledTimes(1);
+    expect(api.raw.post).toHaveBeenCalledTimes(3);
+    expect(api.raw.post).toHaveBeenCalledWith('messages', {
+      query: { chat_id: 321 },
+      body: {
+        text: 'Hello MAX\n',
+        format: 'html',
+        attachments: [{ type: 'video', payload: { token: 'video-token' } }],
+      },
+    });
+    expect(vi.mocked(timer).mock.calls).toEqual([[1000], [2000]]);
+  });
+
+  it('gives up after the bounded wait for video processing', async () => {
+    const api = makeApi();
+    api.raw.post.mockRejectedValue(notReady());
+
+    await expect(
+      new MaxProvider(api as any).post('chat-link', '321', videoPost)
+    ).rejects.toMatchObject({ code: 'attachment.not.ready' });
+    const waited = vi
+      .mocked(timer)
+      .mock.calls.reduce((total, [ms]) => total + ms, 0);
+    expect(waited).toBeGreaterThanOrEqual(60000);
+    expect(waited).toBeLessThanOrEqual(90000);
+    expect(api.raw.post).toHaveBeenCalledTimes(
+      vi.mocked(timer).mock.calls.length + 1
+    );
+  });
+
+  it('does not retry other MAX errors', async () => {
+    const api = makeApi();
+    const forbidden = new MaxError(403, {
+      code: 'chat.denied',
+      message: 'Bot is not admin',
+    });
+    api.raw.post.mockRejectedValue(forbidden);
+
+    await expect(
+      new MaxProvider(api as any).post('chat-link', '321', videoPost)
+    ).rejects.toBe(forbidden);
+    expect(api.raw.post).toHaveBeenCalledTimes(1);
+    expect(timer).not.toHaveBeenCalled();
+  });
+
+  it('does not retry network failures', async () => {
+    const api = makeApi();
+    api.raw.post.mockRejectedValue(new Error('fetch failed'));
+
+    await expect(
+      new MaxProvider(api as any).post('chat-link', '321', videoPost)
+    ).rejects.toThrow('fetch failed');
+    expect(api.raw.post).toHaveBeenCalledTimes(1);
   });
 });
