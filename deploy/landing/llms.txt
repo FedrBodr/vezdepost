@@ -26,6 +26,7 @@
 - [Как перенести канал из Telegram в MAX](https://vezdepost.ru/blog/kak-perenesti-kanal-iz-telegram-v-max/): что переносится, что нет, как вести оба канала
 - [Отложенный пост в Telegram](https://vezdepost.ru/blog/otlozhennyj-post-v-telegram/): с телефона и компьютера, сразу в несколько каналов
 - [Отложенные посты и сообщения ВКонтакте](https://vezdepost.ru/blog/otlozhennye-posty-vk/): как сделать, где найти, почему пропали
+- [Отложенное сообщение в ВК](https://vezdepost.ru/blog/otlozhennoe-soobshchenie-vk/): можно ли отправить личное сообщение VK по таймеру, где это есть (Telegram, MAX), как не забыть отправить
 - [Сервисы автопостинга для Telegram, MAX и VK](https://vezdepost.ru/blog/servisy-avtopostinga/): сравнение Vezdepost, SMMplanner и SmmBox — цены, площадки, подключение MAX (данные на 15.11.2026)
 - [Postiz на русском](https://vezdepost.ru/blog/postiz-na-russkom/): что такое Postiz, сколько стоит и чем отличается Vezdepost
 
