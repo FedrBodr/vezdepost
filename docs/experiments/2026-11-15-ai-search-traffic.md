@@ -77,8 +77,8 @@ Google Search Console (`sc-domain:vezdepost.ru`):
       облака (postiz.com/pricing, 15.11.2026), чем отличается Vezdepost.
 - [x] 2026-11-15 `llms.txt`: полный список площадок облака, видео, аналитика,
       цена и сравнение с Postiz, две новые статьи.
-- [ ] Деплой на прод.
-- [ ] IndexNow: `node deploy/blog/indexnow.mjs` (все URL из sitemap).
+- [x] 2026-11-15 Деплой на прод (afda4cac), страницы отдают 200.
+- [x] 2026-11-15 IndexNow: 11 URL, api.indexnow.org 200, Яндекс 202.
 - [ ] По желанию владельца: переобход в Яндекс Вебмастере, вход в Bing
       Webmaster (видно запросы, по которым Bing/ChatGPT нас показывает).
 
