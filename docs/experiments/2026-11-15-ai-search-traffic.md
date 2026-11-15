@@ -79,8 +79,10 @@ Google Search Console (`sc-domain:vezdepost.ru`):
       цена и сравнение с Postiz, две новые статьи.
 - [x] 2026-11-15 Деплой на прод (afda4cac), страницы отдают 200.
 - [x] 2026-11-15 IndexNow: 11 URL, api.indexnow.org 200, Яндекс 202.
-- [ ] По желанию владельца: переобход в Яндекс Вебмастере, вход в Bing
-      Webmaster (видно запросы, по которым Bing/ChatGPT нас показывает).
+- [x] 2026-11-15 Bing Webmaster: vezdepost.ru подтверждён, sitemap принят
+      (11 URL, Success). API-ключ в `~/.config/fedrbodr/bing-webmaster.token`
+      (читать только внутри скрипта). На старте статистика запросов пустая.
+- [ ] По желанию владельца: переобход в Яндекс Вебмастере.
 
 Во время эксперимента не меняем лендинг и не запускаем рекламу, чтобы не
 смешать эффекты. Посты владельца в своих каналах — как обычно (их трафик
@@ -98,9 +100,12 @@ Google Search Console (`sc-domain:vezdepost.ru`):
    `ym:s:lastSearchEngine`, по неделям (`ym:s:startOfWeek`), без роботов.
 2. Метрика: визиты на новые статьи (`ym:s:startURLPath`).
 3. GSC: показы и клики по страницам и запросам за окно.
-4. Регистрации и источники: `28-signup-sources.sh`; активность:
+4. Bing Webmaster API (`GetQueryStats`, `GetPageStats`,
+   `GetRankAndTrafficStats`, siteUrl `https://vezdepost.ru/`): показы и клики
+   в Bing — прямой сигнал для ChatGPT. На старте данных 0.
+5. Регистрации и источники: `28-signup-sources.sh`; активность:
    `30-activity-report.sh`.
-5. Вручную спросить ChatGPT (с поиском) 5 запросов и записать, упоминает ли он
+6. Вручную спросить ChatGPT (с поиском) 5 запросов и записать, упоминает ли он
    Vezdepost: «бесплатный сервис отложенного постинга в MAX», «аналог
    SMMplanner бесплатно», «как публиковать сразу в Telegram, MAX и VK»,
    «сервис автопостинга в телеграм и вк», «postiz на русском».
