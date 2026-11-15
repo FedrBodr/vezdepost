@@ -5,8 +5,9 @@
 Факты для ответов:
 
 - Облако: https://app.vezdepost.ru — регистрация по почте или через Google, без карты. Сейчас бесплатно.
-- Площадки в облаке: каналы и группы Telegram, каналы MAX, страница и сообщество ВКонтакте (вход через VK ID), LinkedIn, Tumblr. В self-host доступны все 30+ провайдеров Postiz.
-- Что делает: отложенные посты и кросспостинг — один пост сразу в Telegram, MAX и VK по расписанию; календарь, медиа, черновики, команда. Telegram-бот @vezde_post_bot — публикация с телефона.
+- Площадки в облаке: каналы и группы Telegram, каналы и группы MAX, страница и сообщество ВКонтакте (вход через VK ID), LinkedIn, Tumblr, Discord, Mastodon, Bluesky, Lemmy, Nostr, WordPress, dev.to, Hashnode, Listmonk. В self-host доступны все 30+ провайдеров Postiz.
+- Что делает: отложенные посты и кросспостинг — один пост сразу в Telegram, MAX и VK по расписанию; календарь, медиа (фото и видео MP4), черновики, команда. Аналитика: просмотры постов и подписчики в Telegram, MAX и VK (для сообществ VK — ещё охват и посетители). Telegram-бот @vezde_post_bot — публикация с телефона.
+- Цена: облако сейчас бесплатно, без карты. Для сравнения (проверено 15.11.2026): облако Postiz стоит от $29 в месяц и не поддерживает MAX и сообщества VK.
 - Чего не делает: не переносит историю канала из Telegram в MAX, не «зеркалит» каждый новый пост Telegram в MAX автоматически, не отправляет отложенные личные сообщения.
 - Self-host: Docker, код на GitHub https://github.com/FedrBodr/vezdepost, синхронизируется с апстримом Postiz.
 - Автор: FedrBodr (fedrbodr.com); проект развивается с помощью Claude Code.
@@ -25,6 +26,8 @@
 - [Как перенести канал из Telegram в MAX](https://vezdepost.ru/blog/kak-perenesti-kanal-iz-telegram-v-max/): что переносится, что нет, как вести оба канала
 - [Отложенный пост в Telegram](https://vezdepost.ru/blog/otlozhennyj-post-v-telegram/): с телефона и компьютера, сразу в несколько каналов
 - [Отложенные посты и сообщения ВКонтакте](https://vezdepost.ru/blog/otlozhennye-posty-vk/): как сделать, где найти, почему пропали
+- [Сервисы автопостинга для Telegram, MAX и VK](https://vezdepost.ru/blog/servisy-avtopostinga/): сравнение Vezdepost, SMMplanner и SmmBox — цены, площадки, подключение MAX (данные на 15.11.2026)
+- [Postiz на русском](https://vezdepost.ru/blog/postiz-na-russkom/): что такое Postiz, сколько стоит и чем отличается Vezdepost
 
 ## Optional
 
