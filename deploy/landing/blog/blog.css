@@ -82,6 +82,9 @@ a:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; border
 .article ul, .article ol { padding-left: 26px; }
 .article li + li { margin-top: 8px; }
 .article strong { color: #fff; }
+.article figure { margin: 28px 0 0; }
+.article figure img { display: block; width: 100%; height: auto; border-radius: 14px; }
+.article figcaption { margin-top: 8px; font-size: 14px; opacity: .7; }
 .article kbd {
   padding: 1px 7px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px;
   background: var(--bg-soft); font: 600 .85em ui-monospace, SFMono-Regular, Menlo, monospace;
