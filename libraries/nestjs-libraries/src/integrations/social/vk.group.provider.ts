@@ -45,8 +45,10 @@ const UNSUPPORTED_MEDIA =
   'VK Group supports photographs and MP4 videos only. Remove other attachments.';
 // VK upload servers intermittently answer 405 or return empty photo fields;
 // a fresh upload server usually accepts the same file on the next attempt.
+// Rejections hit ~15-20% of uploads, so a 9-photo post needs several tries
+// per photo to publish reliably.
 // Videos are not retried: every video.save creates a new video entry.
-const PHOTO_UPLOAD_RETRY_DELAYS_MS = [1000, 3000];
+const PHOTO_UPLOAD_RETRY_DELAYS_MS = [1000, 3000, 5000, 10000, 15000];
 const VIDEO_UPLOAD_FAILED = 'VK Group video upload failed';
 const PHOTO_UPLOAD_FAILED = 'VK Group photo upload failed';
 const PHOTO_UPLOAD_INVALID_FIELDS =

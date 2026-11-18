@@ -1401,11 +1401,9 @@ describe('VkGroupProvider photo publishing', () => {
       expect.objectContaining({ maxRedirects: 0 })
     );
     // Every attempt asks VK for a fresh upload server.
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      'https://api.vk.com/method/photos.getWallUploadServer',
-      'https://api.vk.com/method/photos.getWallUploadServer',
-      'https://api.vk.com/method/photos.getWallUploadServer',
-    ]);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(
+      Array(6).fill('https://api.vk.com/method/photos.getWallUploadServer')
+    );
   });
 
   it('redacts a multipart form construction failure', async () => {
@@ -1767,27 +1765,24 @@ describe('VkGroupProvider photo publishing', () => {
         secrets: [
           'https://media.example/partial-0.jpg',
           'https://media.example/partial-1.jpg',
-          'https://upload.example/partial-0',
-          'https://upload.example/partial-1',
-          'https://upload.example/partial-2',
+          ...Array.from(
+            { length: 6 },
+            (_, attempt) => `https://upload.example/partial-${attempt}`
+          ),
         ],
       }
     );
     // The first photograph is retried with a fresh upload server; the
     // sibling is never downloaded.
-    expect(events).toEqual([
-      'download',
-      'get-upload-server:0',
-      'multipart-upload',
-      'download',
-      'get-upload-server:1',
-      'multipart-upload',
-      'download',
-      'get-upload-server:2',
-      'multipart-upload',
-    ]);
-    expect(axios.get).toHaveBeenCalledTimes(3);
-    expect(axios.post).toHaveBeenCalledTimes(3);
+    expect(events).toEqual(
+      Array.from({ length: 6 }, (_, attempt) => [
+        'download',
+        `get-upload-server:${attempt}`,
+        'multipart-upload',
+      ]).flat()
+    );
+    expect(axios.get).toHaveBeenCalledTimes(6);
+    expect(axios.post).toHaveBeenCalledTimes(6);
   });
 
   it('retries a transient photo upload failure with a fresh upload server', async () => {
