@@ -22,3 +22,9 @@ redir /go/vezdepost-fb-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=s
 # virt-office-1102: созвон о виртуальном офисе — ссылка другу в личку и стикер в сторис
 redir /go/virt-office-dm-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=messenger&utm_campaign=virt-office-1102 302
 redir /go/virt-office-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=social&utm_campaign=virt-office-1102 302
+
+# geo-secrets-1119: пост «Секретики GEO» — эксперимент с трафиком из ChatGPT
+redir /go/geo-tg https://vezdepost.ru/?utm_source=telegram&utm_medium=social&utm_campaign=geo-secrets-1119 302
+redir /go/geo-max https://vezdepost.ru/?utm_source=max&utm_medium=social&utm_campaign=geo-secrets-1119 302
+redir /go/geo-vk https://vezdepost.ru/?utm_source=vk&utm_medium=social&utm_campaign=geo-secrets-1119 302
+redir /go/geo-li https://vezdepost.ru/?utm_source=linkedin&utm_medium=social&utm_campaign=geo-secrets-1119 302
